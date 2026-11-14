@@ -28,6 +28,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:#0b1a2a;color:#fff;fon
 .cls div.sel{border-color:#ffd000;background:#274a6d}
 #go{font-size:20px;padding:14px 40px;border-radius:12px;border:0;background:#1e9e6a;color:#fff;font-weight:700}
 #err{color:#ff8a80;min-height:20px}
+#credit{position:absolute;bottom:max(14px,env(safe-area-inset-bottom));left:0;right:0;text-align:center;font-size:13px;letter-spacing:.04em;opacity:.65}
 </style></head><body>
 <div id="vig"></div><div id="hurt"></div>
 <div id="hud" style="display:none">
@@ -47,9 +48,10 @@ html,body{margin:0;height:100%;overflow:hidden;background:#0b1a2a;color:#fff;fon
     <div data-c="tech"><b>📻 Radio Tech</b>Fire burns slower</div>
     <div data-c="medic"><b>🩹 Medic</b>Heals, fast revive</div>
   </div>
-  <input id="room" placeholder="Room code (blank = new room)" maxlength="4" style="text-transform:uppercase">
+  <input id="room" placeholder="Room code (optional)" maxlength="4" style="text-transform:uppercase">
   <button id="go">PLAY</button>
   <div id="err"></div>
+  <div id="credit">Game by Amelia Alkouri</div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/pixi.js@7.4.2/dist/pixi.min.js"></script>
 <script src="audio.js"></script>
