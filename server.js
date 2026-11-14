@@ -121,6 +121,7 @@ const R = 900;                       // island radius
 const DAY = 90, DUSK = 30, NIGHT = 60, CYC = DAY + DUSK + NIGHT;
 const MAXP = 8;
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const CAMP_CLEAR = 210;                       // no trees closer than this to the campfire (the level-1 safe ring is 160)
 const HP = { t: 4, r: 3, b: 1 };            // hits to break: tree 4, rock 3, berry bush 1
 const SPILL = { t: 5, r: 3 };               // logs per tree / stones per rock (before class bonus)
 
@@ -128,8 +129,8 @@ class Room {
   constructor(code) {
     this.code = code; this.players = new Map(); this.nid = 1; this.emptyFor = 0;
     this.res = [];
-    const add = (k, n) => { for (let i = 0; i < n; i++) { const a = Math.random() * 6.283, d = 130 + Math.sqrt(Math.random()) * (R - 200); this.res.push({ k, x: Math.cos(a) * d, y: Math.sin(a) * d, hp: HP[k], mhp: HP[k], rt: 0 }); } };
-    add('t', 45); add('r', 28); add('b', 22);
+    const add = (k, n, min = 130) => { for (let i = 0; i < n; i++) { const a = Math.random() * 6.283, d = min + Math.sqrt(Math.random()) * (R - 70 - min); this.res.push({ k, x: Math.cos(a) * d, y: Math.sin(a) * d, hp: HP[k], mhp: HP[k], rt: 0 }); } };
+    add('t', 45, CAMP_CLEAR); add('r', 28); add('b', 22);
     this.reset();
   }
   reset() {
