@@ -298,7 +298,7 @@ class Room {
           if (best.hp <= 0 && p.prof) { p.prof.k++; dirty = true; if (p.prof.k % 10 === 0) award(p, 1, 'kills'); }
         }
       }
-      if (p.food > 0 && p.hp < p.mhp) { p.eat -= dt; if (p.eat <= 0) { p.food--; p.hp = Math.min(p.mhp, p.hp + 12); p.eat = 1; } }
+      if (this.fire.fuel > 0 && p.hp < p.mhp && Math.hypot(p.x, p.y) < RC.camp(this.fire.lvl)) p.hp = Math.min(p.mhp, p.hp + 2 * dt);   // resting at a lit camp heals 2 HP/s (berries are for crafting only)
       if (c.regen && p.hp < p.mhp) p.hp = Math.min(p.mhp, p.hp + c.regen * dt);
       if (c.heal) for (const q of P) if (!q.down && q.hp < q.mhp && dist(p, q) < 90) q.hp = Math.min(q.mhp, q.hp + c.heal * dt);
     }
