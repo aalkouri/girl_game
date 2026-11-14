@@ -167,7 +167,7 @@ class Room {
     if (r.kind === 'bench' && hasBench) return fail('Your camp already has a crafting bench.');
     if (r.kind !== 'bench' && !hasBench) return fail('Build a crafting bench first.');
     if (r.kind === 'gear' && p.gear[r.gear]) return fail('You already have that.');
-    if (p.wood < r.cost.wood || p.stone < r.cost.stone) return fail('Not enough materials.');
+    if (!this.canPay(p, r.cost)) return fail('Not enough materials (your bag plus the chests).');
     if (r.kind !== 'gear') {
       const x = p.x + Math.cos(p.fa) * 58, y = p.y + Math.sin(p.fa) * 58, d = Math.hypot(x, y), campR = RC.camp(this.fire.lvl);
       const sr = STRUCT[r.kind].r, station = r.kind !== 'wall';
@@ -181,33 +181,43 @@ class Room {
         const need = station && !stWall ? RC.STATION_GAP : (station || !stWall) ? RC.WALL_GAP : st.r + sr - 4;
         if (dd < need) return fail(need > 60 ? 'Too close to another structure. Keep stations about ' + RC.STATION_GAP + ' apart (walls about ' + RC.WALL_GAP + ' from stations).' : 'Something is already there. Turn and try another spot.');
       }
-      p.wood -= r.cost.wood; p.stone -= r.cost.stone;
+      this.pay(p, r.cost);
       const st = { id: this.nid++, k: r.kind, x, y, r: sr, hp: STRUCT[r.kind].hp || 0, mhp: STRUCT[r.kind].hp || 0, rot: ((Math.trunc(+rot) || 0) % 8 + 8) % 8, items: r.kind === 'chest' ? { wood: 0, stone: 0, food: 0, scrap: 0 } : null, smelt: r.kind === 'smelter' ? { q: 0, prog: 0 } : null }; this.struct.push(st);
       return { ok: true, msg: r.kind === 'bench' ? 'Crafting bench placed! More recipes unlocked.' : r.n + ' placed.' };
     }
-    p.wood -= r.cost.wood; p.stone -= r.cost.stone; p.gear[r.gear] = 1;
+    this.pay(p, r.cost); p.gear[r.gear] = 1;
     return { ok: true, msg: r.n + ' crafted!' };
   }
   smelterStart(p, st) {   // ACT next to a smelter: automatically takes 5 rocks and queues one scrap
     if (st.smelt.q >= RC.SMELT.queue) return { ok: false, msg: 'The smelter is full.' };
-    if (p.stone < RC.SMELT.cost) return { ok: false, msg: 'Need ' + RC.SMELT.cost + ' rocks to smelt.' };
-    p.stone -= RC.SMELT.cost; if (st.smelt.q === 0) st.smelt.prog = 0; st.smelt.q++;
+    if (this.pool(p, 'stone') < RC.SMELT.cost) return { ok: false, msg: 'Need ' + RC.SMELT.cost + ' rocks to smelt (your bag plus the chests).' };
+    this.pay(p, { stone: RC.SMELT.cost }); if (st.smelt.q === 0) st.smelt.prog = 0; st.smelt.q++;
     return { ok: true };
   }
+  // Materials are drawn from the crafter's own bag first, then from the chests (oldest chest first). Chests are put-only.
+  pool(p, res) { let n = p[res] || 0; for (const t of this.struct) if (t.items) n += t.items[res] || 0; return n; }
+  canPay(p, cost) { for (const k in cost) if (cost[k] && this.pool(p, k) < cost[k]) return false; return true; }
+  pay(p, cost) {
+    for (const k in cost) {
+      let need = cost[k] || 0; if (!need) continue;
+      const own = Math.min(p[k] || 0, need); p[k] -= own; need -= own;
+      for (const t of this.struct) { if (!need) break; if (!t.items) continue; const take = Math.min(t.items[k] || 0, need); t.items[k] -= take; need -= take; }
+    }
+  }
   near(p, st) { return Math.hypot(p.x - st.x, p.y - st.y) < st.r + REACH + 30; }
-  chestOp(p, id, res, n) {   // shared storage: anyone in the room may deposit (n > 0) or withdraw (n < 0)
+  chestOp(p, id, res, n) {   // shared storage, put-only: anyone may deposit; nothing can be taken out (crafting uses it automatically)
     const st = this.struct.find(s => s.id === id && s.k === 'chest');
     if (!st || p.down || !this.near(p, st) || !['wood', 'stone', 'food', 'scrap'].includes(res)) return;
     n = Math.max(-1e6, Math.min(1e6, Math.trunc(+n) || 0)); if (!n) return;
-    if (n > 0) { const k = Math.min(n, p[res], CHEST_CAP - st.items[res]); p[res] -= k; st.items[res] += k; }
-    else { const k = Math.min(-n, st.items[res]); st.items[res] -= k; p[res] += k; }
+    if (n <= 0) return;   // no withdrawing
+    const k = Math.min(n, p[res], CHEST_CAP - st.items[res]); p[res] -= k; st.items[res] += k;
   }
   cook(p, id) {
     const f = RC.FOOD_BY[id], fail = msg => ({ ok: false, msg });
     if (!f) return fail('Unknown recipe.'); if (p.down) return fail('You are down.');
     if (!this.struct.some(s => s.k === 'pot' && this.near(p, s))) return fail('Stand next to a cooking pot.');
-    if (p.food < f.cost.food) return fail('Not enough berries.');
-    p.food -= f.cost.food;
+    if (this.pool(p, 'food') < f.cost.food) return fail('Not enough berries (your bag plus the chests).');
+    this.pay(p, { food: f.cost.food });
     if (id === 'juice') p.hp = Math.min(p.mhp, p.hp + 40);
     else if (id === 'tea') p.buff.speed = 60;
     else if (id === 'stew') { p.hp = Math.min(p.mhp, p.hp + 60); p.buff.regen = 30; }
@@ -340,9 +350,9 @@ class Room {
       const tx = tgt ? tgt.x : 0, ty = tgt ? tgt.y : 0, d = Math.max(1, Math.hypot(tx - a.x, ty - a.y));
       if (d > (a.stop || 20)) { a.x += (tx - a.x) / d * sp * dt; a.y += (ty - a.y) / d * sp * dt; }
       const ad = Math.hypot(a.x, a.y);
-      for (const st of this.struct) {   // walls/bench are solid; aliens chew on walls and get hurt by the spikes
+      for (const st of this.struct) {   // every structure is solid and indestructible
         const sd = Math.hypot(a.x - st.x, a.y - st.y), mn = st.r + (a.rad || 12);
-        if (sd < mn) { const k = sd > 0.01 ? mn / sd : 1; a.x = st.x + (a.x - st.x) * k; a.y = st.y + (a.y - st.y) * k; if (st.k === 'wall' && a.cd <= 0) { st.hp -= a.dmg; a.cd = 1; if (a.k !== 2) a.hp -= 5; if (st.hp <= 0) st.dead = 1; } }
+        if (sd < mn) { const k = sd > 0.01 ? mn / sd : 1; a.x = st.x + (a.x - st.x) * k; a.y = st.y + (a.y - st.y) * k; }   // solid: aliens slide around it, but cannot damage it, and it does not damage them
       }
       if (fr > 0 && ad < fr) { const k = fr / Math.max(1, ad); a.x = ad < 1 ? fr : a.x * k; a.y *= ad < 1 ? 1 : k; }   // repelled by firelight
       if (tgt && d < (a.reach || 28) && a.cd <= 0 && (fr === 0 || Math.hypot(tgt.x, tgt.y) >= fr)) {

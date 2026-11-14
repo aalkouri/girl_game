@@ -12,10 +12,10 @@
     { id: 'axe', n: 'Stone Axe', e: '🪓', kind: 'gear', gear: 'axe', cost: { wood: 3, stone: 4 }, d: 'Trees fall in 3 hits instead of 4.' },
     { id: 'pick', n: 'Stone Pickaxe', e: '⛏️', kind: 'gear', gear: 'pick', cost: { wood: 3, stone: 5 }, d: 'Rocks break in 2 hits instead of 3.' },
     { id: 'spear', n: 'Wooden Spear', e: '🔱', kind: 'gear', gear: 'spear', cost: { wood: 4, stone: 3 }, d: '+6 damage and longer reach against aliens.' },
-    { id: 'chest', n: 'Storage Chest', e: '📦', kind: 'chest', cost: { wood: 15, stone: 5 }, max: 8, d: 'Shared storage: anyone can put things in or take them out. Press ACT next to it.' },
+    { id: 'chest', n: 'Storage Chest', e: '📦', kind: 'chest', cost: { wood: 15, stone: 5 }, max: 8, d: 'Shared storage that only takes things in. Everything inside is used automatically when anyone crafts. Press ACT next to it.' },
     { id: 'pot', n: 'Cooking Pot', e: '🍲', kind: 'pot', cost: { wood: 5, stone: 15 }, max: 4, d: 'Press ACT next to it to cook food and drinks from berries.' },
     { id: 'smelter', n: 'Smelter', e: '⚒️', kind: 'smelter', cost: { wood: 10, stone: 25 }, max: 4, d: 'Press ACT next to it: it takes 5 rocks and smelts them into 1 metal scrap, which pops out for pickup.' },
-    { id: 'wall', n: 'Spike Wall', e: '🚧', kind: 'wall', cost: { wood: 6, stone: 0 }, max: 24, d: 'Blocks aliens and hurts them when they chew on it. Placed in front of you, near camp.' },
+    { id: 'wall', n: 'Spike Wall', e: '🚧', kind: 'wall', cost: { wood: 6, stone: 0 }, max: 24, d: 'A solid, indestructible barricade that blocks aliens. Placed in front of you, near camp.' },
   ];
   // things you can cook at a cooking pot (cost is in berries)
   const FOOD = [

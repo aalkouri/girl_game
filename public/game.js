@@ -521,7 +521,7 @@ function placeCheck(r, x, y) {   // mirrors the server's rules so the silhouette
     const stWall = t[1] === 'wall', dd = Math.hypot(t[2] - x, t[3] - y), need = station && !stWall ? RC.STATION_GAP : (station || !stWall) ? RC.WALL_GAP : RC.RADIUS[t[1]] + sr - 4;
     if (dd < need) return need > 60 ? 'Too close to another structure' : 'Something is already there';
   }
-  const mp = S.p.find(p => p[0] === myId); if (mp && (mp[7] < r.cost.wood || mp[8] < r.cost.stone)) return 'Not enough materials';
+  const pl = pooled(); if (pl.wood < r.cost.wood || pl.stone < r.cost.stone) return 'Not enough materials';
   return '';
 }
 const lastRot = {};   // remember the last rotation used for each recipe (handy when lining up walls)
@@ -557,10 +557,15 @@ $('placeRotL').addEventListener('pointerdown', e => { e.preventDefault(); e.stop
 $('placeRotR').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); rotatePlace(1); });
 
 // ---- crafting menu ----
-const inv = () => { const mp = S && S.p.find(p => p[0] === myId); return mp ? { wood: mp[7], stone: mp[8] } : { wood: 0, stone: 0 }; };
+const pooled = () => {   // what you can spend on crafting: your bag plus everything in the chests
+  const mp = S && S.p.find(p => p[0] === myId), o = mp ? { wood: mp[7], stone: mp[8], food: mp[9], scrap: mp[15] || 0 } : { wood: 0, stone: 0, food: 0, scrap: 0 };
+  for (const t of (S && S.st) || []) if (t[1] === 'chest' && t[6]) { o.wood += t[6][0]; o.stone += t[6][1]; o.food += t[6][2]; o.scrap += t[6][3] || 0; }
+  return o;
+};
+const inv = pooled;
 const hasBench = () => !!(S && S.st && S.st.some(t => t[1] === 'bench'));
 function buildCraft() {
-  const iv = inv(), bench = hasBench(), list = $('craftList'); $('craftInv').textContent = '🪵' + iv.wood + '  🪨' + iv.stone;
+  const iv = inv(), bench = hasBench(), list = $('craftList'); $('craftInv').textContent = '🪵' + iv.wood + '  🪨' + iv.stone + '  (chests incl.)';
   list.innerHTML = '';
   if (!bench) list.insertAdjacentHTML('beforeend', '<div class="lockhint">🔒 Place a Crafting Bench in your camp to unlock more recipes.</div>');
   for (const r of RC.LIST) {
@@ -595,9 +600,9 @@ function buildChest() {
   [['wood', '🪵', 'Wood'], ['stone', '🪨', 'Stone'], ['food', '🍓', 'Berries'], ['scrap', '🔩', 'Metal scrap']].forEach((r, i) => {
     const d = document.createElement('div'); d.className = 'rc';
     d.innerHTML = '<div class="ic">' + r[1] + '</div><div class="tx"><div class="nm">' + r[2] + '</div><div class="co">In chest: <b>' + it[i] + '</b> &nbsp; You: <b>' + me[i] + '</b></div></div>';
-    const bx = document.createElement('div'); bx.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:5px';
-    [['Take all', -1e6, it[i] <= 0], ['Take 1', -1, it[i] <= 0], ['Put 1', 1, me[i] <= 0], ['Put all', 1e6, me[i] <= 0]].forEach(b => {
-      const bt = document.createElement('button'); bt.textContent = b[0]; bt.disabled = b[2]; bt.style.cssText = 'min-width:70px;padding:7px 6px;font-size:12px' + (b[1] < 0 ? ';background:#5c6bc0' : '');
+    const bx = document.createElement('div'); bx.style.cssText = 'display:grid;grid-template-columns:1fr 1fr;gap:6px';
+    [['Put 1', 1, me[i] <= 0], ['Put all', 1e6, me[i] <= 0]].forEach(b => {
+      const bt = document.createElement('button'); bt.textContent = b[0]; bt.disabled = b[2]; bt.style.cssText = 'min-width:78px;padding:9px 6px;font-size:13px';
       bt.onclick = () => { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'chest', id: chestId, res: r[0], n: b[1] })); SFX.pickup(); }; bx.appendChild(bt);
     });
     d.appendChild(bx); list.appendChild(d);
@@ -606,8 +611,8 @@ function buildChest() {
 function openPot() { setCraft(false); closeChest(); potOpen = true; potSig = ''; $('pot').style.display = 'flex'; $('potMsg').textContent = ''; buildPot(); }
 function closePot() { potOpen = false; $('pot').style.display = 'none'; }
 function buildPot() {
-  const mp = S && S.p.find(p => p[0] === myId), food = mp ? mp[9] : 0, sig = String(food); if (sig === potSig) return; potSig = sig;
-  $('potInv').textContent = '🍓 ' + food; const list = $('potList'); list.innerHTML = '';
+  const food = pooled().food, sig = String(food); if (sig === potSig) return; potSig = sig;
+  $('potInv').textContent = '🍓 ' + food + ' (chests incl.)'; const list = $('potList'); list.innerHTML = '';
   for (const f of RC.FOOD) {
     const ok = food >= f.cost.food, d = document.createElement('div'); d.className = 'rc';
     d.innerHTML = '<div class="ic">' + f.e + '</div><div class="tx"><div class="nm">' + f.n + ' <span style="font-weight:400;opacity:.7;font-size:11px">' + f.type + '</span></div><div class="ds">' + f.d + '</div><div class="co"><span class="' + (ok ? '' : 'no') + '">🍓 ' + food + '/' + f.cost.food + '</span></div></div>';
@@ -955,7 +960,7 @@ $('go').onclick = () => {
       $('rm').textContent = 'Room ' + roomCode + ' (tap to copy link)'; tipUntil = performance.now() + 14000; history.replaceState(null, '', '?room=' + roomCode);
     } else if (m.t === 'crafted') {
       GEAR = m.gear || GEAR; const msg = $('craftMsg'); msg.textContent = m.msg || ''; msg.style.color = m.ok ? '#7fe9a0' : '#ff8a80';
-      if (placingId && m.id === placingId) { if (m.ok) { const r = RC.BY[placingId], mp = S && S.p.find(p => p[0] === myId); if (r.kind !== 'wall' || !mp || mp[7] < r.cost.wood || mp[8] < r.cost.stone) stopPlacing(); } else { const me0 = ents2['p' + myId]; if (me0) floatText(me0.x, me0.y - 6, m.msg || 'Cannot place here', 0xff8a80); } }
+      if (placingId && m.id === placingId) { if (m.ok) { const r = RC.BY[placingId], pl = pooled(); if (r.kind !== 'wall' || pl.wood < r.cost.wood || pl.stone < r.cost.stone) stopPlacing(); } else { const me0 = ents2['p' + myId]; if (me0) floatText(me0.x, me0.y - 6, m.msg || 'Cannot place here', 0xff8a80); } }
       if (m.ok) { SFX.levelup(); const me = ents2['p' + myId]; if (me) floatText(me.x, me.y - 10, m.msg, 0xffe082); }
       if (craftOpen) buildCraft();
     } else if (m.t === 'toast') {
