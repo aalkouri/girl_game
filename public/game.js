@@ -605,6 +605,23 @@ function buildPot() {
 }
 $('chestClose').onclick = closeChest; $('potClose').onclick = closePot;
 
+// ---- campfire pointer: a little 🔥 icon pinned to the screen edge, in the direction of the camp (hidden while the campfire is on screen) ----
+function updateCampPtr(ox, oy) {   // (ox, oy) = where world (0,0), the campfire, is on screen right now
+  const ptr = $('campPtr'), cx = W / 2, cy = H / 2, dx = ox - cx, dy = oy - cy, margin = 26;
+  if (ox > margin && ox < W - margin && oy > margin && oy < H - margin) { ptr.style.display = 'none'; return; }   // you can already see it
+  const L = 34, Rr = W - 34, Tp = 124, Bt = H - 56;   // keep clear of the top HUD and the screen edges
+  let t = Infinity;
+  if (dx > 0) t = Math.min(t, (Rr - cx) / dx); else if (dx < 0) t = Math.min(t, (L - cx) / dx);
+  if (dy > 0) t = Math.min(t, (Bt - cy) / dy); else if (dy < 0) t = Math.min(t, (Tp - cy) / dy);
+  let px = cx + dx * t, py = cy + dy * t;
+  if (px > W - 250) py = Math.min(py, H - 290);   // stay above the ACT / HIT / CRAFT buttons
+  const f = S && S.f, lit = f && f[0] > 0, dist = Math.hypot(ox - (W / 2 - 0), oy - H / 2) / Z / 10;
+  ptr.style.display = 'block'; ptr.style.transform = 'translate(' + Math.round(px) + 'px,' + Math.round(py) + 'px)';
+  $('campArrow').style.transform = 'rotate(' + Math.atan2(dy, dx) + 'rad) translateX(35px)';
+  $('campBadge').style.opacity = lit ? 1 : .55; $('campBadge').style.filter = lit ? '' : 'grayscale(1)';
+  const ds = Math.round(Math.hypot(camX, camY) / 10) + 'm'; if ($('campDist').textContent !== ds) $('campDist').textContent = ds;
+}
+
 function onSnap(m) {
   const prevS = S; S = m; const seen = {};
   const meE = ents2['p' + myId], _d = (x, y) => meE ? Math.hypot(x - meE.x, y - meE.y) : 0, _dx = x => meE ? x - meE.x : 0;
@@ -730,6 +747,7 @@ app.ticker.add(() => {
   shake = Math.max(0, shake - dt); const sx = shake > 0 ? rnd(-1, 1) * shake * 18 : 0, sy2 = shake > 0 ? rnd(-1, 1) * shake * 18 : 0;
   const ox = W / 2 - camX * Z + sx, oy = H / 2 - camY * Z + sy2;
   world.position.set(ox, oy); world.scale.set(Z); overL.position.set(ox, oy); overL.scale.set(Z);
+  updateCampPtr(ox, oy);
   waterF.uniforms.uTime = T; waterF.uniforms.uCam = [camX - sx / Z, camY - sy2 / Z];
   // campfire
   const f = S.f, fuelK = clamp(f[0] / f[1], 0, 1), alive = f[0] > 0, fl = 1 + Math.sin(T * 17) * .06 + Math.sin(T * 29) * .04;
@@ -774,7 +792,6 @@ function hud() {
   if (mp) $('inv').textContent = '🪵' + mp[7] + '  🪨' + mp[8] + '  🍓' + mp[9] + (mp[15] ? '  🔩' + mp[15] : '') + '   ❤ ' + mp[5] + '/' + mp[6];
   $('pl').textContent = S.p.length + ' player' + (S.p.length > 1 ? 's' : '');
   { const el = (performance.now() - buffAt) / 1000, bt = []; if (BUFF.speed - el > 0) bt.push('⚡' + Math.ceil(BUFF.speed - el) + 's'); if (BUFF.regen - el > 0) bt.push('💚' + Math.ceil(BUFF.regen - el) + 's'); if (BUFF.dmg - el > 0) bt.push('⚔' + Math.ceil(BUFF.dmg - el) + 's'); const bs = bt.join('  '); if ($('buffs').textContent !== bs) $('buffs').textContent = bs; }
-  { const me = ents2['p' + myId]; if (me) { const dist = Math.hypot(me.x, me.y), ca = $('camp'); if (dist > 420) { ca.style.display = 'block'; $('campArrow').style.transform = 'rotate(' + Math.atan2(-me.y, -me.x) + 'rad)'; $('campDist').textContent = Math.round(dist / 10) + 'm to camp'; } else ca.style.display = 'none'; } }
   const now = performance.now(); let b = '';
   if (S.o) b = 'Everyone is down... restarting';
   else if (now < warnUntil) b = '⚠ A CHARGER is hunting! It cannot be killed - stay inside the fire ring until dawn!';
