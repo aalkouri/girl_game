@@ -72,6 +72,8 @@ const SFX = (() => {
     cook() { for (let i = 0; i < 4; i++) noise({ f: 500 + i * 220, f2: 900 + i * 260, q: 1.4, dur: .14, gain: .22, when: i * .08 }); tone({ f: 523, dur: .25, type: 'triangle', gain: .12, when: .3 }); tone({ f: 784, dur: .3, type: 'triangle', gain: .12, when: .38 }); },
     smelterStart(d, dx) { tone({ f: 90, f2: 60, dur: .25, type: 'triangle', gain: .5, dist: d, dx }); noise({ f: 300, f2: 1400, q: .8, dur: .5, gain: .3, attack: .1, dist: d, dx }); noise({ type: 'highpass', f: 3000, dur: .2, gain: .12, when: .15, dist: d, dx }); },
     smeltDone(d, dx) { tone({ f: 880, dur: .35, type: 'square', gain: .12, dist: d, dx }); tone({ f: 1318, dur: .45, type: 'triangle', gain: .14, when: .02, dist: d, dx }); noise({ type: 'highpass', f: 4000, dur: .25, gain: .25, dist: d, dx }); tone({ f: 160, f2: 90, dur: .2, type: 'triangle', gain: .3, dist: d, dx }); },
+    roar() { tone({ f: 70, f2: 38, dur: 1.4, type: 'sawtooth', gain: .5, lp: 500, attack: .15 }); tone({ f: 150, f2: 80, dur: 1.1, type: 'square', gain: .16, lp: 700, attack: .1 }); noise({ type: 'lowpass', f: 900, f2: 200, q: .7, dur: 1.3, gain: .4, attack: .1 }); },
+    slam() { tone({ f: 95, f2: 35, dur: .45, type: 'sine', gain: .7 }); noise({ type: 'lowpass', f: 700, dur: .4, gain: .5 }); noise({ f: 2500, q: .6, dur: .15, gain: .25 }); },
     pop(d, dx, g) { noise({ type: 'highpass', f: rnd(1800, 4500), q: .6, dur: rnd(.02, .06), gain: (g || .2), dist: d, dx }); },
   };
 

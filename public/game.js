@@ -326,6 +326,7 @@ function floatText(x, y, txt, col) {
 const ftexts = [];
 
 // ---------- entities ----------
+let warnUntil = 0, lastMe = null;
 let S = null, myId = 0, roomCode = '', tipUntil = 0, ws = null, T = 0, shake = 0, lastInv = null, lastHp = null;
 const ents2 = {}; // key -> {x,y,tx,ty,node...}
 function mkPlayer(p) {
@@ -337,12 +338,18 @@ function mkPlayer(p) {
   c.addChild(sh, body, tool, name, hp); ents.addChild(c);
   return { c, body, tool, name, hp, ang: 0, lh: -1, ld: -1, dust: 0, kind: 'p', sw: p[12], swing: null };
 }
+// per-kind look: 0 = normal alien, 1 = brute (every 5th night), 2 = the Charger (3x a normal alien)
+const AK = {
+  0: { sc: .5, eo: 10, es: 6, hpW: 26, hpY: -26, shX: 1, shY: .55, eye: .24, tint: 0xffffff, eyeCol: 0xc6ff2a },
+  1: { sc: .95, eo: 20, es: 12, hpW: 50, hpY: -42, shX: 1.8, shY: .9, eye: .42, tint: 0xff9ad0, eyeCol: 0xc6ff2a },
+  2: { sc: 1.5, eo: 31, es: 18, hpW: 96, hpY: -78, shX: 3.4, shY: 1.4, eye: .72, tint: 0xff7043, eyeCol: 0xff2a2a },
+};
 function mkAlien(a) {
-  const c = new PIXI.Container(), sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5); sh.scale.set(a[5] ? 1.8 : 1, a[5] ? .9 : .55); sh.y = 6;
-  const body = new PIXI.Sprite(T_ALIEN); body.anchor.set(.5); const sc = a[5] ? .95 : .5; body.scale.set(sc); if (a[5]) body.tint = 0xff9ad0;
+  const ak = AK[a[5]] || AK[0], c = new PIXI.Container(), sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5); sh.scale.set(ak.shX, ak.shY); sh.y = a[5] === 2 ? 14 : 6;
+  const body = new PIXI.Sprite(T_ALIEN); body.anchor.set(.5); body.scale.set(ak.sc); body.tint = ak.tint;
   const hp = new PIXI.Graphics(); c.addChild(sh, body, hp); ents.addChild(c); c.alpha = 0;
-  const eyes = [0, 1].map(() => { const s = new PIXI.Sprite(T_GLOW); s.anchor.set(.5); s.tint = 0xc6ff2a; s.blendMode = BM.ADD; s.scale.set(a[5] ? .42 : .24); overL.addChild(s); return s; });
-  return { c, body, hp, eyes, sc, big: !!a[5], ang: 0, age: 0, lh: -1, kind: 'a', flash: 0 };
+  const eyes = [0, 1].map(() => { const s = new PIXI.Sprite(T_GLOW); s.anchor.set(.5); s.tint = ak.eyeCol; s.blendMode = BM.ADD; s.scale.set(ak.eye); overL.addChild(s); return s; });
+  return { c, body, hp, eyes, sc: ak.sc, ak, big: a[5] > 0, charger: a[5] === 2, ang: 0, age: 0, lh: -1, kind: 'a', flash: 0, trail: 0 };
 }
 function drawHp(g, w, f, col) { g.clear(); g.beginFill(0x000000, .55); g.drawRoundedRect(-w / 2, 0, w, 5, 2); g.endFill(); g.beginFill(col); g.drawRoundedRect(-w / 2, 0, Math.max(0, w * f), 5, 2); g.endFill(); }
 function angLerp(a, b, k) { let d = ((b - a + Math.PI) % TAU + TAU) % TAU - Math.PI; return a + d * k; }
@@ -609,7 +616,7 @@ function onSnap(m) {
   }
   for (const a of m.a) {
     const k = 'a' + a[0]; seen[k] = 1; let e = ents2[k];
-    if (!e) { e = ents2[k] = mkAlien(a); e.x = e.tx = a[1]; e.y = e.ty = a[2]; e.c.position.set(e.x, e.y); }
+    if (!e) { e = ents2[k] = mkAlien(a); e.x = e.tx = a[1]; e.y = e.ty = a[2]; e.c.position.set(e.x, e.y); if (a[5] === 2 && prevS) { SFX.roar(); shake = Math.max(shake, .4); warnUntil = performance.now() + 7000; } }
     if (e.lh >= 0 && a[3] < e.lh) { e.flash = .12; burst(e.x, e.y, 6, 0xc6ff2a, 120, true, .1); SFX.hit(_d(e.x, e.y), _dx(e.x)); }
     e.lh = a[3]; e.tx = a[1]; e.ty = a[2]; e.d = a;
   }
@@ -644,7 +651,9 @@ function onSnap(m) {
     if (lastInv) { const dw = mp[7] - lastInv[0], ds = mp[8] - lastInv[1], df = mp[9] - lastInv[2], e = ents2['p' + myId];
       if (e) { if (dw > 0) floatText(e.x, e.y, '+' + dw + ' wood', 0xffcc80); if (ds > 0) floatText(e.x, e.y, '+' + ds + ' stone', 0xcfd8dc); if (df > 0) floatText(e.x, e.y, '+' + df + ' food', 0xff8a80); } }
     lastInv = [mp[7], mp[8], mp[9]];
-    if (lastHp !== null && mp[5] < lastHp) { shake = .3; SFX.hurt(); const h = $('hurt'); h.style.opacity = '1'; setTimeout(() => h.style.opacity = '0', 120); }
+    if (lastHp !== null && mp[5] < lastHp && lastMe && Math.hypot(mp[3] - lastMe[0], mp[4] - lastMe[1]) > 140) { shake = .7; SFX.slam(); }   // sent flying by the Charger
+    lastMe = [mp[3], mp[4]];
+    if (lastHp !== null && mp[5] < lastHp) { shake = Math.max(shake, .3); SFX.hurt(); const h = $('hurt'); h.style.opacity = '1'; setTimeout(() => h.style.opacity = '0', 120); }
     lastHp = mp[5];
   }
   if (prevS && m.n > prevS.n) floatText(0, -120, 'Night ' + m.n + ' begins', 0xffffff);
@@ -694,11 +703,12 @@ app.ticker.add(() => {
       if (sp > 8) e.ang = angLerp(e.ang, Math.atan2(vy, vx), Math.min(1, dt * 8));
       e.body.rotation = e.ang; const pulse = 1 + Math.sin(T * 9 + e.x * .1) * .05; e.body.scale.set(e.sc * pulse);
       if (S.ph === 2 && Math.random() < dt * .12) { const gd = Math.hypot(e.x - me.x, e.y - me.y); if (gd < 520) SFX.growl(gd, e.x - me.x); }
-      e.flash = Math.max(0, e.flash - dt); e.body.tint = e.flash > 0 ? 0xffffff : e.big ? 0xff9ad0 : 0xffffff;
-      if (a[3] < a[4] && e.lh2 !== a[3]) { e.lh2 = a[3]; drawHp(e.hp, e.big ? 50 : 26, a[3] / a[4], 0xb6ff3c); e.hp.y = e.big ? -42 : -26; e.hp.visible = true; }
-      const ca = Math.cos(e.ang), sa = Math.sin(e.ang), o = e.big ? 20 : 10, sy = e.big ? 12 : 6;
+      e.flash = Math.max(0, e.flash - dt); e.body.tint = e.flash > 0 ? 0xffffff : e.ak.tint;
+      if (a[3] < a[4] && e.lh2 !== a[3]) { e.lh2 = a[3]; drawHp(e.hp, e.ak.hpW, a[3] / a[4], e.charger ? 0xff5252 : 0xb6ff3c); e.hp.y = e.ak.hpY; e.hp.visible = true; }
+      const ca = Math.cos(e.ang), sa = Math.sin(e.ang), o = e.ak.eo, sy = e.ak.es;
       e.eyes[0].position.set(e.x + ca * o - sa * -sy, e.y + sa * o + ca * -sy); e.eyes[1].position.set(e.x + ca * o - sa * sy, e.y + sa * o + ca * sy);
       e.eyes.forEach(s => s.alpha = e.c.alpha * (.75 + Math.sin(T * 6 + e.x) * .25));
+      if (e.charger && sp > 90) { e.trail -= dt; if (e.trail <= 0) { e.trail = .04; emit(pfx, T_GLOW, e.x - Math.cos(e.ang) * 40 + rnd(-14, 14), e.y + 18 + rnd(-8, 8), -Math.cos(e.ang) * 30, rnd(-14, 6), .7, .32, .8, 0xd9c79a, .45, false, 0); } }   // dust kicked up by the charge
     }
   }
   // resources: sway + pop-in
@@ -767,6 +777,7 @@ function hud() {
   { const me = ents2['p' + myId]; if (me) { const dist = Math.hypot(me.x, me.y), ca = $('camp'); if (dist > 420) { ca.style.display = 'block'; $('campArrow').style.transform = 'rotate(' + Math.atan2(-me.y, -me.x) + 'rad)'; $('campDist').textContent = Math.round(dist / 10) + 'm to camp'; } else ca.style.display = 'none'; } }
   const now = performance.now(); let b = '';
   if (S.o) b = 'Everyone is down... restarting';
+  else if (now < warnUntil) b = '⚠ A CHARGER is hunting! Stay inside the fire ring!';
   else if (mp && mp[10]) b = 'You are down - a teammate can revive you (hold ACT)';
   else if (S.ph === 1) b = (Math.floor(now / 500) % 2 ? '🌆 ' : '') + 'DUSK - get back to the fire!';
   else if (S.ph === 2 && f[0] <= 0) b = '⚠ The fire is out!';

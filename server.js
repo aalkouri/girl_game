@@ -128,7 +128,9 @@ const CAMP_CLEAR = RC.camp(5) + 30;          // no trees anywhere the camp can g
 const HP = { t: 4, r: 3, b: 1 };            // hits to break: tree 4, rock 3, berry bush 1
 const STRUCT = { bench: { r: RC.RADIUS.bench }, chest: { r: RC.RADIUS.chest }, pot: { r: RC.RADIUS.pot }, smelter: { r: RC.RADIUS.smelter }, wall: { r: RC.RADIUS.wall, hp: 60 } };
 const CHEST_CAP = 500, REACH = 62;   // collision radius / hit points of placed structures
-const SPILL = { t: 5, r: 3 };               // logs per tree / stones per rock (before class bonus)
+const SPILL = { t: 5, r: 3 };
+// the Charger: from night 4 on, one huge, very fast enemy per night that hammers players far backwards and vanishes at dawn
+const CHARGER = { firstNight: 4, hp0: 150, hpPerNight: 50, sp0: 175, spPerNight: 12, spMax: 320, dmg: 25, rad: 36, reach: 62, stop: 44, knock: 300, stunSec: 0.6 };               // logs per tree / stones per rock (before class bonus)
 
 class Room {
   constructor(code) {
@@ -141,8 +143,8 @@ class Room {
   reset() {
     this.c = +process.env.START_C || 0; this.night = +process.env.START_N || 1; this.fire = { fuel: 150, lvl: 1 }; this.aliens = []; this.over = 0;
     for (const r of this.res) r.hp = r.mhp;
-    this.drops = []; this.pend = []; this.struct = [];
-    for (const p of this.players.values()) { this.respawn(p); p.gear = {}; p.buff = { speed: 0, regen: 0, dmg: 0 }; }
+    this.drops = []; this.pend = []; this.struct = []; this.chargerNight = 0;
+    for (const p of this.players.values()) { this.respawn(p); p.gear = {}; p.buff = { speed: 0, regen: 0, dmg: 0 }; p.kb = null; }
   }
   respawn(p) {
     const c = GC.BY[p.cls]; p.mhp = c.hp; p.hp = c.hp; p.down = 0; p.rev = 0;
@@ -244,7 +246,9 @@ class Room {
       if (B.regen > 0 && p.hp < p.mhp) p.hp = Math.min(p.mhp, p.hp + 2 * dt);
       let dx = i.dx, dy = i.dy; const m = Math.hypot(dx, dy); if (m > 1) { dx /= m; dy /= m; }
       const spd = c.spd * (B.speed > 0 ? 1.25 : 1);
-      p.x += dx * spd * dt; p.y += dy * spd * dt; if (m > 0.1) p.fa = Math.atan2(dy, dx);
+      let flying = false;
+      if (p.kb) { p.kb.t += dt; const u = p.kb.t / CHARGER.stunSec; if (u >= 1) p.kb = null; else { const v = p.kb.v0 * (1 - u) * (1 - u); p.x += p.kb.dx * v * dt; p.y += p.kb.dy * v * dt; flying = true; } }   // knocked back: no steering until it wears off
+      if (!flying) { p.x += dx * spd * dt; p.y += dy * spd * dt; } if (m > 0.1) p.fa = Math.atan2(dy, dx);
       for (const st of this.struct) { const sd = Math.hypot(p.x - st.x, p.y - st.y), mn = st.r + 14; if (sd < mn && sd > 0.01) { p.x = st.x + (p.x - st.x) / sd * mn; p.y = st.y + (p.y - st.y) / sd * mn; } }
       const d = Math.hypot(p.x, p.y); if (d > R - 30) { p.x *= (R - 30) / d; p.y *= (R - 30) / d; }
 
@@ -279,7 +283,7 @@ class Room {
         for (const a of this.aliens) { if (a.hp <= 0) continue; const dd = dist(p, a); if (dd < bd) { bd = dd; best = a; } }
         if (best) {
           best.hp -= (c.dmg + (p.gear.spear ? 6 : 0) + (B.dmg > 0 ? 5 : 0)) * (Math.random() < c.crit ? 2 : 1);
-          const kd = Math.max(1, dist(p, best)); best.x += (best.x - p.x) / kd * c.knock; best.y += (best.y - p.y) / kd * c.knock;
+          const kd = Math.max(1, dist(p, best)); const kr = best.k === 2 ? 0.2 : 1; best.x += (best.x - p.x) / kd * c.knock * kr; best.y += (best.y - p.y) / kd * c.knock * kr;
           if (best.hp <= 0 && p.prof) { p.prof.k++; dirty = true; if (p.prof.k % 10 === 0) award(p, 1, 'kills'); }
         }
       }
@@ -314,13 +318,17 @@ class Room {
     // aliens
     if (ph === 2) {
       let want = Math.min(40, 2 + this.night * 2); if (this.night % 5 === 0) want = Math.floor(want * 1.5);
-      if (this.aliens.length < want && Math.random() < dt * 2) {
+      if (this.night >= CHARGER.firstNight && this.chargerNight !== this.night) {
+        this.chargerNight = this.night; const a = Math.random() * 6.283, hp = CHARGER.hp0 + CHARGER.hpPerNight * (this.night - CHARGER.firstNight + 1);
+        this.aliens.push({ id: this.nid++, x: Math.cos(a) * ALIEN_R, y: Math.sin(a) * ALIEN_R, hp, mhp: hp, sp: Math.min(CHARGER.spMax, CHARGER.sp0 + CHARGER.spPerNight * (this.night - CHARGER.firstNight)), dmg: CHARGER.dmg, k: 2, cd: 0, rad: CHARGER.rad, reach: CHARGER.reach, stop: CHARGER.stop });
+      }
+      if (this.aliens.filter(a => a.k !== 2).length < want && Math.random() < dt * 2) {
         const a = Math.random() * 6.283, brute = this.night % 5 === 0 && Math.random() < 0.2;
         this.aliens.push({ id: this.nid++, x: Math.cos(a) * ALIEN_R, y: Math.sin(a) * ALIEN_R, hp: brute ? 120 : 30, mhp: brute ? 120 : 30, sp: brute ? 55 : 70 + Math.min(30, this.night * 2), dmg: brute ? 20 : 10, k: brute ? 1 : 0, cd: 0 });
       }
     }
     for (const a of this.aliens) {
-      if (ph !== 2) a.hp -= 25 * dt;       // sunlight burns them
+      if (ph !== 2) { if (a.k === 2) a.hp = 0; else a.hp -= 25 * dt; }       // sunlight burns them; the Charger vanishes the moment night ends
       a.cd -= dt;
       let tgt = null, bd = 1e9, slow = 0;
       for (const p of P) if (!p.down) {
@@ -329,15 +337,19 @@ class Room {
       }
       const sp = a.sp * (1 - slow);
       const tx = tgt ? tgt.x : 0, ty = tgt ? tgt.y : 0, d = Math.max(1, Math.hypot(tx - a.x, ty - a.y));
-      if (d > 20) { a.x += (tx - a.x) / d * sp * dt; a.y += (ty - a.y) / d * sp * dt; }
+      if (d > (a.stop || 20)) { a.x += (tx - a.x) / d * sp * dt; a.y += (ty - a.y) / d * sp * dt; }
       const ad = Math.hypot(a.x, a.y);
       for (const st of this.struct) {   // walls/bench are solid; aliens chew on walls and get hurt by the spikes
-        const sd = Math.hypot(a.x - st.x, a.y - st.y), mn = st.r + 12;
+        const sd = Math.hypot(a.x - st.x, a.y - st.y), mn = st.r + (a.rad || 12);
         if (sd < mn) { const k = sd > 0.01 ? mn / sd : 1; a.x = st.x + (a.x - st.x) * k; a.y = st.y + (a.y - st.y) * k; if (st.k === 'wall' && a.cd <= 0) { st.hp -= a.dmg; a.cd = 1; a.hp -= 5; if (st.hp <= 0) st.dead = 1; } }
       }
       if (fr > 0 && ad < fr) { const k = fr / Math.max(1, ad); a.x = ad < 1 ? fr : a.x * k; a.y *= ad < 1 ? 1 : k; }   // repelled by firelight
-      if (tgt && d < 28 && a.cd <= 0 && (fr === 0 || Math.hypot(tgt.x, tgt.y) >= fr)) {
+      if (tgt && d < (a.reach || 28) && a.cd <= 0 && (fr === 0 || Math.hypot(tgt.x, tgt.y) >= fr)) {
         tgt.hp -= a.dmg; a.cd = 1;
+        if (a.k === 2) {   // the Charger sends you flying (about 10 steps) and then needs a moment before it can hit again
+          const kx = tgt.x - a.x, ky = tgt.y - a.y, kl = Math.max(1, Math.hypot(kx, ky));
+          tgt.kb = { dx: kx / kl, dy: ky / kl, t: 0, v0: CHARGER.knock * 3 / CHARGER.stunSec }; a.cd = 1.3;
+        }
         if (tgt.hp <= 0) { tgt.hp = 0; tgt.down = 1; tgt.rev = 0; }
       }
     }
