@@ -401,18 +401,18 @@ function hud() {
   const bn = $('banner'); if (bn.textContent !== b) { bn.textContent = b; bn.style.fontSize = b.length > 60 ? '15px' : '22px'; }
 }
 
-// ---------- profile / lobby ----------
-const rid = () => { const a = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'; let r = ''; try { const b = new Uint8Array(20); crypto.getRandomValues(b); for (const x of b) r += a[x % 62]; } catch (e) { for (let i = 0; i < 20; i++) r += a[Math.random() * 62 | 0]; } return r; };
-const PIDRE = /^[A-Za-z0-9]{16,32}$/;
-let pid = ''; try { pid = localStorage.getItem('pid') || ''; } catch (e) { }
-if (!PIDRE.test(pid)) { pid = rid(); try { localStorage.setItem('pid', pid); } catch (e) { } }
+// ---------- accounts (Google or emailed code) / lobby ----------
+const post = async (path, body) => { try { const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); return await r.json(); } catch (e) { return { ok: false, err: 'Network problem. Check your connection.' }; } };
+let token = '', myEmail = '', cfg = {};
+try { token = localStorage.getItem('tok') || ''; } catch (e) { }
 const PF = { d: 0, owned: GC.DEFAULT_OWNED.slice() };
 let sel = 'forester', hadCls = false; try { const sc = localStorage.getItem('cls'); if (sc) { sel = sc; hadCls = true; } } catch (e) { }
-const api = async path => (await fetch(path, { cache: 'no-store' })).json();
 function chosen() { const c = GC.BY[sel] || GC.BY.forester; $('cIcon').textContent = c.e; $('cName').textContent = c.n; }
 function setDia(n) { PF.d = n; document.querySelectorAll('.diaN').forEach(e => e.textContent = n); }
-async function loadProfile(useLast) {
-  try { const r = await api('/api/profile?pid=' + pid); if (r.ok) { PF.owned = r.owned; setDia(r.d); if (useLast || !PF.owned.includes(sel)) sel = PF.owned.includes(r.last) ? r.last : 'forester'; try { localStorage.setItem('cls', sel); } catch (e) { } } } catch (e) { }
+function applyProfile(pr, useLast) {
+  PF.owned = pr.owned; setDia(pr.d);
+  if (useLast || !PF.owned.includes(sel)) sel = PF.owned.includes(pr.last) ? pr.last : 'forester';
+  try { localStorage.setItem('cls', sel); } catch (e) { }
   chosen(); buildPicker();
 }
 try { $('name').value = localStorage.getItem('nm') || ''; } catch (e) { }
@@ -446,40 +446,78 @@ $('buyNo').onclick = () => { $('buy').style.display = 'none'; };
 $('buyGo').onclick = async () => {
   $('buyGo').disabled = true;
   try {
-    const r = await api('/api/buy?pid=' + pid + '&cls=' + buying);
-    if (r.ok) { PF.owned = r.owned; setDia(r.d); SFX.init(); SFX.levelup(); pick(buying); }
-    else if (r.owned) { PF.owned = r.owned; setDia(r.d); buildPicker(); }
-    else { $('buyTxt').insertAdjacentHTML('beforeend', '<br><span style="color:#ff8a80">' + (r.err === 'need' ? 'Not enough 💎' : 'Could not buy') + '</span>'); }
+    const r = await post('/api/buy', { token, cls: buying });
+    if (r.err === 'auth') { logoutUI('Please sign in again.'); return; }
+    if (r.ok) { applyProfile(r.profile); SFX.init(); SFX.levelup(); pick(buying); }
+    else if (r.profile) { applyProfile(r.profile); buildPicker(); if (r.err === 'need') { } }
+    if (!r.ok) { $('buyTxt').insertAdjacentHTML('beforeend', '<br><span style="color:#ff8a80">' + (r.err === 'need' ? 'Not enough 💎' : 'Could not buy') + '</span>'); }
   } catch (e) { }
   $('buyGo').disabled = false; $('buy').style.display = 'none';
 };
 $('chooseBtn').onclick = () => { buildPicker(); $('picker').style.display = 'flex'; };
 $('pickDone').onclick = () => { $('picker').style.display = 'none'; };
 
-// progress code (move your profile to another device)
-const fmtCode = c => c.replace(/(.{4})/g, '$1-').replace(/-$/, '');
-$('codeLink').onclick = () => { $('myCode').textContent = fmtCode(pid); $('codeIn').value = ''; $('codeMsg').textContent = ''; $('codeBox').style.display = 'flex'; };
-$('codeClose').onclick = () => { $('codeBox').style.display = 'none'; };
-$('codeCopy').onclick = () => { try { navigator.clipboard.writeText(pid); $('codeMsg').textContent = 'Copied!'; } catch (e) { $('codeMsg').textContent = 'Select the code above and copy it.'; } };
-$('codeRestore').onclick = async () => {
-  const v = $('codeIn').value.replace(/[^A-Za-z0-9]/g, '');
-  if (!PIDRE.test(v)) { $('codeMsg').textContent = 'That code is not valid.'; return; }
-  pid = v; try { localStorage.setItem('pid', pid); } catch (e) { }
-  await loadProfile(true); $('myCode').textContent = fmtCode(pid); $('codeMsg').textContent = 'Restored! You have ' + PF.d + ' 💎.';
+
+// ---- sign in ----
+function showLogin(msg) { $('login').style.display = 'flex'; $('lmsg').textContent = msg || ''; $('stepEmail').style.display = ''; $('stepCode').style.display = 'none'; }
+function logoutUI(msg) { token = ''; myEmail = ''; try { localStorage.removeItem('tok'); } catch (e) { } if (ws) { try { ws.close(); } catch (e) { } ws = null; } myId = 0; $('picker').style.display = 'none'; $('buy').style.display = 'none'; showLogin(msg); }
+function loggedIn(r) {
+  token = r.token || token; myEmail = r.email; try { localStorage.setItem('tok', token); localStorage.removeItem('pid'); } catch (e) { }
+  $('who').textContent = myEmail; $('login').style.display = 'none'; applyProfile(r.profile, !hadCls); hadCls = true; $('err').textContent = '';
+}
+const legacyPid = () => { try { return localStorage.getItem('pid') || ''; } catch (e) { return ''; } };
+let pendingEmail = '';
+$('sendCode').onclick = async () => {
+  const em = $('email').value.trim(); if (!em) { $('lmsg').textContent = 'Enter your email address.'; return; }
+  $('sendCode').disabled = true; $('lmsg').textContent = 'Sending...';
+  const r = await post('/api/auth/email/start', { email: em });
+  $('sendCode').disabled = false;
+  if (r.ok) { pendingEmail = em; $('lmsg').textContent = ''; $('sentTo').textContent = em; $('stepEmail').style.display = 'none'; $('stepCode').style.display = ''; $('code').value = ''; $('code').focus(); }
+  else $('lmsg').textContent = r.err || 'Could not send the code.';
 };
-loadProfile(!hadCls);
+$('email').addEventListener('keydown', e => { if (e.key === 'Enter') $('sendCode').click(); });
+$('verify').onclick = async () => {
+  const c = $('code').value.replace(/\D/g, ''); if (c.length !== 6) { $('lmsg').textContent = 'Enter the 6-digit code from the email.'; return; }
+  $('verify').disabled = true; $('lmsg').textContent = 'Checking...';
+  const r = await post('/api/auth/email/verify', { email: pendingEmail, code: c, pid: legacyPid() });
+  $('verify').disabled = false;
+  if (r.ok) loggedIn(r); else $('lmsg').textContent = r.err || 'Could not sign in.';
+};
+$('code').addEventListener('keydown', e => { if (e.key === 'Enter') $('verify').click(); });
+$('backEmail').onclick = () => { $('lmsg').textContent = ''; $('stepCode').style.display = 'none'; $('stepEmail').style.display = ''; };
+$('signout').onclick = async () => { await post('/api/auth/logout', { token }); logoutUI(''); };
+function initGoogle(clientId) {
+  const sc = document.createElement('script'); sc.src = 'https://accounts.google.com/gsi/client'; sc.async = true;
+  sc.onload = () => {
+    google.accounts.id.initialize({ client_id: clientId, callback: async resp => {
+      $('lmsg').textContent = 'Signing in...'; const r = await post('/api/auth/google', { credential: resp.credential, pid: legacyPid() });
+      if (r.ok) loggedIn(r); else $('lmsg').textContent = r.err || 'Google sign-in failed.';
+    }, auto_select: false });
+    google.accounts.id.renderButton($('gbtn'), { theme: 'filled_blue', size: 'large', text: 'signin_with', shape: 'pill', width: 280 });
+    $('gwrap').style.display = '';
+  };
+  sc.onerror = () => { $('gwrap').style.display = 'none'; };
+  document.head.appendChild(sc);
+}
+(async function boot() {
+  try { cfg = await (await fetch('/api/config', { cache: 'no-store' })).json(); } catch (e) { cfg = {}; }
+  if (cfg.google) initGoogle(cfg.google);
+  if (token) { const r = await post('/api/auth/session', { token }); if (r.ok) { loggedIn(r); return; } token = ''; try { localStorage.removeItem('tok'); } catch (e) { } }
+  showLogin('');
+})();
 
 $('go').onclick = () => {
+  if (!token) { showLogin('Please sign in to play.'); return; }
   SFX.init();
   const name = $('name').value.trim() || 'Survivor'; try { localStorage.setItem('nm', name); } catch (e) { }
   $('err').textContent = 'Connecting...';
   ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
-  ws.onopen = () => ws.send(JSON.stringify({ t: 'join', name, cls: sel, room: $('room').value, pid }));
+  ws.onopen = () => ws.send(JSON.stringify({ t: 'join', name, cls: sel, room: $('room').value, token }));
   ws.onerror = () => $('err').textContent = 'Could not connect';
   ws.onclose = () => { if (myId) $('banner').textContent = 'Disconnected - reload to rejoin'; };
   ws.onmessage = e => {
     const m = JSON.parse(e.data);
-    if (m.t === 'err') { $('err').textContent = m.m; ws.close(); ws = null; }
+    if (m.t === 'err') { if (m.m === 'auth') logoutUI('Your session expired. Please sign in again.'); else { $('err').textContent = m.m; ws.close(); ws = null; } }
     else if (m.t === 'init') {
       myId = m.id; RR = m.R; roomCode = m.room; buildWorld(m.res); if (m.prof) { PF.owned = m.prof.owned; setDia(m.prof.d); }
       $('lobby').style.display = 'none'; $('hud').style.display = 'block'; $('btns').style.display = 'block';

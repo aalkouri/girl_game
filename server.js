@@ -21,14 +21,26 @@ function save() {
   if (!dirty || !FILE) return; dirty = false;
   try { fs.writeFileSync(FILE + '.tmp', JSON.stringify(profiles)); fs.renameSync(FILE + '.tmp', FILE); } catch (e) { console.error('profile save failed:', e.message); }
 }
-setInterval(save, 3000);
-for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => { save(); process.exit(0); });
-const PID = /^[A-Za-z0-9]{16,32}$/;
-function prof(pid, create) {
-  if (!PID.test(pid || '')) return null;
-  let p = profiles[pid];
-  if (!p && create) { if (pcount > 200000) return null; p = profiles[pid] = { d: 0, owned: [], k: 0, n: 0, last: 'forester', t: Date.now() }; pcount++; dirty = true; }
+let config = {}; try { config = JSON.parse(fs.readFileSync(path.join(DIR || '.', 'config.json'), 'utf8')); } catch (e) { }
+if (process.env.GOOGLE_CLIENT_ID) config.googleClientId = process.env.GOOGLE_CLIENT_ID;
+if (process.env.MAIL_MODE) config.mailMode = process.env.MAIL_MODE;
+if (process.env.MAIL_FROM) config.mailFrom = process.env.MAIL_FROM;
+const auth = require('./auth.js')({ dir: DIR, config });
+setInterval(() => { save(); auth.save(); }, 3000);
+for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => { save(); auth.save(); process.exit(0); });
+// accounts are keyed by lower-case email. Old anonymous profiles (random 16-32 char ids) can be claimed once at sign-in.
+const LEGACY = /^[A-Za-z0-9]{16,32}$/;
+function acct(email, create) {
+  if (!email) return null;
+  let p = profiles[email];
+  if (!p && create) { if (pcount > 200000) return null; p = profiles[email] = { d: 0, owned: [], k: 0, n: 0, last: 'forester', t: Date.now() }; pcount++; dirty = true; }
   return p || null;
+}
+function claimLegacy(email, pid) {
+  const p = acct(email, true), old = LEGACY.test(pid || '') ? profiles[pid] : null;
+  if (!p || !old || (p.d || p.owned.length || p.n)) return;
+  Object.assign(p, { d: old.d, owned: old.owned.slice(), k: old.k, n: old.n, last: old.last });
+  delete profiles[pid]; pcount--; dirty = true;
 }
 const ownedOf = p => GC.DEFAULT_OWNED.concat(p ? p.owned : []);
 const view = p => ({ d: p ? p.d : 0, owned: ownedOf(p), last: p && ownedOf(p).includes(p.last) ? p.last : 'forester', n: p ? p.n : 0 });
@@ -39,31 +51,55 @@ function award(pl, amount, why) {
   pl.prof.d += n; dirty = true; send(pl.ws, { t: 'dia', n, d: pl.prof.d, why });
 }
 
-// tiny per-IP limiter for the API
-const hits = new Map();
-setInterval(() => hits.clear(), 60000);
-function limited(ip) { const n = (hits.get(ip) || 0) + 1; hits.set(ip, n); return n > 120; }
-
+const MAXBODY = 8192;
 function json(s, code, o) { s.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); s.end(JSON.stringify(o)); }
+function body(q) {
+  return new Promise(res => {
+    let b = '', over = false;
+    q.on('data', d => { b += d; if (b.length > MAXBODY) { over = true; q.destroy(); } });
+    q.on('end', () => { if (over) return res(null); try { res(JSON.parse(b || '{}')); } catch (e) { res(null); } });
+    q.on('error', () => res(null));
+  });
+}
+const clientIp = q => { const x = q.headers['x-forwarded-for']; return (x ? String(x).split(',').pop().trim() : q.socket.remoteAddress) || ''; };
+const login = (email, tok, extra) => Object.assign({ ok: true, token: tok, email }, extra || {}, { profile: view(acct(email, true)) });
+
+async function api(q, s, u) {
+  const ip = clientIp(q);
+  if (!auth.allow('api:' + ip, 240, 60000)) return json(s, 429, { ok: false, err: 'Slow down.' });
+  if (u.pathname === '/api/config' && q.method === 'GET') return json(s, 200, { ok: true, google: config.googleClientId || null });
+  if (q.method !== 'POST') return json(s, 405, { ok: false });
+  const b = await body(q); if (!b) return json(s, 400, { ok: false, err: 'Bad request.' });
+  switch (u.pathname) {
+    case '/api/auth/email/start': return json(s, 200, await auth.startEmail(b.email, ip));
+    case '/api/auth/email/verify': {
+      if (!auth.allow('v:' + ip, 40, 3600e3)) return json(s, 200, { ok: false, err: 'Too many tries. Please try again later.' });
+      const r = auth.verifyEmail(b.email, b.code); if (!r.ok) return json(s, 200, r);
+      claimLegacy(r.email, b.pid); return json(s, 200, login(r.email, auth.createSession(r.email)));
+    }
+    case '/api/auth/google': {
+      const r = await auth.verifyGoogle(b.credential); if (!r.ok) return json(s, 200, r);
+      claimLegacy(r.email, b.pid); return json(s, 200, login(r.email, auth.createSession(r.email), { name: r.name }));
+    }
+    case '/api/auth/session': { const e = auth.sessionEmail(b.token); return json(s, 200, e ? login(e, b.token) : { ok: false }); }
+    case '/api/auth/logout': auth.logout(b.token); return json(s, 200, { ok: true });
+    case '/api/profile': { const e = auth.sessionEmail(b.token); return json(s, 200, e ? { ok: true, profile: view(acct(e, true)) } : { ok: false, err: 'auth' }); }
+    case '/api/buy': {
+      const e = auth.sessionEmail(b.token); if (!e) return json(s, 200, { ok: false, err: 'auth' });
+      const c = GC.BY[b.cls]; if (!c || c.price <= 0) return json(s, 200, { ok: false, err: 'unknown class' });
+      const p = acct(e, true); if (!p) return json(s, 200, { ok: false, err: 'bad profile' });
+      if (ownedOf(p).includes(c.id)) return json(s, 200, Object.assign({ ok: false, err: 'already owned' }, { profile: view(p) }));
+      if (p.d < c.price) return json(s, 200, { ok: false, err: 'need', need: c.price - p.d, profile: view(p) });
+      p.d -= c.price; p.owned.push(c.id); dirty = true;
+      return json(s, 200, { ok: true, profile: view(p) });
+    }
+  }
+  return json(s, 404, { ok: false });
+}
 
 const srv = http.createServer((q, s) => {
   const u = new URL(q.url, 'http://x');
-  if (u.pathname.startsWith('/api/')) {
-    const ip = q.headers['x-forwarded-for'] || q.socket.remoteAddress || '';
-    if (limited(ip)) return json(s, 429, { ok: false, err: 'slow down' });
-    const pid = u.searchParams.get('pid') || '';
-    if (u.pathname === '/api/profile') return json(s, 200, Object.assign({ ok: true }, view(prof(pid, false))));
-    if (u.pathname === '/api/buy') {
-      const c = GC.BY[u.searchParams.get('cls')];
-      if (!c || c.price <= 0) return json(s, 200, { ok: false, err: 'unknown class' });
-      const p = prof(pid, true); if (!p) return json(s, 200, { ok: false, err: 'bad profile' });
-      if (ownedOf(p).includes(c.id)) return json(s, 200, Object.assign({ ok: false, err: 'already owned' }, view(p)));
-      if (p.d < c.price) return json(s, 200, Object.assign({ ok: false, err: 'need', need: c.price - p.d }, view(p)));
-      p.d -= c.price; p.owned.push(c.id); dirty = true;
-      return json(s, 200, Object.assign({ ok: true }, view(p)));
-    }
-    return json(s, 404, { ok: false });
-  }
+  if (u.pathname.startsWith('/api/')) { api(q, s, u).catch(e => { console.error('api error', e); if (!s.headersSent) json(s, 500, { ok: false, err: 'Server error.' }); }); return; }
   let f = u.pathname;
   if (f === '/') f = '/index.html';
   const p = path.join(PUB, path.normalize(f));
@@ -218,10 +254,12 @@ wss.on('connection', ws => {
     let m; try { m = JSON.parse(raw); } catch { return; }
     if (m.t === 'join' && !me) {
       const name = String(m.name || 'Survivor').replace(/[^\w \-]/g, '').slice(0, 12) || 'Survivor';
-      const pf = prof(String(m.pid || ''), true);
+      const email = auth.sessionEmail(m.token);
+      if (!email) { send(ws, { t: 'err', m: 'auth' }); return; }
+      const pf = acct(email, true); if (!pf) { send(ws, { t: 'err', m: 'Server is full' }); return; }
       const owned = ownedOf(pf);
-      const cls = owned.includes(m.cls) ? m.cls : (pf && owned.includes(pf.last) ? pf.last : 'forester');
-      if (pf && pf.last !== cls) { pf.last = cls; dirty = true; }
+      const cls = owned.includes(m.cls) ? m.cls : (owned.includes(pf.last) ? pf.last : 'forester');
+      if (pf.last !== cls) { pf.last = cls; dirty = true; }
       let rc = String(m.room || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
       if (!rc) rc = code();
       if (!rooms.has(rc)) rooms.set(rc, new Room(rc));

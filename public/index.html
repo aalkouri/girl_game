@@ -50,6 +50,8 @@ html,body{margin:0;height:100%;overflow:hidden;background:#0b1a2a;color:#fff;fon
 .dlg input{font-size:15px;padding:10px;border-radius:8px;border:0;width:90%;text-align:center;margin-top:8px}
 #myCode{font-family:ui-monospace,monospace;font-size:15px;word-break:break-all;background:#0007;padding:8px;border-radius:8px;margin:8px 0}
 .mini.gray{background:#455a64}
+#stepEmail,#stepCode{display:flex;flex-direction:column;gap:10px;align-items:center;text-align:center}
+.mini:disabled{opacity:.6}
 
 #credit{position:absolute;bottom:max(14px,env(safe-area-inset-bottom));left:0;right:0;text-align:center;font-size:13px;letter-spacing:.04em;opacity:.65}
 </style></head><body>
@@ -70,7 +72,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:#0b1a2a;color:#fff;fon
   <input id="room" placeholder="Room code (optional)" maxlength="4" style="text-transform:uppercase">
   <button id="go">PLAY</button>
   <div id="err"></div>
-  <div class="link" id="codeLink">Progress code (save / restore)</div>
+  <div style="font-size:12px;opacity:.75">Signed in as <span id="who"></span> · <span class="link" id="signout">Sign out</span></div>
   <div id="credit">Game by Amelia Alkouri</div>
 </div>
 <div class="ov" id="picker">
@@ -78,15 +80,24 @@ html,body{margin:0;height:100%;overflow:hidden;background:#0b1a2a;color:#fff;fon
   <div id="grid"></div>
 </div>
 <div class="ov" id="buy" style="align-items:center;justify-content:center;z-index:30"><div class="dlg"><div id="buyTxt"></div><div class="btns"><button class="mini" id="buyGo">Buy</button><button class="mini gray" id="buyNo">Cancel</button></div></div></div>
-<div class="ov" id="codeBox" style="align-items:center;justify-content:center;z-index:30"><div class="dlg">
-  <b>Your progress code</b>
-  <div id="myCode"></div>
-  <div style="font-size:12px;opacity:.8">Your Diamonds and classes are saved on the server under this code. Keep it private: anyone with it can use your progress. Enter it on another device to continue there.</div>
-  <div class="btns"><button class="mini" id="codeCopy">Copy</button></div>
-  <input id="codeIn" placeholder="Enter a code to restore" autocomplete="off">
-  <div class="btns"><button class="mini gray" id="codeRestore">Restore</button><button class="mini gray" id="codeClose">Close</button></div>
-  <div id="codeMsg" style="margin-top:8px;font-size:13px;min-height:18px"></div>
-</div></div>
+<div class="ov" id="login" style="display:flex;align-items:center;justify-content:center;gap:12px;padding:16px;z-index:40;background:#0b1a2a">
+  <h1 style="margin:0;font-size:32px">🌙 Island Night</h1>
+  <div style="opacity:.85;text-align:center;max-width:320px;font-size:14px">Sign in to play. Your Diamonds and classes are saved to your account.</div>
+  <div id="gwrap" style="display:none;text-align:center"><div id="gbtn" style="min-height:44px"></div><div style="opacity:.6;font-size:12px;margin:10px 0 2px">or use your email</div></div>
+  <div id="stepEmail">
+    <input id="email" type="email" inputmode="email" autocomplete="email" placeholder="Your email address" maxlength="254" style="font-size:18px;padding:12px;border-radius:10px;border:0;width:min(300px,80vw);text-align:center">
+    <button id="sendCode" class="mini" style="font-size:17px;padding:12px 28px">Email me a code</button>
+  </div>
+  <div id="stepCode" style="display:none">
+    <div style="font-size:14px">We emailed a 6-digit code to<br><b id="sentTo"></b></div>
+    <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="8" placeholder="123456" style="font-size:24px;letter-spacing:6px;padding:12px;border-radius:10px;border:0;width:min(220px,70vw);text-align:center">
+    <button id="verify" class="mini" style="font-size:17px;padding:12px 28px">Verify &amp; play</button>
+    <div class="link" id="backEmail">Use a different email / resend</div>
+  </div>
+  <div style="opacity:.55;font-size:11px;text-align:center;max-width:300px">We only use your email to sign you in and save your progress.</div>
+  <div id="lmsg" style="color:#ff8a80;min-height:20px;text-align:center;max-width:320px;font-size:14px"></div>
+  <div style="position:absolute;bottom:max(14px,env(safe-area-inset-bottom));left:0;right:0;text-align:center;font-size:13px;letter-spacing:.04em;opacity:.65">Game by Amelia Alkouri</div>
+</div>
 <script src="https://cdn.jsdelivr.net/npm/pixi.js@7.4.2/dist/pixi.min.js"></script>
 <script src="classes.js"></script>
 <script src="audio.js"></script>
