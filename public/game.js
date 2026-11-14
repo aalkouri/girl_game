@@ -131,6 +131,28 @@ const T_STONE = tex(30, 26, g => {
   g.strokeStyle = 'rgba(0,0,0,.4)'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(3, 20); g.lineTo(6, 9); g.lineTo(15, 3); g.lineTo(25, 8); g.lineTo(28, 19); g.lineTo(18, 24); g.closePath(); g.stroke();
 });
 const T_SLASH = tex(80, 80, g => { g.strokeStyle = '#fff'; g.lineCap = 'round'; g.lineWidth = 7; g.beginPath(); g.arc(8, 40, 52, -.75, .75); g.stroke(); g.lineWidth = 3; g.globalAlpha = .6; g.beginPath(); g.arc(8, 40, 44, -.6, .6); g.stroke(); });
+const T_BENCH = tex(112, 84, g => {
+  g.fillStyle = 'rgba(0,0,0,.0)';
+  g.fillStyle = '#4a2f16'; g.fillRect(14, 48, 11, 30); g.fillRect(87, 48, 11, 30); g.fillStyle = '#6d4423'; g.fillRect(14, 48, 5, 30); g.fillRect(87, 48, 5, 30);
+  poly(g, '#c18a4a', [14, 14, 98, 14, 110, 40, 2, 40]); g.strokeStyle = '#8a5a2b'; g.lineWidth = 1.5; for (let i = 1; i < 5; i++) { g.beginPath(); g.moveTo(14 + i * 17 - i * 2, 14); g.lineTo(2 + i * 21.6, 40); g.stroke(); }
+  g.fillStyle = '#8a5a2b'; g.fillRect(2, 40, 108, 11); g.fillStyle = '#a56b34'; g.fillRect(2, 40, 108, 4);
+  g.strokeStyle = 'rgba(0,0,0,.45)'; g.lineWidth = 2; g.strokeRect(2, 40, 108, 11);
+  // saw
+  poly(g, '#cfd8dc', [24, 22, 56, 20, 57, 28, 24, 30]); g.fillStyle = '#8d6e63'; g.fillRect(18, 20, 9, 11); g.fillStyle = '#90a4ae'; for (let i = 0; i < 7; i++) poly(g, '#90a4ae', [28 + i * 4.2, 30, 30.5 + i * 4.2, 34, 33 + i * 4.2, 30]);
+  // hammer
+  stroke(g, '#7a4a22', 4, 66, 31, 88, 22); poly(g, '#78909c', [82, 15, 94, 20, 91, 29, 79, 24]);
+  // little log stack
+  g.fillStyle = '#6d4423'; ell(g, 70, 24, 8, 4); g.fillStyle = '#d9b676'; circ(g, 63, 24, 3);
+});
+const T_WALL = tex(84, 72, g => {
+  for (let i = 0; i < 5; i++) {
+    const x = 6 + i * 15, h = 40 + (i % 2) * 8;
+    poly(g, '#7a4a22', [x, 64, x + 12, 64, x + 12, 64 - h + 14, x + 6, 64 - h, x, 64 - h + 14]);
+    poly(g, '#a56b34', [x + 1, 62, x + 5, 62, x + 5, 64 - h + 12, x + 6, 64 - h + 3, x + 1, 64 - h + 14]);
+    g.strokeStyle = 'rgba(0,0,0,.45)'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(x, 64); g.lineTo(x, 64 - h + 14); g.lineTo(x + 6, 64 - h); g.lineTo(x + 12, 64 - h + 14); g.lineTo(x + 12, 64); g.stroke();
+  }
+  g.fillStyle = '#5a3a1c'; g.fillRect(2, 40, 80, 8); g.fillStyle = '#7a4a22'; g.fillRect(2, 40, 80, 3); g.strokeStyle = 'rgba(0,0,0,.45)'; g.lineWidth = 1.5; g.strokeRect(2, 40, 80, 8);
+});
 const T_ALIEN = tex(84, 84, g => {
   g.translate(42, 42);
   g.strokeStyle = '#2a0c3c'; g.lineWidth = 4; g.lineCap = 'round';
@@ -386,6 +408,59 @@ function stepDrops(dt) {
   }
 }
 
+// ---- placed structures (crafting bench, spike walls) ----
+const structE = {}; let GEAR = {}, craftOpen = false, craftSig = '';
+function syncStructs(m, first) {
+  const seen = {}, me = ents2['p' + myId];
+  for (const t of m.st || []) {
+    seen[t[0]] = 1; let e = structE[t[0]];
+    if (!e) {
+      const c = new PIXI.Container(), sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5); const bench = t[1] === 'bench';
+      sh.scale.set(bench ? 2 : 1.6, .7); sh.y = 4;
+      const spr = new PIXI.Sprite(bench ? T_BENCH : T_WALL); spr.anchor.set(.5, bench ? .8 : .85); const base = bench ? .72 : .62; spr.scale.set(base);
+      const hp = new PIXI.Graphics(); hp.y = bench ? 14 : 12; c.addChild(sh, spr, hp); c.position.set(t[2], t[3]); c.zIndex = t[3]; ents.addChild(c);
+      e = structE[t[0]] = { c, spr, hp, k: t[1], x: t[2], y: t[3], base, mhp: t[5], hpv: t[4], t: first ? 1 : 0, flash: 0, barT: 0 };
+      if (!first) { const d = me ? Math.hypot(me.x - t[2], me.y - t[3]) : 0; SFX.build(d, me ? t[2] - me.x : 0); burst(t[2], t[3], 10, 0xd9c79a, 80, false, .16); }
+    } else if (t[4] < e.hpv) { e.flash = .12; e.barT = 2; const d = me ? Math.hypot(me.x - t[2], me.y - t[3]) : 0; SFX.hit(d, me ? t[2] - me.x : 0); burst(t[2], t[3] - 14, 4, 0xb98349, 80, false, .1); }
+    e.hpv = t[4];
+  }
+  for (const id in structE) if (!seen[id]) {
+    const e = structE[id]; delete structE[id]; const me2 = ents2['p' + myId], d = me2 ? Math.hypot(me2.x - e.x, me2.y - e.y) : 0;
+    SFX.rockbreak(d, me2 ? e.x - me2.x : 0); burst(e.x, e.y - 12, 14, 0xb98349, 150, false, .15); e.c.destroy({ children: true });
+  }
+}
+function stepStructs(dt) {
+  for (const id in structE) {
+    const e = structE[id];
+    if (e.t < 1) { e.t = Math.min(1, e.t + dt * 4); const u = e.t, b = 1 + 2.2 * Math.pow(u - 1, 3) + 1.2 * Math.pow(u - 1, 2); e.spr.scale.set(e.base * Math.max(.1, b)); }
+    e.flash = Math.max(0, e.flash - dt); e.spr.tint = e.flash > 0 ? 0xffaaaa : 0xffffff;
+    if (e.k === 'wall') { if (e.barT > 0) { e.barT -= dt; e.hp.alpha = Math.min(1, e.barT * 2); if (e.lbar !== e.hpv) { e.lbar = e.hpv; drawHp(e.hp, 34, e.hpv / e.mhp, 0xffb74d); } } else if (e.hp.alpha) e.hp.alpha = 0; }
+  }
+}
+// ---- crafting menu ----
+const inv = () => { const mp = S && S.p.find(p => p[0] === myId); return mp ? { wood: mp[7], stone: mp[8] } : { wood: 0, stone: 0 }; };
+const hasBench = () => !!(S && S.st && S.st.some(t => t[1] === 'bench'));
+function buildCraft() {
+  const iv = inv(), bench = hasBench(), list = $('craftList'); $('craftInv').textContent = '🪵' + iv.wood + '  🪨' + iv.stone;
+  list.innerHTML = '';
+  if (!bench) list.insertAdjacentHTML('beforeend', '<div class="lockhint">🔒 Place a Crafting Bench in your camp to unlock more recipes.</div>');
+  for (const r of RC.LIST) {
+    if (r.id === 'bench' ? bench : !bench) continue;   // bench recipe hides once one exists; other recipes appear once it does
+    const owned = r.kind === 'gear' && GEAR[r.gear], ok = iv.wood >= r.cost.wood && iv.stone >= r.cost.stone;
+    const co = [r.cost.wood ? '<span class="' + (iv.wood >= r.cost.wood ? '' : 'no') + '">🪵 ' + iv.wood + '/' + r.cost.wood + '</span>' : '', r.cost.stone ? '<span class="' + (iv.stone >= r.cost.stone ? '' : 'no') + '">🪨 ' + iv.stone + '/' + r.cost.stone + '</span>' : ''].filter(Boolean).join(' &nbsp; ');
+    const d = document.createElement('div'); d.className = 'rc';
+    d.innerHTML = '<div class="ic">' + r.e + '</div><div class="tx"><div class="nm">' + r.n + '</div><div class="ds">' + r.d + '</div><div class="co">' + co + '</div></div>';
+    const b = document.createElement('button'); b.textContent = owned ? '✔ Owned' : ok ? 'Craft' : 'Need more'; b.disabled = !!owned || !ok;
+    b.onclick = () => { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'craft', id: r.id })); };
+    d.appendChild(b); list.appendChild(d);
+  }
+  craftSig = refreshSig();
+}
+const refreshSig = () => { const iv = inv(); return iv.wood + ',' + iv.stone + ',' + hasBench() + ',' + JSON.stringify(GEAR); };
+function setCraft(open) { craftOpen = open; $('craft').style.display = open ? 'flex' : 'none'; if (open) { $('craftMsg').textContent = ''; buildCraft(); } }
+$('craftBtn').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); SFX.init(); setCraft(!craftOpen); });
+$('craftClose').onclick = () => setCraft(false);
+
 function onSnap(m) {
   const prevS = S; S = m; const seen = {};
   const meE = ents2['p' + myId], _d = (x, y) => meE ? Math.hypot(x - meE.x, y - meE.y) : 0, _dx = x => meE ? x - meE.x : 0;
@@ -423,6 +498,8 @@ function onSnap(m) {
     r.hp = hp;
   }
   syncDrops(m, _d, _dx);
+  syncStructs(m, !prevS);
+  if (craftOpen && refreshSig() !== craftSig) buildCraft();
   const mp = m.p.find(p => p[0] === myId);
   if (mp) {
     if (lastInv) { const dw = mp[7] - lastInv[0], ds = mp[8] - lastInv[1], df = mp[9] - lastInv[2], e = ents2['p' + myId];
@@ -509,7 +586,7 @@ app.ticker.add(() => {
   ring.visible = alive; ring.scale.set(f[3] * 2 / 256 * 1.0); ring.alpha = .35 + Math.sin(T * 2) * .08;
   if (alive) { fireTick += dt * (20 + 40 * fuelK); while (fireTick > 1) { fireTick--; emit(overL, T_GLOW, rnd(-8, 8), -2, rnd(-14, 14), rnd(-70, -35), rnd(.6, 1.3), .08, .01, Math.random() < .5 ? 0xffb347 : 0xffe08a, 1, true, -10); } }
   smokeTick += dt * (alive ? 4 : 9); while (smokeTick > 1) { smokeTick--; emit(pfx, T_GLOW, rnd(-6, 6), -14, rnd(-6, 6), rnd(-26, -14), 2.2, .25, .9, alive ? 0x555555 : 0x444444, alive ? .22 : .35, false, 0); }
-  stepParts(dt); stepFallers(dt); stepDrops(dt);
+  stepParts(dt); stepFallers(dt); stepDrops(dt); stepStructs(dt);
   for (let i = ftexts.length - 1; i >= 0; i--) { const q = ftexts[i]; q.life -= dt; q.t.y -= dt * 34; q.t.alpha = clamp(q.life * 2, 0, 1); if (q.life <= 0) { q.t.destroy(); ftexts.splice(i, 1); } }
   // lighting
   const d = darkness(S.c);
@@ -684,9 +761,13 @@ $('go').onclick = () => {
     const m = JSON.parse(e.data);
     if (m.t === 'err') { if (m.m === 'auth') logoutUI('Your session expired. Please sign in again.'); else { $('err').textContent = m.m; ws.close(); ws = null; } }
     else if (m.t === 'init') {
-      myId = m.id; RR = m.R; roomCode = m.room; buildWorld(m.res); if (m.prof) { PF.owned = m.prof.owned; setDia(m.prof.d); }
+      myId = m.id; RR = m.R; roomCode = m.room; GEAR = m.gear || {}; buildWorld(m.res); if (m.prof) { PF.owned = m.prof.owned; setDia(m.prof.d); }
       $('lobby').style.display = 'none'; $('hud').style.display = 'block'; $('btns').style.display = 'block';
       $('rm').textContent = 'Room ' + roomCode + ' (tap to copy link)'; tipUntil = performance.now() + 14000; history.replaceState(null, '', '?room=' + roomCode);
+    } else if (m.t === 'crafted') {
+      GEAR = m.gear || GEAR; const msg = $('craftMsg'); msg.textContent = m.msg || ''; msg.style.color = m.ok ? '#7fe9a0' : '#ff8a80';
+      if (m.ok) { SFX.levelup(); const me = ents2['p' + myId]; if (me) floatText(me.x, me.y - 10, m.msg, 0xffe082); }
+      if (craftOpen) buildCraft();
     } else if (m.t === 'dia') {
       setDia(m.d); const me = ents2['p' + myId];
       if (me) floatText(me.x, me.y - 24, '+' + m.n + ' 💎' + (m.why === 'milestone' ? ' milestone!' : ''), 0x7fe9ff);

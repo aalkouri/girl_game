@@ -2,6 +2,7 @@
 const http = require('http'), fs = require('fs'), path = require('path');
 const { WebSocketServer } = require('ws');
 const GC = require('./public/classes.js');
+const RC = require('./public/recipes.js');
 const PORT = process.env.PORT || 80;
 const PUB = path.join(__dirname, 'public');
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.txt': 'text/plain' };
@@ -123,6 +124,7 @@ const MAXP = 8;
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const CAMP_CLEAR = 210;                       // no trees closer than this to the campfire (the level-1 safe ring is 160)
 const HP = { t: 4, r: 3, b: 1 };            // hits to break: tree 4, rock 3, berry bush 1
+const STRUCT = { bench: { r: 30 }, wall: { r: 24, hp: 60 } };   // collision radius / hit points of placed structures
 const SPILL = { t: 5, r: 3 };               // logs per tree / stones per rock (before class bonus)
 
 class Room {
@@ -136,8 +138,8 @@ class Room {
   reset() {
     this.c = +process.env.START_C || 0; this.night = +process.env.START_N || 1; this.fire = { fuel: 150, lvl: 1 }; this.aliens = []; this.over = 0;
     for (const r of this.res) r.hp = r.mhp;
-    this.drops = []; this.pend = [];
-    for (const p of this.players.values()) this.respawn(p);
+    this.drops = []; this.pend = []; this.struct = [];
+    for (const p of this.players.values()) { this.respawn(p); p.gear = {}; }
   }
   respawn(p) {
     const c = GC.BY[p.cls]; p.mhp = c.hp; p.hp = c.hp; p.down = 0; p.rev = 0;
@@ -152,9 +154,33 @@ class Room {
       this.pend.push({ k: r.k === 't' ? 'w' : 's', x, y, t: delay });
     }
   }
+  craft(p, id) {
+    const r = RC.BY[id], fail = msg => ({ ok: false, msg });
+    if (!r) return fail('Unknown recipe.');
+    if (p.down) return fail('You are down.');
+    const hasBench = this.struct.some(st => st.k === 'bench');
+    if (r.kind === 'bench' && hasBench) return fail('Your camp already has a crafting bench.');
+    if (r.kind !== 'bench' && !hasBench) return fail('Build a crafting bench first.');
+    if (r.kind === 'gear' && p.gear[r.gear]) return fail('You already have that.');
+    if (p.wood < r.cost.wood || p.stone < r.cost.stone) return fail('Not enough materials.');
+    if (r.kind === 'bench' || r.kind === 'wall') {
+      const x = p.x + Math.cos(p.fa) * 58, y = p.y + Math.sin(p.fa) * 58, d = Math.hypot(x, y), campR = 120 + this.fire.lvl * 40;
+      const sr = STRUCT[r.kind].r;
+      if (r.kind === 'bench' && (d < 75 || d > campR)) return fail('Stand inside the camp (the fire ring), a little away from the fire, facing a free spot.');
+      if (r.kind === 'wall' && (d < 75 || d > 380)) return fail('Walls go within about 380 of the fire, not on the fire pit.');
+      if (d > R - 50) return fail('Too close to the water.');
+      if (r.kind === 'wall' && this.struct.filter(st => st.k === 'wall').length >= RC.WALL_MAX) return fail('Wall limit reached.');
+      if (this.struct.some(st => Math.hypot(st.x - x, st.y - y) < st.r + sr - 4)) return fail('Something is already there. Turn and try another spot.');
+      p.wood -= r.cost.wood; p.stone -= r.cost.stone;
+      const st = { id: this.nid++, k: r.kind, x, y, r: sr, hp: STRUCT[r.kind].hp || 0, mhp: STRUCT[r.kind].hp || 0 }; this.struct.push(st);
+      return { ok: true, msg: r.kind === 'bench' ? 'Crafting bench placed! More recipes unlocked.' : 'Spike wall placed.' };
+    }
+    p.wood -= r.cost.wood; p.stone -= r.cost.stone; p.gear[r.gear] = 1;
+    return { ok: true, msg: r.n + ' crafted!' };
+  }
   ph() { return this.c < DAY ? 0 : this.c < DAY + DUSK ? 1 : 2; }
   add(ws, name, cls, pf) {
-    const p = { id: this.nid++, ws, name, cls, prof: pf, sw: 0, swk: 0, swa: 0, wood: 0, stone: 0, food: 0, actcd: 0, hitcd: 0, eat: 0, inp: { dx: 0, dy: 0, act: 0, hit: 0 } };
+    const p = { id: this.nid++, ws, name, cls, prof: pf, gear: {}, fa: 0, sw: 0, swk: 0, swa: 0, wood: parseInt(process.env.START_WOOD) || 0, stone: parseInt(process.env.START_STONE) || 0, food: 0, actcd: 0, hitcd: 0, eat: 0, inp: { dx: 0, dy: 0, act: 0, hit: 0 } };
     this.respawn(p); this.players.set(p.id, p); return p;
   }
   tick(dt) {
@@ -180,7 +206,8 @@ class Room {
       const c = GC.BY[p.cls], i = p.inp;
       p.actcd -= dt; p.hitcd -= dt;
       let dx = i.dx, dy = i.dy; const m = Math.hypot(dx, dy); if (m > 1) { dx /= m; dy /= m; }
-      p.x += dx * c.spd * dt; p.y += dy * c.spd * dt;
+      p.x += dx * c.spd * dt; p.y += dy * c.spd * dt; if (m > 0.1) p.fa = Math.atan2(dy, dx);
+      for (const st of this.struct) { const sd = Math.hypot(p.x - st.x, p.y - st.y), mn = st.r + 14; if (sd < mn && sd > 0.01) { p.x = st.x + (p.x - st.x) / sd * mn; p.y = st.y + (p.y - st.y) / sd * mn; } }
       const d = Math.hypot(p.x, p.y); if (d > R - 30) { p.x *= (R - 30) / d; p.y *= (R - 30) / d; }
 
       if (i.act) {
@@ -196,7 +223,7 @@ class Room {
             for (const r of this.res) if (r.hp > 0) { const dd = dist(p, r); if (dd < bd) { bd = dd; best = r; } }
             if (best) {
               p.actcd = 0.55; p.sw = (p.sw + 1) & 255; p.swk = best.k === 't' ? 1 : best.k === 'r' ? 2 : 3; p.swa = Math.atan2(best.y - p.y, best.x - p.x);
-              best.hp--;
+              best.hp -= best.k === 't' && p.gear.axe ? 1.34 : best.k === 'r' && p.gear.pick ? 1.5 : 1;
               if (best.hp <= 0) {
                 best.rt = 45 + Math.random() * 30;
                 if (best.k === 'b') p.food += Math.max(1, Math.round(2 * c.food));
@@ -208,10 +235,10 @@ class Room {
       }
       if (i.hit && p.hitcd <= 0) {
         p.hitcd = c.cd;
-        let best = null, bd = c.range;
+        let best = null, bd = c.range + (p.gear.spear ? 15 : 0);
         for (const a of this.aliens) { if (a.hp <= 0) continue; const dd = dist(p, a); if (dd < bd) { bd = dd; best = a; } }
         if (best) {
-          best.hp -= c.dmg * (Math.random() < c.crit ? 2 : 1);
+          best.hp -= (c.dmg + (p.gear.spear ? 6 : 0)) * (Math.random() < c.crit ? 2 : 1);
           const kd = Math.max(1, dist(p, best)); best.x += (best.x - p.x) / kd * c.knock; best.y += (best.y - p.y) / kd * c.knock;
           if (best.hp <= 0 && p.prof) { p.prof.k++; dirty = true; if (p.prof.k % 10 === 0) award(p, 1, 'kills'); }
         }
@@ -255,6 +282,10 @@ class Room {
       const tx = tgt ? tgt.x : 0, ty = tgt ? tgt.y : 0, d = Math.max(1, Math.hypot(tx - a.x, ty - a.y));
       if (d > 20) { a.x += (tx - a.x) / d * sp * dt; a.y += (ty - a.y) / d * sp * dt; }
       const ad = Math.hypot(a.x, a.y);
+      for (const st of this.struct) {   // walls/bench are solid; aliens chew on walls and get hurt by the spikes
+        const sd = Math.hypot(a.x - st.x, a.y - st.y), mn = st.r + 12;
+        if (sd < mn) { const k = sd > 0.01 ? mn / sd : 1; a.x = st.x + (a.x - st.x) * k; a.y = st.y + (a.y - st.y) * k; if (st.k === 'wall' && a.cd <= 0) { st.hp -= a.dmg; a.cd = 1; a.hp -= 5; if (st.hp <= 0) st.dead = 1; } }
+      }
       if (fr > 0 && ad < fr) { const k = fr / Math.max(1, ad); a.x = ad < 1 ? fr : a.x * k; a.y *= ad < 1 ? 1 : k; }   // repelled by firelight
       if (tgt && d < 28 && a.cd <= 0 && (fr === 0 || Math.hypot(tgt.x, tgt.y) >= fr)) {
         tgt.hp -= a.dmg; a.cd = 1;
@@ -262,6 +293,7 @@ class Room {
       }
     }
     this.aliens = this.aliens.filter(a => a.hp > 0);
+    if (this.struct.some(st => st.dead)) this.struct = this.struct.filter(st => !st.dead);
     if (P.every(p => p.down)) this.over = 6;
   }
   snap() {
@@ -271,8 +303,9 @@ class Room {
       f: [Math.round(f.fuel), 150 + (f.lvl - 1) * 75, f.lvl, f.fuel > 0 ? 120 + f.lvl * 40 : 0],
       p: [...this.players.values()].map(p => [p.id, p.name, p.cls, Math.round(p.x), Math.round(p.y), Math.round(p.hp), p.mhp, p.wood, p.stone, p.food, p.down, Math.round(p.rev * 10) / 10, p.sw, p.swk, Math.round(p.swa * 100)]),
       a: this.aliens.map(a => [a.id, Math.round(a.x), Math.round(a.y), Math.round(a.hp), a.mhp, a.k]),
-      r: this.res.map(r => r.hp).join(''),
+      r: this.res.map(r => Math.max(0, Math.ceil(r.hp - 1e-9))).join(''),
       dr: this.drops.map(d => [d.id, d.k, Math.round(d.x), Math.round(d.y)]),
+      st: this.struct.map(t => [t.id, t.k, Math.round(t.x), Math.round(t.y), Math.round(t.hp), t.mhp]),
     });
   }
 }
@@ -299,7 +332,11 @@ wss.on('connection', ws => {
       room = rooms.get(rc);
       if (room.players.size >= MAXP) { send(ws, { t: 'err', m: 'Room is full' }); return; }
       me = room.add(ws, name, cls, pf);
-      send(ws, { t: 'init', id: me.id, room: rc, R, cls, prof: view(pf), res: room.res.map(r => [r.k, Math.round(r.x), Math.round(r.y)]) });
+      send(ws, { t: 'init', id: me.id, room: rc, R, cls, gear: me.gear, prof: view(pf), res: room.res.map(r => [r.k, Math.round(r.x), Math.round(r.y)]) });
+    } else if (m.t === 'craft' && me) {
+      const now = Date.now(); if (now - (me.lastCraft || 0) < 200) { send(ws, { t: 'crafted', id: String(m.id || ''), ok: false, msg: 'Slow down a little.', gear: me.gear }); return; } me.lastCraft = now;
+      let res; try { res = room.craft(me, String(m.id || '')); } catch (e) { console.error('craft error:', e && e.stack || e); res = { ok: false, msg: 'Could not craft that.' }; }
+      send(ws, { t: 'crafted', id: String(m.id || ''), ok: res.ok, msg: res.msg, gear: me.gear });
     } else if (m.t === 'in' && me) {
       const n = v => Math.max(-1, Math.min(1, +v || 0));
       me.inp = { dx: n(m.dx), dy: n(m.dy), act: m.act ? 1 : 0, hit: m.hit ? 1 : 0 };
@@ -313,7 +350,7 @@ let tk = 0;
 setInterval(() => {
   tk++;
   for (const [c, r] of rooms) {
-    r.tick(1 / 30);
+    try { r.tick(1 / 30); } catch (e) { console.error('tick error:', e && e.stack || e); }
     if (tk % 2 === 0 && r.players.size) { const s = r.snap(); for (const p of r.players.values()) if (p.ws.readyState === 1) p.ws.send(s); }
     if (r.emptyFor > 120) rooms.delete(c);
   }
