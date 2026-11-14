@@ -249,6 +249,7 @@ class Room {
 
     for (const p of P) {
       if (p.down) continue;
+      if (p.inpAt && Date.now() - p.inpAt > 400) p.inp = { dx: 0, dy: 0, act: 0, hit: 0 };   // client stopped sending (frozen/backgrounded tab): never keep walking
       const c = GC.BY[p.cls], i = p.inp;
       p.actcd -= dt; p.hitcd -= dt;
       const B = p.buff; for (const k in B) if (B[k] > 0) B[k] = Math.max(0, B[k] - dt);
@@ -417,7 +418,7 @@ wss.on('connection', ws => {
       send(ws, { t: 'cooked', id: String(m.id || ''), ok: res.ok, msg: res.msg, b: me.buff });
     } else if (m.t === 'in' && me) {
       const n = v => Math.max(-1, Math.min(1, +v || 0));
-      me.inp = { dx: n(m.dx), dy: n(m.dy), act: m.act ? 1 : 0, hit: m.hit ? 1 : 0 };
+      me.inp = { dx: n(m.dx), dy: n(m.dy), act: m.act ? 1 : 0, hit: m.hit ? 1 : 0 }; me.inpAt = Date.now();
     }
   });
   ws.on('close', () => { if (room && me) room.players.delete(me.id); });

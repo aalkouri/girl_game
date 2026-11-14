@@ -1002,6 +1002,13 @@ function jpos() { const dx = joy.x - joy.ox, dy = joy.y - joy.oy, m = Math.min(5
 function bind(id, set) { const b = $(id); b.addEventListener('pointerdown', e => { e.preventDefault(); set(1); b.setPointerCapture(e.pointerId); b.style.transform = 'scale(.92)'; }); ['pointerup', 'pointercancel'].forEach(t => b.addEventListener(t, () => { set(0); b.style.transform = ''; })); }
 bind('act', v => { act = v; if (v) actPress(); }); bind('hit', v => hit = v);
 addEventListener('keydown', e => { const k = e.key.toLowerCase(); if (placingId && (k === 'q' || k === 'r')) rotatePlace(k === 'q' ? -1 : 1); if (!keys[k] && (k === ' ' || k === 'e') && !/INPUT|TEXTAREA/.test((e.target || {}).tagName || '')) actPress(); keys[k] = 1; }); addEventListener('keyup', e => { keys[e.key.toLowerCase()] = 0; });
+// never let a lost touch/key leave the character walking: drop all held input whenever the page loses focus or no finger is down
+function clearInput() { joy = null; jb.style.display = jk.style.display = 'none'; act = hit = 0; for (const k in keys) keys[k] = 0; ['act', 'hit'].forEach(i => { $(i).style.transform = ''; }); }
+addEventListener('blur', clearInput); document.addEventListener('visibilitychange', () => { if (document.hidden) clearInput(); }); addEventListener('pagehide', clearInput);
+app.view.addEventListener('lostpointercapture', jend);
+addEventListener('touchend', e => { if (!e.touches.length) clearInput(); }, { passive: true }); addEventListener('touchcancel', clearInput, { passive: true });
+app.view.addEventListener('touchstart', e => { if (e.touches.length >= 2) { joy = null; jb.style.display = jk.style.display = 'none'; } }, { passive: true });
+app.view.addEventListener('contextmenu', e => e.preventDefault());
 function readInput() {
   let dx = 0, dy = 0;
   if (joy) { dx = (joy.x - joy.ox) / 55; dy = (joy.y - joy.oy) / 55; const m = Math.hypot(dx, dy); if (m > 1) { dx /= m; dy /= m; } if (m < .12) dx = dy = 0; }
