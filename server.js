@@ -187,8 +187,9 @@ class Room {
         if (mate) { mate.rev += dt * c.rev; mate.rv = 1; }
         else if (p.actcd <= 0) {
           if (d < 80) {
-            if (p.wood > 0) { f.fuel = Math.min(maxF, f.fuel + p.wood * 15 * c.feed); p.wood = 0; p.actcd = 0.3; }
-            else if (f.lvl < 5 && p.stone >= 10 * f.lvl) { p.stone -= 10 * f.lvl; f.lvl++; p.actcd = 0.5; }
+            const per = 15 * c.feed, need = maxF - f.fuel;
+            if (p.wood > 0 && need > per * 0.5) { const n = Math.min(p.wood, Math.ceil(need / per)); f.fuel = Math.min(maxF, f.fuel + n * per); p.wood -= n; p.actcd = 0.3; }   // only as much wood as the gauge needs
+            else if (f.lvl < 5 && p.stone >= 10 * f.lvl) { p.stone -= 10 * f.lvl; f.lvl++; p.actcd = 0.5; }                                                          // gauge full: level the fire up with stone
           } else {
             let best = null, bd = 55;
             for (const r of this.res) if (r.hp > 0) { const dd = dist(p, r); if (dd < bd) { bd = dd; best = r; } }
