@@ -8,7 +8,7 @@ through SSM. Auth is keyless GitHub OIDC; no secrets live in GitHub.
 1. Create the OIDC provider `token.actions.githubusercontent.com` (audience `sts.amazonaws.com`) if the account has none.
 2. Create role `island-night-github-deploy`, trust policy limited to
    `token.actions.githubusercontent.com:sub` StringLike
-   `repo:aalkouri/girl_game:ref:refs/heads/main` and `repo:aalkouri/girl_game:ref:refs/heads/claude/*`
+   `repo:aalkouri@40836919/girl_game@1457399958:ref:refs/heads/main` and `...:ref:refs/heads/claude/*` (this repo uses the ID-based subject format)
    (and `aud` = `sts.amazonaws.com`).
 3. Permissions: `ssm:SendCommand` on the instance and on the `AWS-RunShellScript` document;
    `ssm:GetCommandInvocation`, `ssm:ListCommandInvocations`.
