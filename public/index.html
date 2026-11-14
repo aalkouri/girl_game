@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Island Night</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#0b1a2a;color:#fff;font-family:system-ui,sans-serif;touch-action:none;user-select:none;-webkit-user-select:none}
+canvas{position:fixed;inset:0;width:100%;height:100%}
+#hud{position:fixed;top:max(8px,env(safe-area-inset-top));left:10px;right:10px;pointer-events:none;font-size:14px;text-shadow:0 1px 3px #000}
+#hud .row{display:flex;justify-content:space-between;gap:8px}
+#bar{height:10px;background:#0006;border-radius:5px;overflow:hidden;margin-top:4px;width:180px}
+#bar i{display:block;height:100%;background:linear-gradient(90deg,#ff7a18,#ffd000);width:0}
+#banner{position:fixed;top:30%;left:0;right:0;text-align:center;font-size:22px;font-weight:700;pointer-events:none;text-shadow:0 2px 6px #000;padding:0 16px}
+.btn{position:fixed;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;border:3px solid #fff8;opacity:.9;touch-action:none}
+#act{right:max(24px,env(safe-area-inset-right));bottom:max(60px,env(safe-area-inset-bottom));width:96px;height:96px;background:#1e9e6a}
+#hit{right:max(130px,env(safe-area-inset-right));bottom:max(30px,env(safe-area-inset-bottom));width:76px;height:76px;background:#c62828}
+#btns{display:none}
+#lobby{position:fixed;inset:0;background:#0b1a2af2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:16px;overflow:auto}
+#lobby h1{margin:0;font-size:32px}
+#lobby input{font-size:18px;padding:12px;border-radius:10px;border:0;width:min(300px,80vw);text-align:center}
+.cls{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:min(320px,86vw)}
+.cls div{padding:10px;border-radius:10px;background:#1c3550;font-size:13px;border:2px solid transparent}
+.cls div b{display:block;font-size:15px}
+.cls div.sel{border-color:#ffd000;background:#274a6d}
+#go{font-size:20px;padding:14px 40px;border-radius:12px;border:0;background:#1e9e6a;color:#fff;font-weight:700}
+#err{color:#ff8a80;min-height:20px}
+</style></head><body>
+<canvas id="c"></canvas>
+<div id="hud" style="display:none">
+  <div class="row"><div><div id="t1"></div><div id="bar"><i></i></div><div id="inv"></div></div><div style="text-align:right"><div id="rm"></div><div id="pl"></div></div></div>
+</div>
+<div id="banner"></div>
+<div id="btns"><div class="btn" id="act">ACT</div><div class="btn" id="hit">HIT</div></div>
+<div id="lobby">
+  <h1>🌙 Island Night</h1>
+  <div style="opacity:.8;text-align:center;max-width:320px;font-size:14px">Gather wood, keep the fire alive, survive the alien nights together.</div>
+  <input id="name" placeholder="Your name" maxlength="12">
+  <div class="cls" id="cls">
+    <div data-c="forester" class="sel"><b>🪓 Forester</b>+25% wood</div>
+    <div data-c="marine"><b>🔫 Marine</b>Tough, hits hard</div>
+    <div data-c="tech"><b>📻 Radio Tech</b>Fire burns slower</div>
+    <div data-c="medic"><b>🩹 Medic</b>Heals, fast revive</div>
+  </div>
+  <input id="room" placeholder="Room code (blank = new room)" maxlength="4" style="text-transform:uppercase">
+  <button id="go">PLAY</button>
+  <div id="err"></div>
+</div>
+<script>
+const $=id=>document.getElementById(id);
+const cv=$('c'),g=cv.getContext('2d'),ov=document.createElement('canvas'),og=ov.getContext('2d');
+let W=0,H=0,Z=1;
+function rs(){const d=Math.min(devicePixelRatio||1,2);W=cv.width=ov.width=Math.round(innerWidth*d);H=cv.height=ov.height=Math.round(innerHeight*d);Z=Math.min(W,H)/620}
+addEventListener('resize',rs);rs();
+const COL={forester:'#4caf50',marine:'#e53935',tech:'#fdd835',medic:'#29b6f6'};
+let sel='forester',ws=null,myId=0,RR=900,res=[],S=null,ents={},roomCode='',tipUntil=0;
+try{$('name').value=localStorage.getItem('nm')||''}catch(e){}
+const q=new URLSearchParams(location.search).get('room');if(q)$('room').value=q;
+document.querySelectorAll('#cls div').forEach(d=>d.onclick=()=>{document.querySelectorAll('#cls div').forEach(x=>x.classList.remove('sel'));d.classList.add('sel');sel=d.dataset.c});
+$('go').onclick=()=>{
+  const name=$('name').value.trim()||'Survivor';try{localStorage.setItem('nm',name)}catch(e){}
+  $('err').textContent='Connecting...';
+  ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host);
+  ws.onopen=()=>ws.send(JSON.stringify({t:'join',name,cls:sel,room:$('room').value}));
+  ws.onerror=()=>$('err').textContent='Could not connect';
+  ws.onclose=()=>{if(myId){$('banner').textContent='Disconnected - reload to rejoin'}};
+  ws.onmessage=e=>{const m=JSON.parse(e.data);
+    if(m.t==='err'){$('err').textContent=m.m;ws.close();ws=null}
+    else if(m.t==='init'){myId=m.id;RR=m.R;res=m.res;roomCode=m.room;$('lobby').style.display='none';$('hud').style.display='block';$('btns').style.display='block';$('rm').textContent='Room '+roomCode+' (tap to copy link)';tipUntil=performance.now()+14000;history.replaceState(null,'','?room='+roomCode)}
+    else if(m.t==='s'){S=m;const seen={};
+      for(const p of m.p){seen['p'+p[0]]=1;up('p'+p[0],p[3],p[4])}
+      for(const a of m.a){seen['a'+a[0]]=1;up('a'+a[0],a[1],a[2])}
+      for(const k in ents)if(!seen[k])delete ents[k]}};
+};
+$('rm').style.pointerEvents='auto';
+$('rm').onclick=()=>{const u=location.origin+'/?room='+roomCode;try{navigator.clipboard.writeText(u);$('rm').textContent='Link copied!'}catch(e){prompt('Share this link',u)}};
+function up(k,x,y){const e=ents[k];if(e){e.tx=x;e.ty=y}else ents[k]={x,y,tx:x,ty:y}}
+
+// ---- input ----
+let joy=null,jx=0,jy=0,act=0,hit=0;const keys={};
+cv.addEventListener('pointerdown',e=>{if(joy||e.clientX>innerWidth*0.6)return;joy={id:e.pointerId,ox:e.clientX,oy:e.clientY,x:e.clientX,y:e.clientY};cv.setPointerCapture(e.pointerId)});
+cv.addEventListener('pointermove',e=>{if(joy&&joy.id===e.pointerId){joy.x=e.clientX;joy.y=e.clientY}});
+const jend=e=>{if(joy&&joy.id===e.pointerId)joy=null};cv.addEventListener('pointerup',jend);cv.addEventListener('pointercancel',jend);
+function bind(id,set){const b=$(id);b.addEventListener('pointerdown',e=>{e.preventDefault();set(1);b.setPointerCapture(e.pointerId)});['pointerup','pointercancel'].forEach(t=>b.addEventListener(t,()=>set(0)))}
+bind('act',v=>act=v);bind('hit',v=>hit=v);
+addEventListener('keydown',e=>{keys[e.key.toLowerCase()]=1});addEventListener('keyup',e=>{keys[e.key.toLowerCase()]=0});
+function readInput(){
+  let dx=0,dy=0;
+  if(joy){dx=(joy.x-joy.ox)/55;dy=(joy.y-joy.oy)/55;const m=Math.hypot(dx,dy);if(m>1){dx/=m;dy/=m}if(m<0.12){dx=dy=0}}
+  if(keys.a||keys.arrowleft)dx-=1;if(keys.d||keys.arrowright)dx+=1;if(keys.w||keys.arrowup)dy-=1;if(keys.s||keys.arrowdown)dy+=1;
+  return{dx,dy,act:act||keys[' ']||keys.e?1:0,hit:hit||keys.f||keys.j?1:0};
+}
+setInterval(()=>{if(ws&&ws.readyState===1&&myId)ws.send(JSON.stringify(Object.assign({t:'in'},readInput())))},50);
+
+// ---- render ----
+function dark(c){return c<5?0.78*(1-c/5):c<90?0:c<120?0.78*(c-90)/30:0.78}
+let last=performance.now();
+function frame(now){
+  const dt=Math.min(0.1,(now-last)/1000);last=now;
+  for(const k in ents){const e=ents[k],f=Math.min(1,dt*14);e.x+=(e.tx-e.x)*f;e.y+=(e.ty-e.y)*f}
+  g.fillStyle='#173f5c';g.fillRect(0,0,W,H);
+  const me=ents['p'+myId];
+  if(S&&me){
+    const cx=W/2-me.x*Z,cy=H/2-me.y*Z,sx=x=>x*Z+cx,sy=y=>y*Z+cy;
+    // island
+    g.fillStyle='#d8c88a';g.beginPath();g.arc(sx(0),sy(0),RR*Z,0,7);g.fill();
+    g.fillStyle='#3f7d3c';g.beginPath();g.arc(sx(0),sy(0),(RR-45)*Z,0,7);g.fill();
+    // fire pit
+    g.fillStyle='#555';g.beginPath();g.arc(sx(0),sy(0),22*Z,0,7);g.fill();
+    // resources
+    for(let i=0;i<res.length;i++){if(S.r[i]!=='1')continue;const r=res[i],x=sx(r[1]),y=sy(r[2]);
+      if(x<-50||y<-50||x>W+50||y>H+50)continue;
+      if(r[0]==='t'){g.fillStyle='#5b3a1a';g.fillRect(x-3*Z,y-4*Z,6*Z,14*Z);g.fillStyle='#1d5a2a';g.beginPath();g.arc(x,y-8*Z,16*Z,0,7);g.fill()}
+      else if(r[0]==='r'){g.fillStyle='#8a8f98';g.beginPath();g.arc(x,y,12*Z,0,7);g.fill();g.fillStyle='#aab0b8';g.beginPath();g.arc(x-3*Z,y-3*Z,5*Z,0,7);g.fill()}
+      else{g.fillStyle='#2e7d32';g.beginPath();g.arc(x,y,10*Z,0,7);g.fill();g.fillStyle='#e53935';for(let j=0;j<4;j++){g.beginPath();g.arc(x+Math.cos(j*1.6)*6*Z,y+Math.sin(j*1.6)*6*Z,2.5*Z,0,7);g.fill()}}}
+    // fire
+    const f=S.f;
+    if(f[0]>0){g.fillStyle='#ff9100';g.beginPath();g.arc(sx(0),sy(0),(10+6*Math.sin(now/90))*Z,0,7);g.fill();g.fillStyle='#ffee58';g.beginPath();g.arc(sx(0),sy(0),5*Z,0,7);g.fill();
+      g.strokeStyle='#ffd54f55';g.lineWidth=2;g.setLineDash([10,10]);g.beginPath();g.arc(sx(0),sy(0),f[3]*Z,0,7);g.stroke();g.setLineDash([])}
+    // aliens
+    for(const a of S.a){const e=ents['a'+a[0]];if(!e)continue;const x=sx(e.x),y=sy(e.y),s=(a[5]?22:12)*Z;
+      g.fillStyle=a[5]?'#6a1b9a':'#8e24aa';g.beginPath();g.arc(x,y,s,0,7);g.fill();
+      g.fillStyle='#b2ff59';g.beginPath();g.arc(x-s*.35,y-s*.2,s*.2,0,7);g.arc(x+s*.35,y-s*.2,s*.2,0,7);g.fill();
+      if(a[3]<a[4]){g.fillStyle='#000a';g.fillRect(x-s,y-s-8*Z,s*2,4*Z);g.fillStyle='#e53935';g.fillRect(x-s,y-s-8*Z,s*2*a[3]/a[4],4*Z)}}
+    // players
+    g.textAlign='center';g.font=(12*Z)+'px system-ui';
+    for(const p of S.p){const e=ents['p'+p[0]];if(!e)continue;const x=sx(e.x),y=sy(e.y),r=13*Z;
+      g.fillStyle=p[10]?'#777':COL[p[2]];g.beginPath();g.arc(x,y,r,0,7);g.fill();
+      g.lineWidth=p[0]===myId?3:1.5;g.strokeStyle=p[0]===myId?'#fff':'#0008';g.stroke();
+      g.fillStyle='#fff';g.fillText(p[10]?'✖ '+p[1]:p[1],x,y-r-10*Z);
+      if(p[10]){g.fillStyle='#000a';g.fillRect(x-18*Z,y+r+4*Z,36*Z,5*Z);g.fillStyle='#4caf50';g.fillRect(x-18*Z,y+r+4*Z,36*Z*Math.min(1,p[11]/3),5*Z)}
+      else{g.fillStyle='#000a';g.fillRect(x-16*Z,y+r+4*Z,32*Z,4*Z);g.fillStyle='#ef5350';g.fillRect(x-16*Z,y+r+4*Z,32*Z*p[5]/p[6],4*Z)}}
+    // darkness
+    const d=dark(S.c);
+    if(d>0){og.globalCompositeOperation='source-over';og.clearRect(0,0,W,H);og.fillStyle='rgba(12,4,40,'+d+')';og.fillRect(0,0,W,H);
+      og.globalCompositeOperation='destination-out';
+      const light=(x,y,r)=>{const gr=og.createRadialGradient(x,y,r*.15,x,y,r);gr.addColorStop(0,'rgba(0,0,0,1)');gr.addColorStop(1,'rgba(0,0,0,0)');og.fillStyle=gr;og.beginPath();og.arc(x,y,r,0,7);og.fill()};
+      if(f[0]>0)light(sx(0),sy(0),f[3]*Z*1.15);
+      for(const p of S.p){const e=ents['p'+p[0]];if(e)light(sx(e.x),sy(e.y),95*Z)}
+      g.drawImage(ov,0,0)}
+    // joystick
+    if(joy){const d=Math.min(1,Math.hypot(joy.x-joy.ox,joy.y-joy.oy)/55),r=devicePixelRatio>1?Math.min(devicePixelRatio,2):1;
+      g.strokeStyle='#fff6';g.lineWidth=3*r;g.beginPath();g.arc(joy.ox*r,joy.oy*r,55*r,0,7);g.stroke();
+      g.fillStyle='#fff6';g.beginPath();g.arc(joy.x*r,joy.y*r,22*r,0,7);g.fill()}
+    // HUD
+    const mp=S.p.find(p=>p[0]===myId),PH=['DAY','DUSK','NIGHT'][S.ph],left=Math.ceil(S.ph===0?90-S.c:S.ph===1?120-S.c:180-S.c);
+    $('t1').textContent='Night '+S.n+' · '+PH+' '+left+'s · 🔥 Lv'+f[2];
+    $('bar').firstElementChild.style.width=(100*f[0]/f[1])+'%';
+    if(mp)$('inv').textContent='🪵'+mp[7]+'  🪨'+mp[8]+'  🍓'+mp[9]+'   ❤ '+mp[5]+'/'+mp[6];
+    $('pl').textContent=S.p.length+' player'+(S.p.length>1?'s':'');
+    let b='';
+    if(S.o)b='Everyone is down... restarting';
+    else if(mp&&mp[10])b='You are down - a teammate can revive you (hold ACT)';
+    else if(S.ph===1)b=(Math.floor(now/500)%2?'🌆 ':'')+'DUSK - get back to the fire!';
+    else if(S.ph===2&&f[0]<=0)b='⚠ The fire is out!';
+    else if(f[0]>0&&f[0]<25)b='Fire is low - bring wood!';
+    else if(now<tipUntil)b='ACT: chop trees / mine rocks / pick berries. Walk to the fire and ACT to add wood or upgrade (stone). HIT: fight aliens.';
+    $('banner').textContent=b;$('banner').style.fontSize=(b.length>60?'15px':'22px');
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script></body></html>
