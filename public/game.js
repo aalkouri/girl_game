@@ -643,20 +643,23 @@ function updateCampPtr(ox, oy) {   // (ox, oy) = where world (0,0), the campfire
   const ds = Math.round(Math.hypot(camX, camY) / 10) + 'm'; if ($('campDist').textContent !== ds) $('campDist').textContent = ds;
 }
 
+let snapDur = .066, lastSnapAt = 0;
+function aim(e, x, y, now) { e.px = e.x; e.py = e.y; if (Math.hypot(x - e.x, y - e.y) > 250) { e.px = e.x = x; e.py = e.y = y; } e.tx = x; e.ty = y; e.t0 = now; }
 function onSnap(m) {
+  const nowS = performance.now(); if (lastSnapAt) snapDur += (Math.max(.04, Math.min(.15, (nowS - lastSnapAt) / 1000)) - snapDur) * .2; lastSnapAt = nowS;
   const prevS = S; S = m; const seen = {};
   const meE = ents2['p' + myId], _d = (x, y) => meE ? Math.hypot(x - meE.x, y - meE.y) : 0, _dx = x => meE ? x - meE.x : 0;
   for (const p of m.p) {
     const k = 'p' + p[0]; seen[k] = 1; let e = ents2[k];
     if (!e) { e = ents2[k] = mkPlayer(p); e.x = e.tx = p[3]; e.y = e.ty = p[4]; e.c.position.set(e.x, e.y); }
-    e.tx = p[3]; e.ty = p[4]; e.d = p;
+    aim(e, p[3], p[4], nowS); e.d = p;
     if (p[12] !== e.sw) { e.sw = p[12]; startSwing(e, p, _d(e.x, e.y), _dx(e.x)); }
   }
   for (const a of m.a) {
     const k = 'a' + a[0]; seen[k] = 1; let e = ents2[k];
     if (!e) { e = ents2[k] = mkAlien(a); e.x = e.tx = a[1]; e.y = e.ty = a[2]; e.c.position.set(e.x, e.y); if (a[5] === 2 && prevS) { SFX.roar(); shake = Math.max(shake, .4); warnUntil = performance.now() + 7000; } }
     if (e.lh >= 0 && a[3] < e.lh) { e.flash = .12; burst(e.x, e.y, 6, 0xc6ff2a, 120, true, .1); SFX.hit(_d(e.x, e.y), _dx(e.x)); }
-    e.lh = a[3]; e.tx = a[1]; e.ty = a[2]; e.d = a;
+    e.lh = a[3]; aim(e, a[1], a[2], nowS); e.d = a;
   }
   for (const k in ents2) if (!seen[k]) {
     const e = ents2[k];
@@ -717,9 +720,13 @@ app.ticker.add(() => {
   water.visible = true;
   // smoothing + node updates
   for (const k in ents2) {
-    const e = ents2[k], f = Math.min(1, dt * 14), ox = e.x, oy = e.y;
-    e.x += (e.tx - e.x) * f; e.y += (e.ty - e.y) * f;
-    const vx = (e.x - ox) / dt, vy = (e.y - oy) / dt, sp = Math.hypot(vx, vy);
+    const e = ents2[k], ox = e.x, oy = e.y;
+    if (e.t0 === undefined) { e.px = e.x; e.py = e.y; e.t0 = -1e9; e.vx = e.vy = 0; e.ph = Math.random() * 6.28; }
+    // constant-speed glide from where we were to the newest server position over one snapshot interval (no exponential chasing)
+    const u = Math.min(1.25, (performance.now() - e.t0) / 1000 / snapDur);
+    e.x = e.px + (e.tx - e.px) * u; e.y = e.py + (e.ty - e.py) * u;
+    const ks = Math.min(1, dt * 10); e.vx += ((e.x - ox) / dt - e.vx) * ks; e.vy += ((e.y - oy) / dt - e.vy) * ks;
+    const vx = e.vx, vy = e.vy, sp = Math.hypot(vx, vy);
     e.c.position.set(e.x, e.y); e.c.zIndex = e.y;
     if (e.kind === 'p') {
       const p = e.d, down = p[10];
@@ -733,7 +740,7 @@ app.ticker.add(() => {
         }
       }
       e.body.rotation = down ? 1.2 : e.ang; e.body.tint = down ? 0x777777 : 0xffffff;
-      e.body.y = down ? 0 : Math.sin(T * 16 + e.x) * (sp > 12 ? 1.8 : .4); e.body.scale.y = (down ? .6 : .85) * (1 + (sp > 12 ? Math.sin(T * 16) * .04 : 0));
+      e.body.y = down ? 0 : Math.sin(T * 16 + e.ph) * (sp > 12 ? 1.8 : .4); e.body.scale.y = (down ? .6 : .85) * (1 + (sp > 12 ? Math.sin(T * 16) * .04 : 0));
       if (e.lh !== p[5] || e.ld !== p[10] || e.lr !== p[11]) { e.lh = p[5]; e.ld = p[10]; e.lr = p[11]; if (p[10]) drawHp(e.hp, 40, Math.min(1, p[11] / 3), 0x4caf50); else drawHp(e.hp, 34, p[5] / p[6], 0xef5350); }
       if (sp > 30 && !down) { e.st = (e.st || 0) - dt; if (e.st <= 0) { e.st = .3; SFX.step(Math.hypot(e.x - me.x, e.y - me.y), e.x - me.x); } e.dust -= dt; if (e.dust <= 0) { e.dust = .14; emit(pfx, T_GLOW, e.x, e.y + 8, rnd(-8, 8), rnd(-8, 4), .5, .12, .3, 0xd9c79a, .35, false, 0); } }
     } else {
