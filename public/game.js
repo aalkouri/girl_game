@@ -267,11 +267,6 @@ function resize() {
 }
 addEventListener('resize', resize); resize();
 $('zoomIn').addEventListener('click', () => setZoom(UZ * 1.15)); $('zoomOut').addEventListener('click', () => setZoom(UZ / 1.15));
-app.view.addEventListener('wheel', e => { e.preventDefault(); setZoom(UZ * (e.deltaY < 0 ? 1.08 : 1 / 1.08)); }, { passive: false });
-{ let pd = 0, pz = 1; const td = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
-  app.view.addEventListener('touchstart', e => { if (e.touches.length === 2) { pd = td(e.touches); pz = UZ; } }, { passive: true });
-  app.view.addEventListener('touchmove', e => { if (e.touches.length === 2 && pd > 0) setZoom(pz * td(e.touches) / pd); }, { passive: true });
-  app.view.addEventListener('touchend', e => { if (e.touches.length < 2) pd = 0; }, { passive: true }); }
 
 // ---------- world building (after server init) ----------
 let resNodes = [], built = false, fireStones = null;
