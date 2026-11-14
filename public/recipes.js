@@ -14,6 +14,7 @@
     { id: 'spear', n: 'Wooden Spear', e: '🔱', kind: 'gear', gear: 'spear', cost: { wood: 4, stone: 3 }, d: '+6 damage and longer reach against aliens.' },
     { id: 'chest', n: 'Storage Chest', e: '📦', kind: 'chest', cost: { wood: 15, stone: 5 }, max: 8, d: 'Shared storage: anyone can put things in or take them out. Press ACT next to it.' },
     { id: 'pot', n: 'Cooking Pot', e: '🍲', kind: 'pot', cost: { wood: 5, stone: 15 }, max: 4, d: 'Press ACT next to it to cook food and drinks from berries.' },
+    { id: 'smelter', n: 'Smelter', e: '⚒️', kind: 'smelter', cost: { wood: 10, stone: 25 }, max: 4, d: 'Press ACT next to it: it takes 5 rocks and smelts them into 1 metal scrap, which pops out for pickup.' },
     { id: 'wall', n: 'Spike Wall', e: '🚧', kind: 'wall', cost: { wood: 6, stone: 0 }, max: 24, d: 'Blocks aliens and hurts them when they chew on it. Placed in front of you, near camp.' },
   ];
   // things you can cook at a cooking pot (cost is in berries)
@@ -27,5 +28,6 @@
   const FOOD_BY = {}; FOOD.forEach(f => FOOD_BY[f.id] = f);
   // the camp (safe ring + build area) grows a little with every fire level
   const camp = lvl => 140 + lvl * 40;
-  return { LIST, BY, FOOD, FOOD_BY, camp, STATION_GAP: 120, WALL_GAP: 80 };
+  const SMELT = { cost: 5, time: 10, queue: 5 };   // rocks per scrap, seconds per scrap, jobs a smelter can hold
+  return { LIST, BY, FOOD, FOOD_BY, camp, SMELT, STATION_GAP: 120, WALL_GAP: 80 };
 });

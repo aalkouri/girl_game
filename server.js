@@ -126,7 +126,7 @@ const ROOM_IDLE_SEC = +process.env.ROOM_IDLE_SEC || 20 * 60;   // an empty room 
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const CAMP_CLEAR = RC.camp(5) + 30;          // no trees anywhere the camp can grow to (max level)
 const HP = { t: 4, r: 3, b: 1 };            // hits to break: tree 4, rock 3, berry bush 1
-const STRUCT = { bench: { r: 30 }, chest: { r: 26 }, pot: { r: 24 }, wall: { r: 24, hp: 60 } };
+const STRUCT = { bench: { r: 30 }, chest: { r: 26 }, pot: { r: 24 }, smelter: { r: 30 }, wall: { r: 24, hp: 60 } };
 const CHEST_CAP = 500, REACH = 62;   // collision radius / hit points of placed structures
 const SPILL = { t: 5, r: 3 };               // logs per tree / stones per rock (before class bonus)
 
@@ -179,16 +179,22 @@ class Room {
         if (dd < need) return fail(need > 60 ? 'Too close to another structure. Keep stations about ' + RC.STATION_GAP + ' apart (walls about ' + RC.WALL_GAP + ' from stations).' : 'Something is already there. Turn and try another spot.');
       }
       p.wood -= r.cost.wood; p.stone -= r.cost.stone;
-      const st = { id: this.nid++, k: r.kind, x, y, r: sr, hp: STRUCT[r.kind].hp || 0, mhp: STRUCT[r.kind].hp || 0, items: r.kind === 'chest' ? { wood: 0, stone: 0, food: 0 } : null }; this.struct.push(st);
+      const st = { id: this.nid++, k: r.kind, x, y, r: sr, hp: STRUCT[r.kind].hp || 0, mhp: STRUCT[r.kind].hp || 0, items: r.kind === 'chest' ? { wood: 0, stone: 0, food: 0, scrap: 0 } : null, smelt: r.kind === 'smelter' ? { q: 0, prog: 0 } : null }; this.struct.push(st);
       return { ok: true, msg: r.kind === 'bench' ? 'Crafting bench placed! More recipes unlocked.' : r.n + ' placed.' };
     }
     p.wood -= r.cost.wood; p.stone -= r.cost.stone; p.gear[r.gear] = 1;
     return { ok: true, msg: r.n + ' crafted!' };
   }
+  smelterStart(p, st) {   // ACT next to a smelter: automatically takes 5 rocks and queues one scrap
+    if (st.smelt.q >= RC.SMELT.queue) return { ok: false, msg: 'The smelter is full.' };
+    if (p.stone < RC.SMELT.cost) return { ok: false, msg: 'Need ' + RC.SMELT.cost + ' rocks to smelt.' };
+    p.stone -= RC.SMELT.cost; if (st.smelt.q === 0) st.smelt.prog = 0; st.smelt.q++;
+    return { ok: true };
+  }
   near(p, st) { return Math.hypot(p.x - st.x, p.y - st.y) < st.r + REACH + 30; }
   chestOp(p, id, res, n) {   // shared storage: anyone in the room may deposit (n > 0) or withdraw (n < 0)
     const st = this.struct.find(s => s.id === id && s.k === 'chest');
-    if (!st || p.down || !this.near(p, st) || !['wood', 'stone', 'food'].includes(res)) return;
+    if (!st || p.down || !this.near(p, st) || !['wood', 'stone', 'food', 'scrap'].includes(res)) return;
     n = Math.max(-1e6, Math.min(1e6, Math.trunc(+n) || 0)); if (!n) return;
     if (n > 0) { const k = Math.min(n, p[res], CHEST_CAP - st.items[res]); p[res] -= k; st.items[res] += k; }
     else { const k = Math.min(-n, st.items[res]); st.items[res] -= k; p[res] += k; }
@@ -207,7 +213,7 @@ class Room {
   }
   ph() { return this.c < DAY ? 0 : this.c < DAY + DUSK ? 1 : 2; }
   add(ws, name, cls, pf) {
-    const p = { id: this.nid++, ws, name, cls, prof: pf, gear: {}, buff: { speed: 0, regen: 0, dmg: 0 }, actPrev: 0, fa: 0, sw: 0, swk: 0, swa: 0, wood: parseInt(process.env.START_WOOD) || 0, stone: parseInt(process.env.START_STONE) || 0, food: parseInt(process.env.START_FOOD) || 0, actcd: 0, hitcd: 0, eat: 0, inp: { dx: 0, dy: 0, act: 0, hit: 0 } };
+    const p = { id: this.nid++, ws, name, cls, prof: pf, gear: {}, buff: { speed: 0, regen: 0, dmg: 0 }, actPrev: 0, fa: 0, sw: 0, swk: 0, swa: 0, wood: parseInt(process.env.START_WOOD) || 0, stone: parseInt(process.env.START_STONE) || 0, food: parseInt(process.env.START_FOOD) || 0, scrap: 0, actcd: 0, hitcd: 0, eat: 0, inp: { dx: 0, dy: 0, act: 0, hit: 0 } };
     this.respawn(p); this.players.set(p.id, p); return p;
   }
   tick(dt) {
@@ -245,8 +251,8 @@ class Room {
         const mate = P.find(q => q.down && dist(p, q) < 60);
         if (mate) { mate.rev += dt * c.rev; mate.rv = 1; }
         else if (p.actcd <= 0) {
-          const stn = this.struct.find(st => (st.k === 'chest' || st.k === 'pot') && Math.hypot(p.x - st.x, p.y - st.y) < st.r + REACH);
-          if (stn) { if (actEdge) { send(p.ws, { t: 'open', what: stn.k, id: stn.id }); p.actcd = 0.4; } }
+          const stn = this.struct.find(st => (st.k === 'chest' || st.k === 'pot' || st.k === 'smelter') && Math.hypot(p.x - st.x, p.y - st.y) < st.r + REACH);
+          if (stn) { if (actEdge) { p.actcd = 0.4; if (stn.k === 'smelter') { const sr = this.smelterStart(p, stn); if (!sr.ok) send(p.ws, { t: 'toast', msg: sr.msg }); } else send(p.ws, { t: 'open', what: stn.k, id: stn.id }); } }
           else if (d < 80) {
             const per = 15 * c.feed, need = maxF - f.fuel;
             if (p.wood > 0 && need > per * 0.5) { const n = Math.min(p.wood, Math.ceil(need / per)); f.fuel = Math.min(maxF, f.fuel + n * per); p.wood -= n; p.actcd = 0.3; }   // only as much wood as the gauge needs
@@ -285,6 +291,15 @@ class Room {
       if (p.rev >= 3) { p.down = 0; p.rev = 0; p.hp = p.mhp * 0.4; }
     }
 
+    // smelters: one scrap per SMELT.time seconds, then it hops out onto the ground
+    for (const st of this.struct) if (st.smelt && st.smelt.q > 0) {
+      st.smelt.prog += dt;
+      if (st.smelt.prog >= RC.SMELT.time) {
+        st.smelt.prog = 0; st.smelt.q--;
+        const a = Math.PI * (0.15 + Math.random() * 0.7), dd = st.r + 24 + Math.random() * 18;   // lands in front (below) of the smelter
+        this.pend.push({ k: 'm', x: st.x + Math.cos(a) * dd, y: st.y + Math.sin(a) * dd, t: 0.45 });
+      }
+    }
     // ground pickups: appear after the animation, collected by running over them
     for (let i = this.pend.length - 1; i >= 0; i--) {
       const q = this.pend[i]; if ((q.t -= dt) > 0) continue;
@@ -292,7 +307,7 @@ class Room {
     }
     for (let i = this.drops.length - 1; i >= 0; i--) {
       const d = this.drops[i]; d.ttl -= dt; let taken = false;
-      if (d.ttl > 0) for (const p of P) if (!p.down && dist(p, d) < 30) { if (d.k === 'w') p.wood++; else p.stone++; taken = true; break; }
+      if (d.ttl > 0) for (const p of P) if (!p.down && dist(p, d) < 30) { if (d.k === 'w') p.wood++; else if (d.k === 's') p.stone++; else p.scrap++; taken = true; break; }
       if (taken || d.ttl <= 0) this.drops.splice(i, 1);
     }
     // aliens
@@ -334,11 +349,11 @@ class Room {
     return JSON.stringify({
       t: 's', c: Math.round(this.c * 10) / 10, n: this.night, ph: this.ph(), o: this.over > 0 ? 1 : 0,
       f: [Math.round(f.fuel), 150 + (f.lvl - 1) * 75, f.lvl, f.fuel > 0 ? RC.camp(f.lvl) : 0],
-      p: [...this.players.values()].map(p => [p.id, p.name, p.cls, Math.round(p.x), Math.round(p.y), Math.round(p.hp), p.mhp, p.wood, p.stone, p.food, p.down, Math.round(p.rev * 10) / 10, p.sw, p.swk, Math.round(p.swa * 100)]),
+      p: [...this.players.values()].map(p => [p.id, p.name, p.cls, Math.round(p.x), Math.round(p.y), Math.round(p.hp), p.mhp, p.wood, p.stone, p.food, p.down, Math.round(p.rev * 10) / 10, p.sw, p.swk, Math.round(p.swa * 100), p.scrap]),
       a: this.aliens.map(a => [a.id, Math.round(a.x), Math.round(a.y), Math.round(a.hp), a.mhp, a.k]),
       r: this.res.map(r => Math.max(0, Math.ceil(r.hp - 1e-9))).join(''),
       dr: this.drops.map(d => [d.id, d.k, Math.round(d.x), Math.round(d.y)]),
-      st: this.struct.map(t => [t.id, t.k, Math.round(t.x), Math.round(t.y), Math.round(t.hp), t.mhp, t.items ? [t.items.wood, t.items.stone, t.items.food] : 0]),
+      st: this.struct.map(t => [t.id, t.k, Math.round(t.x), Math.round(t.y), Math.round(t.hp), t.mhp, t.items ? [t.items.wood, t.items.stone, t.items.food, t.items.scrap] : t.smelt ? [t.smelt.q, Math.round(t.smelt.prog / RC.SMELT.time * 100) / 100] : 0]),
     });
   }
 }
