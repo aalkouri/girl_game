@@ -63,7 +63,11 @@ module.exports = function makeAuth({ dir, config }) {
     const prev = codes.get(e); if (prev && Date.now() - prev.t < 30e3) return { ok: false, err: 'Please wait 30 seconds before asking for another code.' };
     const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0'), salt = crypto.randomBytes(8).toString('hex');
     codes.set(e, { h: sha(salt + code), salt, x: Date.now() + 10 * 60e3, tries: 0, t: Date.now() });
-    try { await sendMail(e, code); } catch (err) { codes.delete(e); console.error('mail failed:', err.name, err.message); return { ok: false, err: 'Could not send the email right now. Please try again later.' }; }
+    try { await sendMail(e, code); } catch (err) {
+      codes.delete(e); console.error('mail failed:', err.name, err.message);
+      const blocked = err.name === 'MessageRejected' || /not verified|sandbox/i.test(err.message || '');
+      return { ok: false, err: blocked ? 'Emailed codes are not available for this address yet. Please sign in with Google instead.' : 'Could not send the email right now. Please try again later.' };
+    }
     return { ok: true };
   }
   function verifyEmail(email, code) {
