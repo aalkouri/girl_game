@@ -68,6 +68,8 @@ const SFX = (() => {
     rockbreak(d, dx) { noise({ type: 'highpass', f: 1800, dur: .22, gain: .45, dist: d, dx }); noise({ f: 700, f2: 200, q: .8, dur: .4, gain: .4, dist: d, dx }); tone({ f: 120, f2: 50, dur: .3, type: 'triangle', gain: .4, dist: d, dx }); },
     pickup() { tone({ f: 700, f2: 1100, dur: .09, type: 'triangle', gain: .12 }); tone({ f: 1400, dur: .1, type: 'sine', gain: .08, when: .05 }); },
     build(d, dx) { [0, .13, .27].forEach(w => { noise({ f: 1500, q: 1, dur: .07, gain: .45, when: w, dist: d, dx }); tone({ f: 210, f2: 120, dur: .09, type: 'triangle', gain: .4, when: w, dist: d, dx }); }); },
+    chest() { tone({ f: 180, f2: 300, dur: .18, type: 'triangle', gain: .22 }); noise({ f: 900, q: 1, dur: .12, gain: .2, when: .05 }); },
+    cook() { for (let i = 0; i < 4; i++) noise({ f: 500 + i * 220, f2: 900 + i * 260, q: 1.4, dur: .14, gain: .22, when: i * .08 }); tone({ f: 523, dur: .25, type: 'triangle', gain: .12, when: .3 }); tone({ f: 784, dur: .3, type: 'triangle', gain: .12, when: .38 }); },
     pop(d, dx, g) { noise({ type: 'highpass', f: rnd(1800, 4500), q: .6, dur: rnd(.02, .06), gain: (g || .2), dist: d, dx }); },
   };
 
