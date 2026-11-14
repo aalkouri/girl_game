@@ -108,6 +108,29 @@ function mkPlayerCanvas(L) {
 }
 const T_PL = {}, PCAN = {};
 GC.LIST.forEach(c => { const cv = mkPlayerCanvas(c.look); PCAN[c.id] = cv; T_PL[c.id] = PIXI.Texture.from(cv); });
+// swing tools (handle runs along +x from the pivot)
+const T_AXE = tex(72, 44, g => {
+  stroke(g, '#7a4a22', 6, 4, 22, 50, 22); stroke(g, '#a56b34', 2, 6, 20, 48, 20);
+  poly(g, '#b0bec5', [42, 5, 66, 10, 68, 22, 66, 34, 42, 39, 49, 22]); poly(g, '#eceff1', [50, 11, 64, 14, 65, 19, 50, 19]);
+  g.strokeStyle = 'rgba(0,0,0,.45)'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(42, 5); g.lineTo(66, 10); g.lineTo(68, 22); g.lineTo(66, 34); g.lineTo(42, 39); g.stroke();
+});
+const T_PICK = tex(72, 56, g => {
+  stroke(g, '#7a4a22', 6, 4, 28, 50, 28); stroke(g, '#a56b34', 2, 6, 26, 48, 26);
+  g.fillStyle = '#90a4ae'; g.beginPath(); g.moveTo(34, 6); g.quadraticCurveTo(76, 28, 34, 50); g.lineTo(44, 28); g.closePath(); g.fill();
+  g.fillStyle = '#cfd8dc'; g.beginPath(); g.moveTo(37, 10); g.quadraticCurveTo(62, 28, 37, 30); g.lineTo(44, 24); g.closePath(); g.fill();
+  g.strokeStyle = 'rgba(0,0,0,.45)'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(34, 6); g.quadraticCurveTo(76, 28, 34, 50); g.stroke();
+});
+const T_LOG = tex(44, 24, g => {
+  g.fillStyle = '#6d4423'; g.beginPath(); g.roundRect ? g.roundRect(2, 4, 34, 16, 6) : g.rect(2, 4, 34, 16); g.fill();
+  g.fillStyle = '#8d5a2b'; g.fillRect(6, 5, 28, 5); g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(6, 15, 28, 4);
+  g.strokeStyle = '#4e2f15'; g.lineWidth = 1; [12, 20, 27].forEach(x => { g.beginPath(); g.moveTo(x, 6); g.lineTo(x + 2, 18); g.stroke(); });
+  g.fillStyle = '#d9b676'; ell(g, 36, 12, 5, 8); g.strokeStyle = '#a0733d'; g.lineWidth = 1.5; g.beginPath(); g.ellipse(36, 12, 3, 5, 0, 0, TAU); g.stroke(); g.beginPath(); g.ellipse(36, 12, 1, 2, 0, 0, TAU); g.stroke();
+});
+const T_STONE = tex(30, 26, g => {
+  poly(g, '#6b7078', [3, 20, 6, 9, 15, 3, 25, 8, 28, 19, 18, 24]); poly(g, '#9aa1aa', [6, 9, 15, 3, 25, 8, 17, 13, 8, 14]); poly(g, '#c6ccd4', [11, 8, 16, 5, 21, 8, 16, 10]);
+  g.strokeStyle = 'rgba(0,0,0,.4)'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(3, 20); g.lineTo(6, 9); g.lineTo(15, 3); g.lineTo(25, 8); g.lineTo(28, 19); g.lineTo(18, 24); g.closePath(); g.stroke();
+});
+const T_SLASH = tex(80, 80, g => { g.strokeStyle = '#fff'; g.lineCap = 'round'; g.lineWidth = 7; g.beginPath(); g.arc(8, 40, 52, -.75, .75); g.stroke(); g.lineWidth = 3; g.globalAlpha = .6; g.beginPath(); g.arc(8, 40, 44, -.6, .6); g.stroke(); });
 const T_ALIEN = tex(84, 84, g => {
   g.translate(42, 42);
   g.strokeStyle = '#2a0c3c'; g.lineWidth = 4; g.lineCap = 'round';
@@ -211,7 +234,8 @@ function buildWorld(list) {
     else if (r[0] === 'r') { s = new PIXI.Sprite(T_ROCK); s.anchor.set(.5, .8); s.scale.set(.6); sh.scale.set(1.1, .6); sh.y = 4; }
     else { s = new PIXI.Sprite(T_BUSH); s.anchor.set(.5, .8); s.scale.set(.62); sh.scale.set(1, .5); sh.y = 4; }
     c.addChild(s); c.position.set(r[1], r[2]); c.zIndex = r[2]; ents.addChild(c);
-    resNodes.push({ c, s, k: r[0], x: r[1], y: r[2], pop: 1, alive: true, ph: rnd(0, TAU), base: s.scale.x });
+    const mhp = r[0] === 't' ? 4 : r[0] === 'r' ? 3 : 1, bar = new PIXI.Graphics(); c.addChild(bar);
+    resNodes.push({ c, s, k: r[0], x: r[1], y: r[2], pop: 1, hp: mhp, mhp, bar, barT: 0, shake: 0, ph: rnd(0, TAU), base: s.scale.x });
   });
   built = true;
 }
@@ -248,8 +272,10 @@ function mkPlayer(p) {
   const c = new PIXI.Container(), sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5); sh.scale.set(.8, .5); sh.y = 8; sh.alpha = .9;
   const body = new PIXI.Sprite(T_PL[p[2]]); body.anchor.set(.5); body.scale.set(.85);
   const name = new PIXI.Text(p[1], { fontFamily: 'system-ui,sans-serif', fontSize: 13, fontWeight: '700', fill: 0xffffff, stroke: 0x000000, strokeThickness: 3 }); name.anchor.set(.5, 1); name.y = -30; name.resolution = 2;
-  const hp = new PIXI.Graphics(); hp.y = 28; c.addChild(sh, body, name, hp); ents.addChild(c);
-  return { c, body, name, hp, ang: 0, lh: -1, ld: -1, dust: 0, kind: 'p' };
+  const hp = new PIXI.Graphics(); hp.y = 28;
+  const tool = new PIXI.Sprite(T_AXE); tool.anchor.set(.08, .5); tool.scale.set(.62); tool.visible = false;
+  c.addChild(sh, body, tool, name, hp); ents.addChild(c);
+  return { c, body, tool, name, hp, ang: 0, lh: -1, ld: -1, dust: 0, kind: 'p', sw: p[12], swing: null };
 }
 function mkAlien(a) {
   const c = new PIXI.Container(), sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5); sh.scale.set(a[5] ? 1.8 : 1, a[5] ? .9 : .55); sh.y = 6;
@@ -261,6 +287,105 @@ function mkAlien(a) {
 function drawHp(g, w, f, col) { g.clear(); g.beginFill(0x000000, .55); g.drawRoundedRect(-w / 2, 0, w, 5, 2); g.endFill(); g.beginFill(col); g.drawRoundedRect(-w / 2, 0, Math.max(0, w * f), 5, 2); g.endFill(); }
 function angLerp(a, b, k) { let d = ((b - a + Math.PI) % TAU + TAU) % TAU - Math.PI; return a + d * k; }
 
+// ---- swing / hit / fall / crumble / pickup effects ----
+const ease = u => u < .5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
+function startSwing(e, p, d, dx) {
+  const kind = p[13], ang = p[14] / 100;
+  e.swing = { t: 0, kind, ang, hit: false }; e.ang = ang;
+  if (kind === 1) e.tool.texture = T_AXE; else if (kind === 2) e.tool.texture = T_PICK;
+  e.tool.visible = kind !== 3;
+}
+function swingOff(t) {   // relative tool angle: wind-up back, fast strike, recover
+  if (t < .14) return .3 - 1.8 * ease(t / .14);
+  if (t < .26) { const u = (t - .14) / .12; return -1.5 + 2.4 * u * u; }
+  return .9 - .6 * ease(Math.min(1, (t - .26) / .16));
+}
+function drawPips(r) {
+  const g = r.bar; g.clear(); if (r.hp <= 0 || r.hp >= r.mhp && r.barT <= 0) { return; }
+  const w = 9, gap = 3, tot = r.mhp * w + (r.mhp - 1) * gap, y = -(r.s.height * r.s.anchor.y) - 14;
+  g.beginFill(0x000000, .55); g.drawRoundedRect(-tot / 2 - 3, y - 3, tot + 6, 11, 4); g.endFill();
+  for (let i = 0; i < r.mhp; i++) { g.beginFill(i < r.hp ? (r.k === 't' ? 0x7bd37b : 0xcfd8dc) : 0x444444); g.drawRoundedRect(-tot / 2 + i * (w + gap), y, w, 5, 2); g.endFill(); }
+}
+function hitFx(r, d, dx) {
+  r.shake = .32; r.barT = 1.6;
+  if (r.k === 't') { SFX.chop(d, dx); burst(r.x, r.y - 30, 6, 0x6fcf6a, 90, false, .11); burst(r.x, r.y - 6, 5, 0xb98349, 80, false, .09); for (let i = 0; i < 4; i++) emit(pfx, T_GLOW, r.x + rnd(-14, 14), r.y - rnd(40, 70), rnd(-30, 30), rnd(20, 60), rnd(.8, 1.3), .09, .05, 0x4caf50, .9, false, 40); }
+  else { SFX.mine(d, dx); burst(r.x, r.y - 8, 8, 0xc5cbd3, 130, false, .1); burst(r.x, r.y - 10, 4, 0xfff59d, 90, true, .08); }
+}
+const fallers = [];
+function breakFx(r, fromX, d, dx) {
+  r.c.visible = false; r.bar.clear();
+  if (r.k === 't') {
+    const spr = new PIXI.Sprite(T_TREE); spr.anchor.set(.5, .88); spr.position.set(r.x, r.y); spr.scale.set(r.s.scale.x); spr.zIndex = r.y; ents.addChild(spr);
+    const sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5); sh.scale.set(1.7, .8); sh.position.set(r.x, r.y + 4); sh.zIndex = r.y - 1; ents.addChild(sh);
+    fallers.push({ k: 't', spr, sh, t: 0, dir: r.x >= fromX ? 1 : -1, r, landed: false, d, dx });
+  } else {
+    const spr = new PIXI.Sprite(T_ROCK); spr.anchor.set(.5, .8); spr.position.set(r.x, r.y); spr.scale.set(r.base); spr.zIndex = r.y; ents.addChild(spr);
+    SFX.rockbreak(d, dx); shake = Math.max(shake, .08);
+    burst(r.x, r.y - 8, 14, 0xaab0b8, 170, false, .16); burst(r.x, r.y - 10, 8, 0x8d939b, 120, false, .2);
+    for (let i = 0; i < 7; i++) emit(pfx, T_STONE, r.x, r.y - 10, rnd(-110, 110), rnd(-150, -40), rnd(.5, .8), .5, .3, 0xffffff, 1, false, 420);
+    fallers.push({ k: 'r', spr, t: 0 });
+  }
+}
+function stepFallers(dt) {
+  for (let i = fallers.length - 1; i >= 0; i--) {
+    const f = fallers[i]; f.t += dt;
+    if (f.k === 't') {
+      const D = .85;
+      if (f.t < D) {
+        const u = f.t / D, a = f.dir * 1.5 * Math.pow(u, 2.3); f.spr.rotation = a; f.spr.skew.x = 0;
+        if (Math.random() < dt * 14) emit(pfx, T_GLOW, f.r.x + f.dir * Math.sin(a) * 70 * f.spr.scale.x * 1.6, f.r.y - Math.cos(a) * 70 * f.spr.scale.x * 1.6, rnd(-20, 20), rnd(10, 50), rnd(.6, 1), .1, .05, 0x4caf50, .9, false, 90);
+      } else {
+        if (!f.landed) {
+          f.landed = true; f.spr.rotation = f.dir * 1.5; SFX.treefall(f.d, f.dx); shake = Math.max(shake, .22);
+          const tx = f.r.x + f.dir * 95 * f.spr.scale.x * 1.4;
+          for (let j = 0; j < 12; j++) emit(pfx, T_GLOW, tx + rnd(-30, 30), f.r.y + rnd(-6, 10), rnd(-60, 60), rnd(-40, 10), rnd(.5, .9), .2, .5, 0xd9c79a, .5, false, 0);
+          burst(tx, f.r.y - 10, 10, 0x5fbf5a, 120, false, .13);
+        }
+        const u = (f.t - D) / .7; f.spr.alpha = Math.max(0, 1 - Math.max(0, u - .35) / .65); f.sh.alpha = f.spr.alpha;
+        if (u >= 1) { f.spr.destroy(); f.sh.destroy(); fallers.splice(i, 1); }
+      }
+    } else {
+      const u = f.t / .38; f.spr.scale.set(f.spr.scale.x * (1 - dt * 7)); f.spr.alpha = Math.max(0, 1 - u); f.spr.x += rnd(-1.5, 1.5);
+      if (u >= 1) { f.spr.destroy(); fallers.splice(i, 1); }
+    }
+  }
+}
+
+// ground pickups (logs from trees, stones from rocks): hop out, bob, fly to the player that grabs them
+const dropE = {}, flyers = [];
+function syncDrops(m, _d, _dx) {
+  const seen = {};
+  for (const d of m.dr || []) {
+    seen[d[0]] = 1; let e = dropE[d[0]];
+    if (!e) {
+      const c = new PIXI.Container(), sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5); sh.scale.set(.6, .35); sh.y = 4;
+      const spr = new PIXI.Sprite(d[1] === 'w' ? T_LOG : T_STONE); spr.anchor.set(.5); spr.scale.set(d[1] === 'w' ? .8 : .85); spr.rotation = d[1] === 'w' ? rnd(-.8, .8) : rnd(-.4, .4);
+      c.addChild(sh, spr); c.position.set(d[2], d[3]); c.zIndex = d[3]; ents.addChild(c);
+      e = dropE[d[0]] = { c, spr, sh, x: d[2], y: d[3], t: 0, ph: rnd(0, TAU), k: d[1] };
+      overGlow(e);
+    }
+  }
+  for (const id in dropE) if (!seen[id]) {
+    const e = dropE[id]; delete dropE[id];
+    let best = null, bd = 90; for (const p of m.p) { const dd = Math.hypot(p[3] - e.x, p[4] - e.y); if (dd < bd) { bd = dd; best = p; } }
+    if (best) { flyers.push({ c: e.c, t: 0, fx: e.x, fy: e.y, pid: best[0] }); if (best[0] === myId) SFX.pickup(); }
+    else { e.c.destroy({ children: true }); }
+  }
+}
+function overGlow(e) { /* small sparkle when a pickup appears */ emit(overL, T_GLOW, e.x, e.y - 6, 0, -20, .5, .16, .02, e.k === 'w' ? 0xffd9a0 : 0xdfe8f5, .8, true, 0); }
+function stepDrops(dt) {
+  for (const id in dropE) {
+    const e = dropE[id]; e.t += dt; const u = Math.min(1, e.t / .35), hop = Math.sin(u * Math.PI) * 26 * (1 - u * .3);
+    e.spr.y = -hop + Math.sin(T * 3 + e.ph) * 1.2 * (u >= 1 ? 1 : 0); e.spr.scale.set((e.k === 'w' ? .8 : .85) * (.3 + .7 * Math.min(1, u * 1.6))); e.sh.alpha = .4 + .5 * u;
+  }
+  for (let i = flyers.length - 1; i >= 0; i--) {
+    const f = flyers[i]; f.t += dt; const u = Math.min(1, f.t / .2), pe = ents2['p' + f.pid];
+    if (pe) { f.c.x = f.fx + (pe.x - f.fx) * u * u; f.c.y = f.fy + (pe.y - f.fy) * u * u - Math.sin(u * Math.PI) * 14; }
+    f.c.scale.set(1 - .6 * u); f.c.alpha = 1 - u * .6;
+    if (u >= 1) { f.c.destroy({ children: true }); flyers.splice(i, 1); }
+  }
+}
+
 function onSnap(m) {
   const prevS = S; S = m; const seen = {};
   const meE = ents2['p' + myId], _d = (x, y) => meE ? Math.hypot(x - meE.x, y - meE.y) : 0, _dx = x => meE ? x - meE.x : 0;
@@ -268,6 +393,7 @@ function onSnap(m) {
     const k = 'p' + p[0]; seen[k] = 1; let e = ents2[k];
     if (!e) { e = ents2[k] = mkPlayer(p); e.x = e.tx = p[3]; e.y = e.ty = p[4]; e.c.position.set(e.x, e.y); }
     e.tx = p[3]; e.ty = p[4]; e.d = p;
+    if (p[12] !== e.sw) { e.sw = p[12]; startSwing(e, p, _d(e.x, e.y), _dx(e.x)); }
   }
   for (const a of m.a) {
     const k = 'a' + a[0]; seen[k] = 1; let e = ents2[k];
@@ -281,11 +407,22 @@ function onSnap(m) {
     e.c.destroy({ children: true }); delete ents2[k];
   }
   if (built) for (let i = 0; i < resNodes.length; i++) {
-    const r = resNodes[i], al = m.r[i] === '1';
-    if (r.alive && !al) { (r.k === 't' ? SFX.chop : r.k === 'r' ? SFX.mine : SFX.pick)(_d(r.x, r.y), _dx(r.x)); burst(r.x, r.y - 8, 10, r.k === 't' ? 0x5fbf5a : r.k === 'r' ? 0xb0b6be : 0xe53935, 140, false, .12); r.c.visible = false; }
-    if (!r.alive && al) { r.c.visible = true; r.pop = 0; }
-    r.alive = al;
+    const r = resNodes[i], hp = +m.r[i];
+    if (!r.init) { r.init = true; r.hp = hp; if (hp <= 0) r.c.visible = false; continue; }
+    if (hp < r.hp) {
+      let who = null, wd = 110; for (const p of m.p) { const dd = Math.hypot(p[3] - r.x, p[4] - r.y); if (dd < wd) { wd = dd; who = p; } }
+      const fromX = who ? who[3] : r.x - 1;
+      if (r.k === 'b') { SFX.pick(_d(r.x, r.y), _dx(r.x)); burst(r.x, r.y - 8, 10, 0xe53935, 140, false, .12); r.c.visible = false; }
+      else {
+        const d0 = _d(r.x, r.y), dx0 = _dx(r.x);
+        r.barT = 1.6; r.hp = hp; drawPips(r);
+        setTimeout(() => { hitFx(r, d0, dx0); if (hp <= 0) breakFx(r, fromX, d0, dx0); }, 170);
+      }
+    }
+    if (hp > r.hp) { if (r.hp <= 0) { r.c.visible = true; r.pop = 0; r.s.rotation = 0; r.s.alpha = 1; } r.barT = 0; }
+    r.hp = hp;
   }
+  syncDrops(m, _d, _dx);
   const mp = m.p.find(p => p[0] === myId);
   if (mp) {
     if (lastInv) { const dw = mp[7] - lastInv[0], ds = mp[8] - lastInv[1], df = mp[9] - lastInv[2], e = ents2['p' + myId];
@@ -323,7 +460,15 @@ app.ticker.add(() => {
     e.c.position.set(e.x, e.y); e.c.zIndex = e.y;
     if (e.kind === 'p') {
       const p = e.d, down = p[10];
-      if (sp > 12 && !down) e.ang = angLerp(e.ang, Math.atan2(vy, vx), Math.min(1, dt * 12));
+      if (sp > 12 && !down && !e.swing) e.ang = angLerp(e.ang, Math.atan2(vy, vx), Math.min(1, dt * 12));
+      if (e.swing) {
+        const sw = e.swing; sw.t += dt;
+        if (sw.t >= .42) { e.swing = null; e.tool.visible = false; }
+        else {
+          e.ang = sw.ang; e.tool.rotation = sw.ang + swingOff(sw.t); e.tool.position.set(Math.cos(sw.ang) * 6, Math.sin(sw.ang) * 6);
+          if (!sw.hit && sw.t >= .2) { sw.hit = true; const sl = new PIXI.Sprite(T_SLASH); sl.anchor.set(.1, .5); sl.rotation = sw.ang; sl.position.set(e.x + Math.cos(sw.ang) * 16, e.y + Math.sin(sw.ang) * 16); sl.blendMode = BM.ADD; sl.scale.set(.75); overL.addChild(sl); parts.push({ s: sl, vx: 0, vy: 0, life: .16, max: .16, s0: .75, s1: 1, a0: .75, g: 0 }); }
+        }
+      }
       e.body.rotation = down ? 1.2 : e.ang; e.body.tint = down ? 0x777777 : 0xffffff;
       e.body.y = down ? 0 : Math.sin(T * 16 + e.x) * (sp > 12 ? 1.8 : .4); e.body.scale.y = (down ? .6 : .85) * (1 + (sp > 12 ? Math.sin(T * 16) * .04 : 0));
       if (e.lh !== p[5] || e.ld !== p[10] || e.lr !== p[11]) { e.lh = p[5]; e.ld = p[10]; e.lr = p[11]; if (p[10]) drawHp(e.hp, 40, Math.min(1, p[11] / 3), 0x4caf50); else drawHp(e.hp, 34, p[5] / p[6], 0xef5350); }
@@ -341,10 +486,14 @@ app.ticker.add(() => {
     }
   }
   // resources: sway + pop-in
-  for (const r of resNodes) if (r.c.visible) {
+  for (const r of resNodes) {
+    if (r.barT > 0) { r.barT -= dt; if (r.barT <= 0) r.bar.clear(); else if (r.barT < .4) r.bar.alpha = r.barT / .4; else r.bar.alpha = 1; }
+    if (r.shake > 0) r.shake = Math.max(0, r.shake - dt);
+    if (!r.c.visible) continue;
+    if (r.shake > 0) { const sh = Math.sin(T * 55) * r.shake; r.s.skew.x = sh * .22; r.s.x = sh * 3; r.s.y = Math.abs(sh) * -1.2; }
+    else if (r.s.x !== 0 || r.s.y !== 0) { r.s.x = 0; r.s.y = 0; }
     if (r.pop < 1) { r.pop = Math.min(1, r.pop + dt * 2.5); const b = 1 - Math.pow(1 - r.pop, 3); r.s.scale.set(r.base * (.2 + .8 * b)); }
-    if (r.k === 't') r.s.skew.x = Math.sin(T * 1.3 + r.ph) * .035 + Math.sin(T * 3.1 + r.ph) * .01;
-    else if (r.k === 'b') r.s.skew.x = Math.sin(T * 2 + r.ph) * .02;
+    if (r.shake <= 0) { if (r.k === 't') r.s.skew.x = Math.sin(T * 1.3 + r.ph) * .035 + Math.sin(T * 3.1 + r.ph) * .01; else if (r.k === 'b') r.s.skew.x = Math.sin(T * 2 + r.ph) * .02; }
   }
   // camera
   camX += (me.x - camX) * Math.min(1, dt * 10); camY += (me.y - camY) * Math.min(1, dt * 10);
@@ -360,7 +509,7 @@ app.ticker.add(() => {
   ring.visible = alive; ring.scale.set(f[3] * 2 / 256 * 1.0); ring.alpha = .35 + Math.sin(T * 2) * .08;
   if (alive) { fireTick += dt * (20 + 40 * fuelK); while (fireTick > 1) { fireTick--; emit(overL, T_GLOW, rnd(-8, 8), -2, rnd(-14, 14), rnd(-70, -35), rnd(.6, 1.3), .08, .01, Math.random() < .5 ? 0xffb347 : 0xffe08a, 1, true, -10); } }
   smokeTick += dt * (alive ? 4 : 9); while (smokeTick > 1) { smokeTick--; emit(pfx, T_GLOW, rnd(-6, 6), -14, rnd(-6, 6), rnd(-26, -14), 2.2, .25, .9, alive ? 0x555555 : 0x444444, alive ? .22 : .35, false, 0); }
-  stepParts(dt);
+  stepParts(dt); stepFallers(dt); stepDrops(dt);
   for (let i = ftexts.length - 1; i >= 0; i--) { const q = ftexts[i]; q.life -= dt; q.t.y -= dt * 34; q.t.alpha = clamp(q.life * 2, 0, 1); if (q.life <= 0) { q.t.destroy(); ftexts.splice(i, 1); } }
   // lighting
   const d = darkness(S.c);
@@ -397,7 +546,7 @@ function hud() {
   else if (S.ph === 1) b = (Math.floor(now / 500) % 2 ? '🌆 ' : '') + 'DUSK - get back to the fire!';
   else if (S.ph === 2 && f[0] <= 0) b = '⚠ The fire is out!';
   else if (f[0] > 0 && f[0] < 25) b = 'Fire is low - bring wood!';
-  else if (now < tipUntil) b = 'ACT: chop trees / mine rocks / pick berries. Walk to the fire and ACT to add wood or upgrade (stone). HIT: fight aliens.';
+  else if (now < tipUntil) b = 'Hold ACT by a tree (4 hits) or rock (3 hits), pick berries, then run over the logs and stones. At the fire, ACT adds wood or upgrades it (stone). HIT: fight aliens.';
   const bn = $('banner'); if (bn.textContent !== b) { bn.textContent = b; bn.style.fontSize = b.length > 60 ? '15px' : '22px'; }
 }
 

@@ -121,27 +121,39 @@ const R = 900;                       // island radius
 const DAY = 90, DUSK = 30, NIGHT = 60, CYC = DAY + DUSK + NIGHT;
 const MAXP = 8;
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const HP = { t: 4, r: 3, b: 1 };            // hits to break: tree 4, rock 3, berry bush 1
+const SPILL = { t: 5, r: 3 };               // logs per tree / stones per rock (before class bonus)
 
 class Room {
   constructor(code) {
     this.code = code; this.players = new Map(); this.nid = 1; this.emptyFor = 0;
     this.res = [];
-    const add = (k, n) => { for (let i = 0; i < n; i++) { const a = Math.random() * 6.283, d = 130 + Math.sqrt(Math.random()) * (R - 200); this.res.push({ k, x: Math.cos(a) * d, y: Math.sin(a) * d, alive: 1, rt: 0 }); } };
+    const add = (k, n) => { for (let i = 0; i < n; i++) { const a = Math.random() * 6.283, d = 130 + Math.sqrt(Math.random()) * (R - 200); this.res.push({ k, x: Math.cos(a) * d, y: Math.sin(a) * d, hp: HP[k], mhp: HP[k], rt: 0 }); } };
     add('t', 45); add('r', 28); add('b', 22);
     this.reset();
   }
   reset() {
     this.c = +process.env.START_C || 0; this.night = +process.env.START_N || 1; this.fire = { fuel: 150, lvl: 1 }; this.aliens = []; this.over = 0;
-    for (const r of this.res) r.alive = 1;
+    for (const r of this.res) r.hp = r.mhp;
+    this.drops = []; this.pend = [];
     for (const p of this.players.values()) this.respawn(p);
   }
   respawn(p) {
     const c = GC.BY[p.cls]; p.mhp = c.hp; p.hp = c.hp; p.down = 0; p.rev = 0;
     const a = Math.random() * 6.283; p.x = Math.cos(a) * 100; p.y = Math.sin(a) * 100;
   }
+  // a broken tree/rock leaves pickups on the ground after its fall/crumble animation (client shows them when they appear)
+  spill(r, n) {
+    const delay = r.k === 't' ? .95 : .5;
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * 6.283, d = 24 + Math.random() * 28; let x = r.x + Math.cos(a) * d, y = r.y + Math.sin(a) * d;
+      const dd = Math.hypot(x, y); if (dd > R - 40) { x *= (R - 40) / dd; y *= (R - 40) / dd; }
+      this.pend.push({ k: r.k === 't' ? 'w' : 's', x, y, t: delay });
+    }
+  }
   ph() { return this.c < DAY ? 0 : this.c < DAY + DUSK ? 1 : 2; }
   add(ws, name, cls, pf) {
-    const p = { id: this.nid++, ws, name, cls, prof: pf, wood: 0, stone: 0, food: 0, actcd: 0, hitcd: 0, eat: 0, inp: { dx: 0, dy: 0, act: 0, hit: 0 } };
+    const p = { id: this.nid++, ws, name, cls, prof: pf, sw: 0, swk: 0, swa: 0, wood: 0, stone: 0, food: 0, actcd: 0, hitcd: 0, eat: 0, inp: { dx: 0, dy: 0, act: 0, hit: 0 } };
     this.respawn(p); this.players.set(p.id, p); return p;
   }
   tick(dt) {
@@ -159,7 +171,7 @@ class Room {
     f.fuel = Math.max(0, f.fuel - (ph === 0 ? 0.4 : 1) * burn * dt);
     const fr = f.fuel > 0 ? 120 + f.lvl * 40 : 0;
 
-    for (const r of this.res) if (!r.alive && (r.rt -= dt) <= 0) r.alive = 1;
+    for (const r of this.res) if (r.hp <= 0 && (r.rt -= dt) <= 0) r.hp = r.mhp;
     for (const p of P) p.rv = 0;
 
     for (const p of P) {
@@ -179,12 +191,15 @@ class Room {
             else if (f.lvl < 5 && p.stone >= 10 * f.lvl) { p.stone -= 10 * f.lvl; f.lvl++; p.actcd = 0.5; }
           } else {
             let best = null, bd = 55;
-            for (const r of this.res) if (r.alive) { const dd = dist(p, r); if (dd < bd) { bd = dd; best = r; } }
+            for (const r of this.res) if (r.hp > 0) { const dd = dist(p, r); if (dd < bd) { bd = dd; best = r; } }
             if (best) {
-              best.alive = 0; best.rt = 45 + Math.random() * 30; p.actcd = 0.4;
-              if (best.k === 't') p.wood += Math.max(1, Math.round(3 * c.wood));
-              else if (best.k === 'r') p.stone += Math.max(1, Math.round(2 * c.stone));
-              else p.food += Math.max(1, Math.round(2 * c.food));
+              p.actcd = 0.55; p.sw = (p.sw + 1) & 255; p.swk = best.k === 't' ? 1 : best.k === 'r' ? 2 : 3; p.swa = Math.atan2(best.y - p.y, best.x - p.x);
+              best.hp--;
+              if (best.hp <= 0) {
+                best.rt = 45 + Math.random() * 30;
+                if (best.k === 'b') p.food += Math.max(1, Math.round(2 * c.food));
+                else this.spill(best, Math.max(1, Math.round(SPILL[best.k] * (best.k === 't' ? c.wood : c.stone))));
+              }
             }
           }
         }
@@ -208,6 +223,16 @@ class Room {
       if (p.rev >= 3) { p.down = 0; p.rev = 0; p.hp = p.mhp * 0.4; }
     }
 
+    // ground pickups: appear after the animation, collected by running over them
+    for (let i = this.pend.length - 1; i >= 0; i--) {
+      const q = this.pend[i]; if ((q.t -= dt) > 0) continue;
+      this.pend.splice(i, 1); if (this.drops.length < 160) this.drops.push({ id: this.nid++, k: q.k, x: q.x, y: q.y, ttl: 100 });
+    }
+    for (let i = this.drops.length - 1; i >= 0; i--) {
+      const d = this.drops[i]; d.ttl -= dt; let taken = false;
+      if (d.ttl > 0) for (const p of P) if (!p.down && dist(p, d) < 30) { if (d.k === 'w') p.wood++; else p.stone++; taken = true; break; }
+      if (taken || d.ttl <= 0) this.drops.splice(i, 1);
+    }
     // aliens
     if (ph === 2) {
       let want = Math.min(40, 2 + this.night * 2); if (this.night % 5 === 0) want = Math.floor(want * 1.5);
@@ -242,9 +267,10 @@ class Room {
     return JSON.stringify({
       t: 's', c: Math.round(this.c * 10) / 10, n: this.night, ph: this.ph(), o: this.over > 0 ? 1 : 0,
       f: [Math.round(f.fuel), 150 + (f.lvl - 1) * 75, f.lvl, f.fuel > 0 ? 120 + f.lvl * 40 : 0],
-      p: [...this.players.values()].map(p => [p.id, p.name, p.cls, Math.round(p.x), Math.round(p.y), Math.round(p.hp), p.mhp, p.wood, p.stone, p.food, p.down, Math.round(p.rev * 10) / 10]),
+      p: [...this.players.values()].map(p => [p.id, p.name, p.cls, Math.round(p.x), Math.round(p.y), Math.round(p.hp), p.mhp, p.wood, p.stone, p.food, p.down, Math.round(p.rev * 10) / 10, p.sw, p.swk, Math.round(p.swa * 100)]),
       a: this.aliens.map(a => [a.id, Math.round(a.x), Math.round(a.y), Math.round(a.hp), a.mhp, a.k]),
-      r: this.res.map(r => r.alive).join(''),
+      r: this.res.map(r => r.hp).join(''),
+      dr: this.drops.map(d => [d.id, d.k, Math.round(d.x), Math.round(d.y)]),
     });
   }
 }
