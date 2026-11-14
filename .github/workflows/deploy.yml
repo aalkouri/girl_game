@@ -24,7 +24,7 @@ jobs:
         run: node --check server.js && node --check auth.js && node --check public/game.js
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::ACCOUNT_ID_HERE:role/island-night-github-deploy
+          role-to-assume: arn:aws:iam::405433667541:role/island-night-github-deploy
           aws-region: ${{ env.AWS_REGION }}
       - name: Deploy over SSM
         run: |
