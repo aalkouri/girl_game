@@ -4,7 +4,7 @@ const { WebSocketServer } = require('ws');
 const GC = require('./public/classes.js');
 const PORT = process.env.PORT || 80;
 const PUB = path.join(__dirname, 'public');
-const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
+const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.txt': 'text/plain' };
 
 // ---------- player profiles (no login: a secret random id stored in the player's browser) ----------
 function pickDir() {
@@ -23,6 +23,7 @@ function save() {
 }
 let config = {}; try { config = JSON.parse(fs.readFileSync(path.join(DIR || '.', 'config.json'), 'utf8')); } catch (e) { }
 if (process.env.GOOGLE_CLIENT_ID) config.googleClientId = process.env.GOOGLE_CLIENT_ID;
+if (process.env.APPLE_CLIENT_ID) config.appleClientId = process.env.APPLE_CLIENT_ID;
 if (process.env.MAIL_MODE) config.mailMode = process.env.MAIL_MODE;
 if (process.env.MAIL_FROM) config.mailFrom = process.env.MAIL_FROM;
 const auth = require('./auth.js')({ dir: DIR, config });
@@ -67,7 +68,7 @@ const login = (email, tok, extra) => Object.assign({ ok: true, token: tok, email
 async function api(q, s, u) {
   const ip = clientIp(q);
   if (!auth.allow('api:' + ip, 240, 60000)) return json(s, 429, { ok: false, err: 'Slow down.' });
-  if (u.pathname === '/api/config' && q.method === 'GET') return json(s, 200, { ok: true, google: config.googleClientId || null });
+  if (u.pathname === '/api/config' && q.method === 'GET') return json(s, 200, { ok: true, google: config.googleClientId || null, apple: config.appleClientId || null });
   if (q.method !== 'POST') return json(s, 405, { ok: false });
   const b = await body(q); if (!b) return json(s, 400, { ok: false, err: 'Bad request.' });
   switch (u.pathname) {
@@ -79,6 +80,10 @@ async function api(q, s, u) {
     }
     case '/api/auth/google': {
       const r = await auth.verifyGoogle(b.credential); if (!r.ok) return json(s, 200, r);
+      claimLegacy(r.email, b.pid); return json(s, 200, login(r.email, auth.createSession(r.email), { name: r.name }));
+    }
+    case '/api/auth/apple': {
+      const r = await auth.verifyApple(b.credential); if (!r.ok) return json(s, 200, r);
       claimLegacy(r.email, b.pid); return json(s, 200, login(r.email, auth.createSession(r.email), { name: r.name }));
     }
     case '/api/auth/session': { const e = auth.sessionEmail(b.token); return json(s, 200, e ? login(e, b.token) : { ok: false }); }

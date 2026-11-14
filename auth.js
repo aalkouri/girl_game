@@ -75,34 +75,41 @@ module.exports = function makeAuth({ dir, config }) {
     codes.delete(e); return { ok: true, email: e };
   }
 
-  // ---- Google ID token verification ----
-  let jwks = null, jwksAt = 0;
-  const getJson = url => new Promise((res, rej) => https.get(url, r => { let b = ''; r.on('data', d => b += d); r.on('end', () => { try { res(JSON.parse(b)); } catch (e) { rej(e); } }); }).on('error', rej));
-  async function keys(force) {
-    if (!force && jwks && Date.now() - jwksAt < 3600e3) return jwks;
-    const j = await (config._fetchKeys ? config._fetchKeys() : getJson('https://www.googleapis.com/oauth2/v3/certs'));
-    jwks = j.keys || []; jwksAt = Date.now(); return jwks;
-  }
-  const b64 = s => Buffer.from(String(s).replace(/-/g, '+').replace(/_/g, '/'), 'base64');
-  async function verifyGoogle(cred) {
-    const bad = err => ({ ok: false, err: err || 'Google sign-in failed. Please try again.' });
-    if (!config.googleClientId) return bad('Google sign-in is not set up yet.');
-    const parts = String(cred || '').split('.'); if (parts.length !== 3) return bad();
-    let h, p; try { h = JSON.parse(b64(parts[0])); p = JSON.parse(b64(parts[1])); } catch (e) { return bad(); }
-    if (h.alg !== 'RS256' || !h.kid) return bad();
-    try {
-      let k = (await keys(false)).find(x => x.kid === h.kid); if (!k) k = (await keys(true)).find(x => x.kid === h.kid);
-      if (!k) return bad();
-      const pub = crypto.createPublicKey({ key: k, format: 'jwk' });
-      if (!crypto.verify('RSA-SHA256', Buffer.from(parts[0] + '.' + parts[1]), pub, b64(parts[2]))) return bad();
-    } catch (e) { console.error('google verify error:', e.message); return bad(); }
-    const now = Date.now() / 1000;
-    if (p.iss !== 'accounts.google.com' && p.iss !== 'https://accounts.google.com') return bad();
-    if (p.aud !== config.googleClientId || !(p.exp > now) || p.nbf > now + 60) return bad();
-    if (p.email_verified !== true && p.email_verified !== 'true') return bad('Your Google email is not verified.');
-    const email = normEmail(p.email); if (!email) return bad();
-    return { ok: true, email, name: String(p.name || '').slice(0, 40) };
-  }
+  // ---- OpenID Connect ID-token verification (Google, Apple) ----
+const PROVIDERS = {
+  google: { jwks: 'https://www.googleapis.com/oauth2/v3/certs', iss: ['accounts.google.com', 'https://accounts.google.com'], cid: c => c.googleClientId },
+  apple: { jwks: 'https://appleid.apple.com/auth/keys', iss: ['https://appleid.apple.com'], cid: c => c.appleClientId },
+};
+const keyCache = {};
+const getJson = url => new Promise((res, rej) => https.get(url, r => { let b = ''; r.on('data', d => b += d); r.on('end', () => { try { res(JSON.parse(b)); } catch (e) { rej(e); } }); }).on('error', rej));
+async function keys(prov, force) {
+  const c = keyCache[prov];
+  if (!force && c && Date.now() - c.at < 3600e3) return c.keys;
+  const j = await (config._fetchKeys ? config._fetchKeys(prov) : getJson(PROVIDERS[prov].jwks));
+  keyCache[prov] = { keys: j.keys || [], at: Date.now() }; return keyCache[prov].keys;
+}
+const b64 = s => Buffer.from(String(s).replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+async function verifyIdToken(prov, cred) {
+  const P = PROVIDERS[prov], name = prov === 'apple' ? 'Apple' : 'Google';
+  const bad = err => ({ ok: false, err: err || name + ' sign-in failed. Please try again.' });
+  const cid = P.cid(config); if (!cid) return bad(name + ' sign-in is not set up yet.');
+  const parts = String(cred || '').split('.'); if (parts.length !== 3) return bad();
+  let h, p; try { h = JSON.parse(b64(parts[0])); p = JSON.parse(b64(parts[1])); } catch (e) { return bad(); }
+  if (h.alg !== 'RS256' || !h.kid) return bad();
+  try {
+    let k = (await keys(prov, false)).find(x => x.kid === h.kid); if (!k) k = (await keys(prov, true)).find(x => x.kid === h.kid);
+    if (!k) return bad();
+    const pub = crypto.createPublicKey({ key: k, format: 'jwk' });
+    if (!crypto.verify('RSA-SHA256', Buffer.from(parts[0] + '.' + parts[1]), pub, b64(parts[2]))) return bad();
+  } catch (e) { console.error(prov + ' verify error:', e.message); return bad(); }
+  const now = Date.now() / 1000;
+  if (!P.iss.includes(p.iss)) return bad();
+  if (p.aud !== cid || !(p.exp > now) || p.nbf > now + 60) return bad();
+  if (p.email_verified !== true && p.email_verified !== 'true') return bad('Your ' + name + ' email is not verified.');
+  const email = normEmail(p.email); if (!email) return bad(prov === 'apple' ? 'Apple did not share an email address. Try again and allow email sharing (or Hide My Email).' : undefined);
+  return { ok: true, email, name: String(p.name || '').slice(0, 40), relay: p.is_private_email === true || p.is_private_email === 'true' };
+}
+const verifyGoogle = c => verifyIdToken('google', c), verifyApple = c => verifyIdToken('apple', c);
 
-  return { normEmail, createSession, sessionEmail, logout, startEmail, verifyEmail, verifyGoogle, save, allow };
+  return { normEmail, createSession, sessionEmail, logout, startEmail, verifyEmail, verifyGoogle, verifyApple, save, allow };
 };

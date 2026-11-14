@@ -494,14 +494,30 @@ function initGoogle(clientId) {
       if (r.ok) loggedIn(r); else $('lmsg').textContent = r.err || 'Google sign-in failed.';
     }, auto_select: false });
     google.accounts.id.renderButton($('gbtn'), { theme: 'filled_blue', size: 'large', text: 'signin_with', shape: 'pill', width: 280 });
-    $('gwrap').style.display = '';
+    $('gwrap').style.display = ''; $('orline').style.display = '';
   };
   sc.onerror = () => { $('gwrap').style.display = 'none'; };
   document.head.appendChild(sc);
 }
+function initApple(clientId) {
+  const sc = document.createElement('script'); sc.async = true; sc.src = 'https://appleid.cdn-apple.com/appleauth/static/jsapi/appleid/1/en_US/appleid.auth.js';
+  sc.onload = () => {
+    try { AppleID.auth.init({ clientId, scope: 'name email', redirectURI: location.origin + '/', usePopup: true }); } catch (e) { return; }
+    $('awrap').style.display = ''; $('orline').style.display = '';
+  };
+  sc.onerror = () => { $('awrap').style.display = 'none'; };
+  document.head.appendChild(sc);
+  document.addEventListener('AppleIDSignInOnSuccess', async ev => {
+    const cred = ev.detail && ev.detail.authorization && ev.detail.authorization.id_token; if (!cred) return;
+    $('lmsg').textContent = 'Signing in...'; const r = await post('/api/auth/apple', { credential: cred, pid: legacyPid() });
+    if (r.ok) loggedIn(r); else $('lmsg').textContent = r.err || 'Apple sign-in failed.';
+  });
+  document.addEventListener('AppleIDSignInOnFailure', ev => { const e = ev.detail && ev.detail.error; if (e && e !== 'popup_closed_by_user' && e !== 'user_cancelled_authorize') $('lmsg').textContent = 'Apple sign-in was cancelled or failed.'; });
+}
 (async function boot() {
   try { cfg = await (await fetch('/api/config', { cache: 'no-store' })).json(); } catch (e) { cfg = {}; }
   if (cfg.google) initGoogle(cfg.google);
+  if (cfg.apple) initApple(cfg.apple);
   if (token) { const r = await post('/api/auth/session', { token }); if (r.ok) { loggedIn(r); return; } token = ''; try { localStorage.removeItem('tok'); } catch (e) { } }
   showLogin('');
 })();
