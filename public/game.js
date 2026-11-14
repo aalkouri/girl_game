@@ -237,6 +237,7 @@ function angLerp(a, b, k) { let d = ((b - a + Math.PI) % TAU + TAU) % TAU - Math
 
 function onSnap(m) {
   const prevS = S; S = m; const seen = {};
+  const meE = ents2['p' + myId], _d = (x, y) => meE ? Math.hypot(x - meE.x, y - meE.y) : 0, _dx = x => meE ? x - meE.x : 0;
   for (const p of m.p) {
     const k = 'p' + p[0]; seen[k] = 1; let e = ents2[k];
     if (!e) { e = ents2[k] = mkPlayer(p); e.x = e.tx = p[3]; e.y = e.ty = p[4]; e.c.position.set(e.x, e.y); }
@@ -245,17 +246,17 @@ function onSnap(m) {
   for (const a of m.a) {
     const k = 'a' + a[0]; seen[k] = 1; let e = ents2[k];
     if (!e) { e = ents2[k] = mkAlien(a); e.x = e.tx = a[1]; e.y = e.ty = a[2]; e.c.position.set(e.x, e.y); }
-    if (e.lh >= 0 && a[3] < e.lh) { e.flash = .12; burst(e.x, e.y, 6, 0xc6ff2a, 120, true, .1); }
+    if (e.lh >= 0 && a[3] < e.lh) { e.flash = .12; burst(e.x, e.y, 6, 0xc6ff2a, 120, true, .1); SFX.hit(_d(e.x, e.y), _dx(e.x)); }
     e.lh = a[3]; e.tx = a[1]; e.ty = a[2]; e.d = a;
   }
   for (const k in ents2) if (!seen[k]) {
     const e = ents2[k];
-    if (e.kind === 'a') { burst(e.x, e.y, 14, 0xb45fe0, 160, true, .2); burst(e.x, e.y, 8, 0xc6ff2a, 90, true, .12); e.eyes.forEach(s => s.destroy()); }
+    if (e.kind === 'a') { SFX.alienDie(_d(e.x, e.y), _dx(e.x)); burst(e.x, e.y, 14, 0xb45fe0, 160, true, .2); burst(e.x, e.y, 8, 0xc6ff2a, 90, true, .12); e.eyes.forEach(s => s.destroy()); }
     e.c.destroy({ children: true }); delete ents2[k];
   }
   if (built) for (let i = 0; i < resNodes.length; i++) {
     const r = resNodes[i], al = m.r[i] === '1';
-    if (r.alive && !al) { burst(r.x, r.y - 8, 10, r.k === 't' ? 0x5fbf5a : r.k === 'r' ? 0xb0b6be : 0xe53935, 140, false, .12); r.c.visible = false; }
+    if (r.alive && !al) { (r.k === 't' ? SFX.chop : r.k === 'r' ? SFX.mine : SFX.pick)(_d(r.x, r.y), _dx(r.x)); burst(r.x, r.y - 8, 10, r.k === 't' ? 0x5fbf5a : r.k === 'r' ? 0xb0b6be : 0xe53935, 140, false, .12); r.c.visible = false; }
     if (!r.alive && al) { r.c.visible = true; r.pop = 0; }
     r.alive = al;
   }
@@ -264,10 +265,17 @@ function onSnap(m) {
     if (lastInv) { const dw = mp[7] - lastInv[0], ds = mp[8] - lastInv[1], df = mp[9] - lastInv[2], e = ents2['p' + myId];
       if (e) { if (dw > 0) floatText(e.x, e.y, '+' + dw + ' wood', 0xffcc80); if (ds > 0) floatText(e.x, e.y, '+' + ds + ' stone', 0xcfd8dc); if (df > 0) floatText(e.x, e.y, '+' + df + ' food', 0xff8a80); } }
     lastInv = [mp[7], mp[8], mp[9]];
-    if (lastHp !== null && mp[5] < lastHp) { shake = .3; const h = $('hurt'); h.style.opacity = '1'; setTimeout(() => h.style.opacity = '0', 120); }
+    if (lastHp !== null && mp[5] < lastHp) { shake = .3; SFX.hurt(); const h = $('hurt'); h.style.opacity = '1'; setTimeout(() => h.style.opacity = '0', 120); }
     lastHp = mp[5];
   }
-  if (prevS && m.n > prevS.n) floatText(0, -120, 'Night ' + m.n + ' begins' , 0xffffff);
+  if (prevS && m.n > prevS.n) floatText(0, -120, 'Night ' + m.n + ' begins', 0xffffff);
+  if (prevS) {
+    if (m.ph !== prevS.ph) { if (m.ph === 1) SFX.horn(); else if (m.ph === 2) SFX.night(); else SFX.dawn(); }
+    if (m.f[0] > prevS.f[0] + 5) SFX.feed();
+    if (m.f[2] > prevS.f[2]) SFX.levelup();
+    if (prevS.f[0] > 0 && m.f[0] <= 0) SFX.fireOut();
+    for (const p of m.p) { const o = prevS.p.find(q => q[0] === p[0]); if (!o) continue; if (!o[10] && p[10] && p[0] === myId) SFX.down(); if (o[10] && !p[10]) SFX.revive(); }
+  }
 }
 
 // ---------- frame ----------
@@ -293,11 +301,12 @@ app.ticker.add(() => {
       e.body.rotation = down ? 1.2 : e.ang; e.body.tint = down ? 0x777777 : 0xffffff;
       e.body.y = down ? 0 : Math.sin(T * 16 + e.x) * (sp > 12 ? 1.8 : .4); e.body.scale.y = (down ? .6 : .85) * (1 + (sp > 12 ? Math.sin(T * 16) * .04 : 0));
       if (e.lh !== p[5] || e.ld !== p[10] || e.lr !== p[11]) { e.lh = p[5]; e.ld = p[10]; e.lr = p[11]; if (p[10]) drawHp(e.hp, 40, Math.min(1, p[11] / 3), 0x4caf50); else drawHp(e.hp, 34, p[5] / p[6], 0xef5350); }
-      if (sp > 30 && !down) { e.dust -= dt; if (e.dust <= 0) { e.dust = .14; emit(pfx, T_GLOW, e.x, e.y + 8, rnd(-8, 8), rnd(-8, 4), .5, .12, .3, 0xd9c79a, .35, false, 0); } }
+      if (sp > 30 && !down) { e.st = (e.st || 0) - dt; if (e.st <= 0) { e.st = .3; SFX.step(Math.hypot(e.x - me.x, e.y - me.y), e.x - me.x); } e.dust -= dt; if (e.dust <= 0) { e.dust = .14; emit(pfx, T_GLOW, e.x, e.y + 8, rnd(-8, 8), rnd(-8, 4), .5, .12, .3, 0xd9c79a, .35, false, 0); } }
     } else {
       const a = e.d; e.age += dt; e.c.alpha = Math.min(1, e.age * 2);
       if (sp > 8) e.ang = angLerp(e.ang, Math.atan2(vy, vx), Math.min(1, dt * 8));
       e.body.rotation = e.ang; const pulse = 1 + Math.sin(T * 9 + e.x * .1) * .05; e.body.scale.set(e.sc * pulse);
+      if (S.ph === 2 && Math.random() < dt * .12) { const gd = Math.hypot(e.x - me.x, e.y - me.y); if (gd < 520) SFX.growl(gd, e.x - me.x); }
       e.flash = Math.max(0, e.flash - dt); e.body.tint = e.flash > 0 ? 0xffffff : e.big ? 0xff9ad0 : 0xffffff;
       if (a[3] < a[4] && e.lh2 !== a[3]) { e.lh2 = a[3]; drawHp(e.hp, e.big ? 50 : 26, a[3] / a[4], 0xb6ff3c); e.hp.y = e.big ? -42 : -26; e.hp.visible = true; }
       const ca = Math.cos(e.ang), sa = Math.sin(e.ang), o = e.big ? 20 : 10, sy = e.big ? 12 : 6;
@@ -344,6 +353,8 @@ app.ticker.add(() => {
   const nk = d / .74;
   fogs.forEach(s => { s.visible = nk > .05; s.alpha = .13 * nk; s.scale.set(Math.max(W, H) / 128 * s.sc * 1.2); s.position.set(W / 2 + Math.sin(T * s.sp + s.ph) * W * .35 - camX * .15 % 50, H / 2 + Math.cos(T * s.sp * .8 + s.ph) * H * .3); });
   flies.forEach(s => { s.visible = nk > .1; if (!s.visible) return; s.position.set(camX + s.fx + Math.sin(T * .6 + s.ph) * 40, camY + s.fy + Math.cos(T * .5 + s.ph) * 30); s.alpha = nk * (.4 + .6 * Math.abs(Math.sin(T * 1.7 + s.ph))); });
+  const md = Math.hypot(me.x, me.y);
+  SFX.update({ night: d / .74, shore: clamp(1 - (edge(Math.atan2(me.y, me.x)) - md) / 260, 0, 1), fire: alive ? clamp(1 - md / 520, 0, 1) : 0, alive });
   hud(me);
 });
 
@@ -370,6 +381,7 @@ try { $('name').value = localStorage.getItem('nm') || ''; } catch (e) { }
 const q = new URLSearchParams(location.search).get('room'); if (q) $('room').value = q;
 document.querySelectorAll('#cls div').forEach(d => d.onclick = () => { document.querySelectorAll('#cls div').forEach(x => x.classList.remove('sel')); d.classList.add('sel'); sel = d.dataset.c; });
 $('go').onclick = () => {
+  SFX.init();
   const name = $('name').value.trim() || 'Survivor'; try { localStorage.setItem('nm', name); } catch (e) { }
   $('err').textContent = 'Connecting...';
   ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
@@ -388,6 +400,9 @@ $('go').onclick = () => {
 };
 $('rm').onclick = () => { const u = location.origin + '/?room=' + roomCode; try { navigator.clipboard.writeText(u); $('rm').textContent = 'Link copied!'; } catch (e) { prompt('Share this link', u); } };
 
+const snd = $('snd'); const sndIcon = () => snd.textContent = SFX.isMuted() ? '🔇' : '🔊'; sndIcon();
+snd.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); SFX.init(); SFX.setMuted(!SFX.isMuted()); sndIcon(); });
+addEventListener('pointerdown', () => SFX.resume());
 // ---------- input ----------
 let joy = null, act = 0, hit = 0; const keys = {};
 const jb = $('jbase'), jk = $('jknob');
