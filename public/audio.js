@@ -95,7 +95,7 @@ const SFX = (() => {
   // st: {night:0..1, shore:0..1, fire:0..1 (proximity), alive:bool, moving:bool}
   function update(st) {
     if (!ctx || !amb) return; const t = ctx.currentTime, k = .4;
-    amb.waves.gain.setTargetAtTime(.02 + .18 * st.shore, t, k);
+    amb.waves.gain.setTargetAtTime(.003 + .21 * st.shore, t, k);   // st.shore = how much of the screen is ocean (0 = none visible)
     amb.wind.gain.setTargetAtTime(.01 + .07 * st.night, t, k);
     amb.crick.gain.setTargetAtTime(.012 * st.night * (1 - .8 * st.fire), t, k);
     amb.day.gain.setTargetAtTime(.04 * (1 - st.night), t, 1.2);

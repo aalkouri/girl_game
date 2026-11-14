@@ -126,7 +126,7 @@ const ROOM_IDLE_SEC = +process.env.ROOM_IDLE_SEC || 20 * 60;   // an empty room 
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const CAMP_CLEAR = RC.camp(5) + 30;          // no trees anywhere the camp can grow to (max level)
 const HP = { t: 4, r: 3, b: 1 };            // hits to break: tree 4, rock 3, berry bush 1
-const STRUCT = { bench: { r: 30 }, chest: { r: 26 }, pot: { r: 24 }, smelter: { r: 30 }, wall: { r: 24, hp: 60 } };
+const STRUCT = { bench: { r: RC.RADIUS.bench }, chest: { r: RC.RADIUS.chest }, pot: { r: RC.RADIUS.pot }, smelter: { r: RC.RADIUS.smelter }, wall: { r: RC.RADIUS.wall, hp: 60 } };
 const CHEST_CAP = 500, REACH = 62;   // collision radius / hit points of placed structures
 const SPILL = { t: 5, r: 3 };               // logs per tree / stones per rock (before class bonus)
 
@@ -349,7 +349,7 @@ class Room {
     return JSON.stringify({
       t: 's', c: Math.round(this.c * 10) / 10, n: this.night, ph: this.ph(), o: this.over > 0 ? 1 : 0,
       f: [Math.round(f.fuel), 150 + (f.lvl - 1) * 75, f.lvl, f.fuel > 0 ? RC.camp(f.lvl) : 0],
-      p: [...this.players.values()].map(p => [p.id, p.name, p.cls, Math.round(p.x), Math.round(p.y), Math.round(p.hp), p.mhp, p.wood, p.stone, p.food, p.down, Math.round(p.rev * 10) / 10, p.sw, p.swk, Math.round(p.swa * 100), p.scrap]),
+      p: [...this.players.values()].map(p => [p.id, p.name, p.cls, Math.round(p.x), Math.round(p.y), Math.round(p.hp), p.mhp, p.wood, p.stone, p.food, p.down, Math.round(p.rev * 10) / 10, p.sw, p.swk, Math.round(p.swa * 100), p.scrap, Math.round(p.fa * 100)]),
       a: this.aliens.map(a => [a.id, Math.round(a.x), Math.round(a.y), Math.round(a.hp), a.mhp, a.k]),
       r: this.res.map(r => Math.max(0, Math.ceil(r.hp - 1e-9))).join(''),
       dr: this.drops.map(d => [d.id, d.k, Math.round(d.x), Math.round(d.y)]),

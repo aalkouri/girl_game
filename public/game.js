@@ -493,6 +493,53 @@ function stepStructs(dt) {
     if (e.k === 'wall') { if (e.barT > 0) { e.barT -= dt; e.hp.alpha = Math.min(1, e.barT * 2); if (e.lbar !== e.hpv) { e.lbar = e.hpv; drawHp(e.hp, 34, e.hpv / e.mhp, 0xffb74d); } } else if (e.hp.alpha) e.hp.alpha = 0; }
   }
 }
+// ---- placement ghost: craft a placeable item, walk to aim, press ACT to put it down ----
+let placingId = null, ghost = null, ghostRing = null, ghostF = null, lastPlaceAt = 0;
+const PLACE_AHEAD = 58;   // must match the server
+function placeCheck(r, x, y) {   // mirrors the server's rules so the silhouette can show green/red; the server stays in charge
+  const d = Math.hypot(x, y), campR = RC.camp(S.f[2]), sr = RC.RADIUS[r.kind], station = r.kind !== 'wall';
+  if (station && d < 75) return 'Too close to the fire';
+  if (station && d > campR) return 'Must be inside the camp (the fire ring)';
+  if (!station && d < 75) return 'Too close to the fire';
+  if (!station && d > campR + 200) return 'Too far from camp';
+  if (d > RR - 50) return 'Too close to the water';
+  if ((S.st || []).filter(t => t[1] === r.kind).length >= (r.max || 99)) return 'You built the maximum of these';
+  for (const t of S.st || []) {
+    const stWall = t[1] === 'wall', dd = Math.hypot(t[2] - x, t[3] - y), need = station && !stWall ? RC.STATION_GAP : (station || !stWall) ? RC.WALL_GAP : RC.RADIUS[t[1]] + sr - 4;
+    if (dd < need) return need > 60 ? 'Too close to another structure' : 'Something is already there';
+  }
+  const mp = S.p.find(p => p[0] === myId); if (mp && (mp[7] < r.cost.wood || mp[8] < r.cost.stone)) return 'Not enough materials';
+  return '';
+}
+function startPlacing(r) {
+  stopPlacing(); setCraft(false); closeChest(); closePot();
+  const D = SDEF[r.kind]; placingId = r.id;
+  ghost = new PIXI.Sprite(D.tex); ghost.anchor.set(.5, D.ay); ghost.scale.set(D.base);
+  ghostF = new PIXI.ColorMatrixFilter(); ghost.filters = [ghostF]; ents.addChild(ghost);
+  ghostRing = new PIXI.Graphics(); pfx.addChild(ghostRing);
+  $('placeBar').style.display = 'flex'; $('placeName').textContent = r.e + ' ' + r.n; $('placeMsg').textContent = '';
+}
+function stopPlacing() {
+  if (ghost) { ghost.destroy(); ghost = null; } if (ghostRing) { ghostRing.destroy(); ghostRing = null; }
+  ghostF = null; placingId = null; $('placeBar').style.display = 'none';
+}
+function updateGhost(me) {
+  if (!placingId || !ghost) return;
+  const r = RC.BY[placingId], mp = S.p.find(p => p[0] === myId), fa = mp && mp[16] !== undefined ? mp[16] / 100 : 0;
+  const x = me.x + Math.cos(fa) * PLACE_AHEAD, y = me.y + Math.sin(fa) * PLACE_AHEAD, why = placeCheck(r, x, y), ok = !why;
+  ghost.position.set(x, y); ghost.zIndex = y + 1; ghost.alpha = .55 + Math.sin(T * 5) * .1;
+  ghostF.matrix = ok ? [0, 0, 0, 0, .35, 0, 0, 0, 0, 1, 0, 0, 0, 0, .5, 0, 0, 0, 1, 0] : [0, 0, 0, 0, 1, 0, 0, 0, 0, .3, 0, 0, 0, 0, .3, 0, 0, 0, 1, 0];
+  const col = ok ? 0x66ff88 : 0xff5a5a, rad = RC.RADIUS[r.kind];
+  ghostRing.clear(); ghostRing.lineStyle(3, col, .9); ghostRing.beginFill(col, .16); ghostRing.drawCircle(x, y, rad); ghostRing.endFill();
+  const msg = ok ? 'Looks good - press ACT to place' : why; const pm = $('placeMsg'); if (pm.textContent !== msg || pm.dataset.ok !== String(ok)) { pm.textContent = msg; pm.style.color = ok ? '#8dffa8' : '#ff8a80'; pm.dataset.ok = ok; }
+}
+function actPress() {   // rising edge of the ACT button while placing: ask the server to place (it pays and checks the rules)
+  if (!placingId || !ws || ws.readyState !== 1) return;
+  const now = performance.now(); if (now - lastPlaceAt < 250) return; lastPlaceAt = now;
+  ws.send(JSON.stringify({ t: 'craft', id: placingId }));
+}
+$('placeCancel').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); stopPlacing(); });
+
 // ---- crafting menu ----
 const inv = () => { const mp = S && S.p.find(p => p[0] === myId); return mp ? { wood: mp[7], stone: mp[8] } : { wood: 0, stone: 0 }; };
 const hasBench = () => !!(S && S.st && S.st.some(t => t[1] === 'bench'));
@@ -506,8 +553,9 @@ function buildCraft() {
     const co = [r.cost.wood ? '<span class="' + (iv.wood >= r.cost.wood ? '' : 'no') + '">🪵 ' + iv.wood + '/' + r.cost.wood + '</span>' : '', r.cost.stone ? '<span class="' + (iv.stone >= r.cost.stone ? '' : 'no') + '">🪨 ' + iv.stone + '/' + r.cost.stone + '</span>' : ''].filter(Boolean).join(' &nbsp; ');
     const d = document.createElement('div'); d.className = 'rc';
     d.innerHTML = '<div class="ic">' + r.e + '</div><div class="tx"><div class="nm">' + r.n + '</div><div class="ds">' + r.d + '</div><div class="co">' + co + '</div></div>';
-    const b = document.createElement('button'); b.textContent = owned ? '✔ Owned' : ok ? 'Craft' : 'Need more'; b.disabled = !!owned || !ok;
-    b.onclick = () => { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'craft', id: r.id })); };
+    const placeable = r.kind !== 'gear';
+    const b = document.createElement('button'); b.textContent = owned ? '✔ Owned' : ok ? (placeable ? 'Place' : 'Craft') : 'Need more'; b.disabled = !!owned || !ok;
+    b.onclick = () => { if (placeable) startPlacing(r); else if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'craft', id: r.id })); };
     d.appendChild(b); list.appendChild(d);
   }
   craftSig = refreshSig();
@@ -669,6 +717,7 @@ app.ticker.add(() => {
     if (r.pop < 1) { r.pop = Math.min(1, r.pop + dt * 2.5); const b = 1 - Math.pow(1 - r.pop, 3); r.s.scale.set(r.base * (.2 + .8 * b)); }
     if (r.shake <= 0) { if (r.k === 't') r.s.skew.x = Math.sin(T * 1.3 + r.ph) * .035 + Math.sin(T * 3.1 + r.ph) * .01; else if (r.k === 'b') r.s.skew.x = Math.sin(T * 2 + r.ph) * .02; }
   }
+  updateGhost(me);
   // camera
   camX += (me.x - camX) * Math.min(1, dt * 10); camY += (me.y - camY) * Math.min(1, dt * 10);
   if (T < 1) { camX = me.x; camY = me.y; }
@@ -704,7 +753,10 @@ app.ticker.add(() => {
   fogs.forEach(s => { s.visible = nk > .05; s.alpha = .13 * nk; s.scale.set(Math.max(W, H) / 128 * s.sc * 1.2); s.position.set(W / 2 + Math.sin(T * s.sp + s.ph) * W * .35 - camX * .15 % 50, H / 2 + Math.cos(T * s.sp * .8 + s.ph) * H * .3); });
   flies.forEach(s => { s.visible = nk > .1; if (!s.visible) return; s.position.set(camX + s.fx + Math.sin(T * .6 + s.ph) * 40, camY + s.fy + Math.cos(T * .5 + s.ph) * 30); s.alpha = nk * (.4 + .6 * Math.abs(Math.sin(T * 1.7 + s.ph))); });
   const md = Math.hypot(me.x, me.y);
-  SFX.update({ night: d / .74, shore: clamp(1 - (edge(Math.atan2(me.y, me.x)) - md) / 260, 0, 1), fire: alive ? clamp(1 - md / 520, 0, 1) : 0, alive });
+  // ocean sound: only when water is actually on screen. How far is the shore in the direction it lies, compared with how far the screen reaches that way?
+  const sAng = Math.atan2(me.y, me.x), shoreDist = edge(sAng) - md, ux = Math.max(Math.abs(Math.cos(sAng)), 1e-3), uy = Math.max(Math.abs(Math.sin(sAng)), 1e-3);
+  const reach = Math.min(W / Z / 2 / ux, H / Z / 2 / uy), shoreVis = clamp((reach - shoreDist) / (reach * .55), 0, 1);
+  SFX.update({ night: d / .74, shore: shoreVis * shoreVis, fire: alive ? clamp(1 - md / 520, 0, 1) : 0, alive });
   hud(me);
 });
 
@@ -866,6 +918,7 @@ $('go').onclick = () => {
       $('rm').textContent = 'Room ' + roomCode + ' (tap to copy link)'; tipUntil = performance.now() + 14000; history.replaceState(null, '', '?room=' + roomCode);
     } else if (m.t === 'crafted') {
       GEAR = m.gear || GEAR; const msg = $('craftMsg'); msg.textContent = m.msg || ''; msg.style.color = m.ok ? '#7fe9a0' : '#ff8a80';
+      if (placingId && m.id === placingId) { if (m.ok) { const r = RC.BY[placingId], mp = S && S.p.find(p => p[0] === myId); if (r.kind !== 'wall' || !mp || mp[7] < r.cost.wood || mp[8] < r.cost.stone) stopPlacing(); } else { const me0 = ents2['p' + myId]; if (me0) floatText(me0.x, me0.y - 6, m.msg || 'Cannot place here', 0xff8a80); } }
       if (m.ok) { SFX.levelup(); const me = ents2['p' + myId]; if (me) floatText(me.x, me.y - 10, m.msg, 0xffe082); }
       if (craftOpen) buildCraft();
     } else if (m.t === 'toast') {
@@ -897,12 +950,12 @@ const jend = e => { if (joy && joy.id === e.pointerId) { joy = null; jb.style.di
 app.view.addEventListener('pointerup', jend); app.view.addEventListener('pointercancel', jend);
 function jpos() { const dx = joy.x - joy.ox, dy = joy.y - joy.oy, m = Math.min(55, Math.hypot(dx, dy)), a = Math.atan2(dy, dx); jb.style.left = joy.ox + 'px'; jb.style.top = joy.oy + 'px'; jk.style.left = (joy.ox + Math.cos(a) * m) + 'px'; jk.style.top = (joy.oy + Math.sin(a) * m) + 'px'; }
 function bind(id, set) { const b = $(id); b.addEventListener('pointerdown', e => { e.preventDefault(); set(1); b.setPointerCapture(e.pointerId); b.style.transform = 'scale(.92)'; }); ['pointerup', 'pointercancel'].forEach(t => b.addEventListener(t, () => { set(0); b.style.transform = ''; })); }
-bind('act', v => act = v); bind('hit', v => hit = v);
-addEventListener('keydown', e => { keys[e.key.toLowerCase()] = 1; }); addEventListener('keyup', e => { keys[e.key.toLowerCase()] = 0; });
+bind('act', v => { act = v; if (v) actPress(); }); bind('hit', v => hit = v);
+addEventListener('keydown', e => { const k = e.key.toLowerCase(); if (!keys[k] && (k === ' ' || k === 'e') && !/INPUT|TEXTAREA/.test((e.target || {}).tagName || '')) actPress(); keys[k] = 1; }); addEventListener('keyup', e => { keys[e.key.toLowerCase()] = 0; });
 function readInput() {
   let dx = 0, dy = 0;
   if (joy) { dx = (joy.x - joy.ox) / 55; dy = (joy.y - joy.oy) / 55; const m = Math.hypot(dx, dy); if (m > 1) { dx /= m; dy /= m; } if (m < .12) dx = dy = 0; }
   if (keys.a || keys.arrowleft) dx -= 1; if (keys.d || keys.arrowright) dx += 1; if (keys.w || keys.arrowup) dy -= 1; if (keys.s || keys.arrowdown) dy += 1;
-  return { dx, dy, act: act || keys[' '] || keys.e ? 1 : 0, hit: hit || keys.f || keys.j ? 1 : 0 };
+  return { dx, dy, act: !placingId && (act || keys[' '] || keys.e) ? 1 : 0, hit: hit || keys.f || keys.j ? 1 : 0 };
 }
 setInterval(() => { if (ws && ws.readyState === 1 && myId) ws.send(JSON.stringify(Object.assign({ t: 'in' }, readInput()))); }, 50);
