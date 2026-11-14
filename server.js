@@ -122,6 +122,7 @@ const R = 1800;                      // island radius (doubled from 900)
 const ALIEN_R = 950;                 // aliens come ashore this far from the fire
 const DAY = 90, DUSK = 30, NIGHT = 60, CYC = DAY + DUSK + NIGHT;
 const MAXP = 8;
+const ROOM_IDLE_SEC = +process.env.ROOM_IDLE_SEC || 20 * 60;   // an empty room is kept this long; any join resets the timer
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const CAMP_CLEAR = RC.camp(5) + 30;          // no trees anywhere the camp can grow to (max level)
 const HP = { t: 4, r: 3, b: 1 };            // hits to break: tree 4, rock 3, berry bush 1
@@ -390,7 +391,7 @@ setInterval(() => {
   for (const [c, r] of rooms) {
     try { r.tick(1 / 30); } catch (e) { console.error('tick error:', e && e.stack || e); }
     if (tk % 2 === 0 && r.players.size) { const s = r.snap(); for (const p of r.players.values()) if (p.ws.readyState === 1) p.ws.send(s); }
-    if (r.emptyFor > 120) rooms.delete(c);
+    if (r.emptyFor > ROOM_IDLE_SEC) rooms.delete(c);   // nobody joined for the whole window: destroy the session
   }
 }, 1000 / 30);
 
