@@ -721,7 +721,8 @@ app.ticker.add(() => {
   // smoothing + node updates
   for (const k in ents2) {
     const e = ents2[k], ox = e.x, oy = e.y;
-    if (e.t0 === undefined) { e.px = e.x; e.py = e.y; e.t0 = -1e9; e.vx = e.vy = 0; e.ph = Math.random() * 6.28; }
+    if (e.ph === undefined) { e.vx = e.vy = 0; e.ph = Math.random() * 6.28; }
+    if (e.t0 === undefined) { e.px = e.x; e.py = e.y; e.t0 = -1e9; }
     // constant-speed glide from where we were to the newest server position over one snapshot interval (no exponential chasing)
     const u = Math.min(1.25, (performance.now() - e.t0) / 1000 / snapDur);
     e.x = e.px + (e.tx - e.px) * u; e.y = e.py + (e.ty - e.py) * u;
