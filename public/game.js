@@ -835,7 +835,13 @@ let token = '', myEmail = '', cfg = {};
 try { token = localStorage.getItem('tok') || ''; } catch (e) { }
 const PF = { d: 0, owned: GC.DEFAULT_OWNED.slice() };
 let sel = 'forester', hadCls = false; try { const sc = localStorage.getItem('cls'); if (sc) { sel = sc; hadCls = true; } } catch (e) { }
-function chosen() { const c = GC.BY[sel] || GC.BY.forester; $('cIcon').textContent = c.e; $('cName').textContent = c.n; }
+function chosen() {
+  const c = GC.BY[sel] || GC.BY.forester, ic = $('cIcon');
+  ic.textContent = '';
+  if (PCAN[c.id]) { const cv = document.createElement('canvas'); cv.width = cv.height = 64; cv.getContext('2d').drawImage(PCAN[c.id], 0, 0); cv.style.cssText = 'width:36px;height:36px;display:block'; ic.appendChild(cv); }
+  else ic.textContent = c.e;
+  $('cName').textContent = c.n;
+}
 function setDia(n) { PF.d = n; document.querySelectorAll('.diaN').forEach(e => e.textContent = n); }
 function applyProfile(pr, useLast) {
   PF.owned = pr.owned; setDia(pr.d);
