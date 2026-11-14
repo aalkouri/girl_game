@@ -169,8 +169,9 @@ class Room {
     if (r.kind !== 'gear') {
       const x = p.x + Math.cos(p.fa) * 58, y = p.y + Math.sin(p.fa) * 58, d = Math.hypot(x, y), campR = RC.camp(this.fire.lvl);
       const sr = STRUCT[r.kind].r, station = r.kind !== 'wall';
-      if (station && (d < 75 || d > campR)) return fail('Stand inside the camp (the fire ring), a little away from the fire, facing a free spot.');
-      if (!station && (d < 75 || d > campR + 200)) return fail('Walls go in or just outside the camp, not on the fire pit.');
+      if (d < RC.fireClear(r.kind)) return fail('Too close to the fire. Nothing can be built on or against it.');
+      if (station && d > campR) return fail('Stand inside the camp (the fire ring), a little away from the fire, facing a free spot.');
+      if (!station && d > campR + 200) return fail('Walls go in or just outside the camp.');
       if (d > R - 50) return fail('Too close to the water.');
       if (this.struct.filter(st => st.k === r.kind).length >= (r.max || 99)) return fail('You have built the maximum number of those.');
       for (const st of this.struct) {   // nothing may be crafted too close to anything else

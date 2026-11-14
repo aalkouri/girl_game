@@ -494,13 +494,12 @@ function stepStructs(dt) {
   }
 }
 // ---- placement ghost: craft a placeable item, walk to aim, press ACT to put it down ----
-let placingId = null, ghost = null, ghostRing = null, ghostF = null, lastPlaceAt = 0;
+let placingId = null, ghost = null, ghostF = null, lastPlaceAt = 0;
 const PLACE_AHEAD = 58;   // must match the server
 function placeCheck(r, x, y) {   // mirrors the server's rules so the silhouette can show green/red; the server stays in charge
   const d = Math.hypot(x, y), campR = RC.camp(S.f[2]), sr = RC.RADIUS[r.kind], station = r.kind !== 'wall';
-  if (station && d < 75) return 'Too close to the fire';
+  if (d < RC.fireClear(r.kind)) return 'Too close to the fire';
   if (station && d > campR) return 'Must be inside the camp (the fire ring)';
-  if (!station && d < 75) return 'Too close to the fire';
   if (!station && d > campR + 200) return 'Too far from camp';
   if (d > RR - 50) return 'Too close to the water';
   if ((S.st || []).filter(t => t[1] === r.kind).length >= (r.max || 99)) return 'You built the maximum of these';
@@ -516,11 +515,10 @@ function startPlacing(r) {
   const D = SDEF[r.kind]; placingId = r.id;
   ghost = new PIXI.Sprite(D.tex); ghost.anchor.set(.5, D.ay); ghost.scale.set(D.base);
   ghostF = new PIXI.ColorMatrixFilter(); ghost.filters = [ghostF]; ents.addChild(ghost);
-  ghostRing = new PIXI.Graphics(); pfx.addChild(ghostRing);
   $('placeBar').style.display = 'flex'; $('placeName').textContent = r.e + ' ' + r.n; $('placeMsg').textContent = '';
 }
 function stopPlacing() {
-  if (ghost) { ghost.destroy(); ghost = null; } if (ghostRing) { ghostRing.destroy(); ghostRing = null; }
+  if (ghost) { ghost.destroy(); ghost = null; }
   ghostF = null; placingId = null; $('placeBar').style.display = 'none';
 }
 function updateGhost(me) {
@@ -529,8 +527,6 @@ function updateGhost(me) {
   const x = me.x + Math.cos(fa) * PLACE_AHEAD, y = me.y + Math.sin(fa) * PLACE_AHEAD, why = placeCheck(r, x, y), ok = !why;
   ghost.position.set(x, y); ghost.zIndex = y + 1; ghost.alpha = .55 + Math.sin(T * 5) * .1;
   ghostF.matrix = ok ? [0, 0, 0, 0, .35, 0, 0, 0, 0, 1, 0, 0, 0, 0, .5, 0, 0, 0, 1, 0] : [0, 0, 0, 0, 1, 0, 0, 0, 0, .3, 0, 0, 0, 0, .3, 0, 0, 0, 1, 0];
-  const col = ok ? 0x66ff88 : 0xff5a5a, rad = RC.RADIUS[r.kind];
-  ghostRing.clear(); ghostRing.lineStyle(3, col, .9); ghostRing.beginFill(col, .16); ghostRing.drawCircle(x, y, rad); ghostRing.endFill();
   const msg = ok ? 'Looks good - press ACT to place' : why; const pm = $('placeMsg'); if (pm.textContent !== msg || pm.dataset.ok !== String(ok)) { pm.textContent = msg; pm.style.color = ok ? '#8dffa8' : '#ff8a80'; pm.dataset.ok = ok; }
 }
 function actPress() {   // rising edge of the ACT button while placing: ask the server to place (it pays and checks the rules)

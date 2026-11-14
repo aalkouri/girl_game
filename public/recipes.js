@@ -29,6 +29,8 @@
   // the camp (safe ring + build area) grows a little with every fire level
   const camp = lvl => 140 + lvl * 40;
   const SMELT = { cost: 5, time: 10, queue: 5 };   // rocks per scrap, seconds per scrap, jobs a smelter can hold
+  const FIRE_R = 46;   // footprint of the fire pit (flames + stone ring)
+  const fireClear = kind => FIRE_R + (({ bench: 30, chest: 26, pot: 24, smelter: 30, wall: 24 })[kind] || 24) + 10;   // closest an item's centre may be to the fire: its whole body stays off the pit
   const RADIUS = { bench: 30, chest: 26, pot: 24, smelter: 30, wall: 24 };   // collision radius of each placeable (shared by server and the placement ghost)
-  return { LIST, BY, FOOD, FOOD_BY, camp, SMELT, RADIUS, STATION_GAP: 120, WALL_GAP: 80 };
+  return { LIST, BY, FOOD, FOOD_BY, camp, SMELT, RADIUS, FIRE_R, fireClear, STATION_GAP: 120, WALL_GAP: 80 };
 });
