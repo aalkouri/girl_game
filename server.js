@@ -134,7 +134,7 @@ const CHARGER = { firstNight: 4, sp0: 175, spPerNight: 12, spMax: 320, dmg: 25, 
 
 class Room {
   constructor(code) {
-    this.code = code; this.players = new Map(); this.nid = 1; this.emptyFor = 0;
+    this.code = code; this.away = new Map(); this.players = new Map(); this.nid = 1; this.emptyFor = 0;
     this.res = [];
     const add = (k, n, min = 130) => { for (let i = 0; i < n; i++) { const a = Math.random() * 6.283, d = min + Math.sqrt(Math.random()) * (R - 70 - min); this.res.push({ k, x: Math.cos(a) * d, y: Math.sin(a) * d, hp: HP[k], mhp: HP[k], rt: 0 }); } };
     add('t', 135, CAMP_CLEAR); add('r', 84); add('b', 66);   // island area is 4x, so ~3x the resources
@@ -225,9 +225,19 @@ class Room {
     return { ok: true, msg: f.n + ' ready!' };
   }
   ph() { return this.c < DAY ? 0 : this.c < DAY + DUSK ? 1 : 2; }
-  add(ws, name, cls, pf) {
+  stash(p) {   // remember a leaving player's character so they can come back (dropped connection) within the room window
+    if (!p.email) return; const now = Date.now(); for (const [k, v] of this.away) if (now - v.t > ROOM_IDLE_SEC * 1000) this.away.delete(k);
+    this.away.set(p.email, { t: now, s: { wood: p.wood, stone: p.stone, food: p.food, scrap: p.scrap, gear: p.gear, buff: p.buff, cls: p.cls, down: p.down, hp: p.hp, x: p.x, y: p.y } });
+  }
+  add(ws, name, cls, pf, email) {
     const p = { id: this.nid++, ws, name, cls, prof: pf, gear: {}, buff: { speed: 0, regen: 0, dmg: 0 }, actPrev: 0, fa: 0, sw: 0, swk: 0, swa: 0, wood: parseInt(process.env.START_WOOD) || 0, stone: parseInt(process.env.START_STONE) || 0, food: parseInt(process.env.START_FOOD) || 0, scrap: 0, actcd: 0, hitcd: 0, eat: 0, inp: { dx: 0, dy: 0, act: 0, hit: 0 } };
-    this.respawn(p); this.players.set(p.id, p); return p;
+    p.email = email; this.respawn(p);
+    const a = email && this.away.get(email); this.away.delete(email);
+    if (a && Date.now() - a.t <= ROOM_IDLE_SEC * 1000) {   // welcome back: same stuff, same spot (a downed player just respawns)
+      const o = a.s; p.wood = o.wood; p.stone = o.stone; p.food = o.food; p.scrap = o.scrap; p.gear = o.gear; p.buff = o.buff;
+      if (o.cls === cls && !o.down) { p.hp = Math.min(p.mhp, o.hp); p.x = o.x; p.y = o.y; }
+    }
+    this.players.set(p.id, p); return p;
   }
   tick(dt) {
     const P = [...this.players.values()];
@@ -404,7 +414,7 @@ wss.on('connection', ws => {
       if (!rooms.has(rc)) rooms.set(rc, new Room(rc));
       room = rooms.get(rc);
       if (room.players.size >= MAXP) { send(ws, { t: 'err', m: 'Room is full' }); return; }
-      me = room.add(ws, name, cls, pf);
+      me = room.add(ws, name, cls, pf, email);
       send(ws, { t: 'init', id: me.id, room: rc, R, cls, gear: me.gear, prof: view(pf), res: room.res.map(r => [r.k, Math.round(r.x), Math.round(r.y)]) });
     } else if (m.t === 'craft' && me) {
       const now = Date.now(); if (now - (me.lastCraft || 0) < 200) { send(ws, { t: 'crafted', id: String(m.id || ''), ok: false, msg: 'Slow down a little.', gear: me.gear }); return; } me.lastCraft = now;
@@ -421,7 +431,7 @@ wss.on('connection', ws => {
       me.inp = { dx: n(m.dx), dy: n(m.dy), act: m.act ? 1 : 0, hit: m.hit ? 1 : 0 }; me.inpAt = Date.now();
     }
   });
-  ws.on('close', () => { if (room && me) room.players.delete(me.id); });
+  ws.on('close', () => { if (room && me) { room.stash(me); room.players.delete(me.id); } });
   ws.on('error', () => { });
 });
 

@@ -901,6 +901,8 @@ function logoutUI(msg) { token = ''; myEmail = ''; try { localStorage.removeItem
 function loggedIn(r) {
   token = r.token || token; myEmail = r.email; try { localStorage.setItem('tok', token); localStorage.removeItem('pid'); } catch (e) { }
   $('who').textContent = myEmail; $('login').style.display = 'none'; applyProfile(r.profile, !hadCls); hadCls = true; $('err').textContent = '';
+  let rj = 0; try { rj = +sessionStorage.getItem('rejoin') || 0; sessionStorage.removeItem('rejoin'); } catch (e) { }
+  if (rj && Date.now() - rj < 20 * 60 * 1000 && $('room').value) setTimeout(() => $('go').onclick(), 0);   // dropped mid-game: jump straight back into the same room
 }
 const legacyPid = () => { try { return localStorage.getItem('pid') || ''; } catch (e) { return ''; } };
 let pendingEmail = '';
@@ -967,7 +969,12 @@ $('go').onclick = () => {
   ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
   ws.onopen = () => ws.send(JSON.stringify({ t: 'join', name, cls: sel, room: $('room').value, token }));
   ws.onerror = () => $('err').textContent = 'Could not connect';
-  ws.onclose = () => { if (myId) $('banner').textContent = 'Disconnected - reload to rejoin'; };
+  ws.onclose = () => {
+    if (!myId) return; $('banner').textContent = 'Connection lost - reconnecting...';
+    try { sessionStorage.setItem('rejoin', String(Date.now())); } catch (e) { }
+    const tryBack = async () => { try { const r = await fetch('/api/config', { cache: 'no-store' }); if (r.ok) { location.reload(); return; } } catch (e) { } setTimeout(tryBack, 2000); };
+    setTimeout(tryBack, 1500);
+  };
   ws.onmessage = e => {
     const m = JSON.parse(e.data);
     if (m.t === 'err') { if (m.m === 'auth') logoutUI('Your session expired. Please sign in again.'); else { $('err').textContent = m.m; ws.close(); ws = null; } }
