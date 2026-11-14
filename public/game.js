@@ -120,6 +120,11 @@ const T_PICK = tex(72, 56, g => {
   g.fillStyle = '#cfd8dc'; g.beginPath(); g.moveTo(37, 10); g.quadraticCurveTo(62, 28, 37, 30); g.lineTo(44, 24); g.closePath(); g.fill();
   g.strokeStyle = 'rgba(0,0,0,.45)'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(34, 6); g.quadraticCurveTo(76, 28, 34, 50); g.stroke();
 });
+const T_BLADE = tex(80, 40, g => {
+  stroke(g, '#6d4423', 5, 4, 20, 16, 20); stroke(g, '#ffd54f', 4, 17, 11, 17, 29);
+  poly(g, '#b0bec5', [20, 15, 70, 17, 78, 20, 70, 23, 20, 25]); poly(g, '#eceff1', [22, 17, 68, 18, 74, 20, 22, 20]);
+  g.strokeStyle = 'rgba(0,0,0,.45)'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(20, 15); g.lineTo(70, 17); g.lineTo(78, 20); g.lineTo(70, 23); g.lineTo(20, 25); g.stroke();
+});
 const T_LOG = tex(44, 24, g => {
   g.fillStyle = '#6d4423'; g.beginPath(); g.roundRect ? g.roundRect(2, 4, 34, 16, 6) : g.rect(2, 4, 34, 16); g.fill();
   g.fillStyle = '#8d5a2b'; g.fillRect(6, 5, 28, 5); g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(6, 15, 28, 4);
@@ -359,8 +364,8 @@ const ease = u => u < .5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
 function startSwing(e, p, d, dx) {
   const kind = p[13], ang = p[14] / 100;
   e.swing = { t: 0, kind, ang, hit: false }; e.ang = ang;
-  if (kind === 1) e.tool.texture = T_AXE; else if (kind === 2) e.tool.texture = T_PICK;
-  e.tool.visible = kind !== 3;
+  if (kind === 1) e.tool.texture = T_AXE; else if (kind === 2) e.tool.texture = T_PICK; else if (kind === 4) e.tool.texture = T_BLADE;
+  e.tool.visible = kind !== 3; SFX.whoosh(d, dx);
 }
 function swingOff(t) {   // relative tool angle: wind-up back, fast strike, recover
   if (t < .14) return .3 - 1.8 * ease(t / .14);
@@ -468,11 +473,13 @@ function syncStructs(m, first) {
     if (!e) {
       const D = SDEF[t[1]] || SDEF.wall, c = new PIXI.Container(), sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5);
       sh.scale.set(D.sh, .7); sh.y = 4;
-      const spr = new PIXI.Sprite(D.tex); spr.anchor.set(.5, D.ay); const base = D.base; spr.scale.set(base);
-      const hp = new PIXI.Graphics(); hp.y = D.hy; c.addChild(sh, spr, hp); c.position.set(t[2], t[3]); c.zIndex = t[3]; ents.addChild(c);
-      e = structE[t[0]] = { c, spr, hp, k: t[1], x: t[2], y: t[3], base, mhp: t[5], hpv: t[4], t: first ? 1 : 0, flash: 0, barT: 0 };
+      const spr = new PIXI.Sprite(D.tex); spr.anchor.set(.5, .5); const base = D.base; spr.scale.set(base);
+      const rotc = new PIXI.Container(); rotc.y = -(D.ay - .5) * D.tex.height * base; rotc.rotation = (t[7] || 0) * Math.PI / 4; rotc.addChild(spr);   // turns about its own centre
+      const hp = new PIXI.Graphics(); hp.y = D.hy; c.addChild(sh, rotc, hp); c.position.set(t[2], t[3]); c.zIndex = t[3]; ents.addChild(c);
+      e = structE[t[0]] = { c, spr, rotc, rot: t[7] || 0, hp, k: t[1], x: t[2], y: t[3], base, mhp: t[5], hpv: t[4], t: first ? 1 : 0, flash: 0, barT: 0 };
       if (!first) { const d = me ? Math.hypot(me.x - t[2], me.y - t[3]) : 0; SFX.build(d, me ? t[2] - me.x : 0); burst(t[2], t[3], 10, 0xd9c79a, 80, false, .16); }
     } else if (t[4] < e.hpv) { e.flash = .12; e.barT = 2; const d = me ? Math.hypot(me.x - t[2], me.y - t[3]) : 0; SFX.hit(d, me ? t[2] - me.x : 0); burst(t[2], t[3] - 14, 4, 0xb98349, 80, false, .1); }
+    if ((t[7] || 0) !== e.rot) { e.rot = t[7] || 0; e.rotc.rotation = e.rot * Math.PI / 4; }
     if (t[1] === 'smelter') { const pq = e.smelt ? e.smelt[0] : t[6][0]; if (t[6][0] > pq) { const d = me ? Math.hypot(me.x - t[2], me.y - t[3]) : 0; SFX.smelterStart(d, me ? t[2] - me.x : 0); } e.smelt = t[6]; }
     else e.items = t[6];
     e.hpv = t[4]; e.x = t[2]; e.y = t[3];
@@ -501,7 +508,7 @@ function stepStructs(dt) {
   }
 }
 // ---- placement ghost: craft a placeable item, walk to aim, press ACT to put it down ----
-let placingId = null, ghost = null, ghostF = null, lastPlaceAt = 0;
+let placingId = null, ghost = null, ghostRot = null, ghostF = null, placeRot = 0, lastPlaceAt = 0;
 const PLACE_AHEAD = 58;   // must match the server
 function placeCheck(r, x, y) {   // mirrors the server's rules so the silhouette can show green/red; the server stays in charge
   const d = Math.hypot(x, y), campR = RC.camp(S.f[2]), sr = RC.RADIUS[r.kind], station = r.kind !== 'wall';
@@ -517,31 +524,37 @@ function placeCheck(r, x, y) {   // mirrors the server's rules so the silhouette
   const mp = S.p.find(p => p[0] === myId); if (mp && (mp[7] < r.cost.wood || mp[8] < r.cost.stone)) return 'Not enough materials';
   return '';
 }
+const lastRot = {};   // remember the last rotation used for each recipe (handy when lining up walls)
 function startPlacing(r) {
   stopPlacing(); setCraft(false); closeChest(); closePot();
-  const D = SDEF[r.kind]; placingId = r.id;
-  ghost = new PIXI.Sprite(D.tex); ghost.anchor.set(.5, D.ay); ghost.scale.set(D.base);
+  const D = SDEF[r.kind]; placingId = r.id; placeRot = lastRot[r.id] || 0;
+  ghost = new PIXI.Container(); ghostRot = new PIXI.Container();
+  const sp = new PIXI.Sprite(D.tex); sp.anchor.set(.5, .5); sp.scale.set(D.base);
+  ghostRot.y = -(D.ay - .5) * D.tex.height * D.base; ghostRot.addChild(sp); ghost.addChild(ghostRot);
   ghostF = new PIXI.ColorMatrixFilter(); ghost.filters = [ghostF]; ents.addChild(ghost);
   $('placeBar').style.display = 'flex'; $('placeName').textContent = r.e + ' ' + r.n; $('placeMsg').textContent = '';
 }
+function rotatePlace(d) { if (!placingId) return; placeRot = (placeRot + d + 8) % 8; lastRot[placingId] = placeRot; SFX.pickup(); }
 function stopPlacing() {
-  if (ghost) { ghost.destroy(); ghost = null; }
+  if (ghost) { ghost.destroy({ children: true }); ghost = null; } ghostRot = null;
   ghostF = null; placingId = null; $('placeBar').style.display = 'none';
 }
 function updateGhost(me) {
   if (!placingId || !ghost) return;
   const r = RC.BY[placingId], mp = S.p.find(p => p[0] === myId), fa = mp && mp[16] !== undefined ? mp[16] / 100 : 0;
   const x = me.x + Math.cos(fa) * PLACE_AHEAD, y = me.y + Math.sin(fa) * PLACE_AHEAD, why = placeCheck(r, x, y), ok = !why;
-  ghost.position.set(x, y); ghost.zIndex = y + 1; ghost.alpha = .55 + Math.sin(T * 5) * .1;
+  ghost.position.set(x, y); ghost.zIndex = y + 1; ghost.alpha = .55 + Math.sin(T * 5) * .1; ghostRot.rotation = placeRot * Math.PI / 4;
   ghostF.matrix = ok ? [0, 0, 0, 0, .35, 0, 0, 0, 0, 1, 0, 0, 0, 0, .5, 0, 0, 0, 1, 0] : [0, 0, 0, 0, 1, 0, 0, 0, 0, .3, 0, 0, 0, 0, .3, 0, 0, 0, 1, 0];
   const msg = ok ? 'Looks good - press ACT to place' : why; const pm = $('placeMsg'); if (pm.textContent !== msg || pm.dataset.ok !== String(ok)) { pm.textContent = msg; pm.style.color = ok ? '#8dffa8' : '#ff8a80'; pm.dataset.ok = ok; }
 }
 function actPress() {   // rising edge of the ACT button while placing: ask the server to place (it pays and checks the rules)
   if (!placingId || !ws || ws.readyState !== 1) return;
   const now = performance.now(); if (now - lastPlaceAt < 250) return; lastPlaceAt = now;
-  ws.send(JSON.stringify({ t: 'craft', id: placingId }));
+  ws.send(JSON.stringify({ t: 'craft', id: placingId, rot: placeRot }));
 }
 $('placeCancel').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); stopPlacing(); });
+$('placeRotL').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); rotatePlace(-1); });
+$('placeRotR').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); rotatePlace(1); });
 
 // ---- crafting menu ----
 const inv = () => { const mp = S && S.p.find(p => p[0] === myId); return mp ? { wood: mp[7], stone: mp[8] } : { wood: 0, stone: 0 }; };
@@ -975,7 +988,7 @@ app.view.addEventListener('pointerup', jend); app.view.addEventListener('pointer
 function jpos() { const dx = joy.x - joy.ox, dy = joy.y - joy.oy, m = Math.min(55, Math.hypot(dx, dy)), a = Math.atan2(dy, dx); jb.style.left = joy.ox + 'px'; jb.style.top = joy.oy + 'px'; jk.style.left = (joy.ox + Math.cos(a) * m) + 'px'; jk.style.top = (joy.oy + Math.sin(a) * m) + 'px'; }
 function bind(id, set) { const b = $(id); b.addEventListener('pointerdown', e => { e.preventDefault(); set(1); b.setPointerCapture(e.pointerId); b.style.transform = 'scale(.92)'; }); ['pointerup', 'pointercancel'].forEach(t => b.addEventListener(t, () => { set(0); b.style.transform = ''; })); }
 bind('act', v => { act = v; if (v) actPress(); }); bind('hit', v => hit = v);
-addEventListener('keydown', e => { const k = e.key.toLowerCase(); if (!keys[k] && (k === ' ' || k === 'e') && !/INPUT|TEXTAREA/.test((e.target || {}).tagName || '')) actPress(); keys[k] = 1; }); addEventListener('keyup', e => { keys[e.key.toLowerCase()] = 0; });
+addEventListener('keydown', e => { const k = e.key.toLowerCase(); if (placingId && (k === 'q' || k === 'r')) rotatePlace(k === 'q' ? -1 : 1); if (!keys[k] && (k === ' ' || k === 'e') && !/INPUT|TEXTAREA/.test((e.target || {}).tagName || '')) actPress(); keys[k] = 1; }); addEventListener('keyup', e => { keys[e.key.toLowerCase()] = 0; });
 function readInput() {
   let dx = 0, dy = 0;
   if (joy) { dx = (joy.x - joy.ox) / 55; dy = (joy.y - joy.oy) / 55; const m = Math.hypot(dx, dy); if (m > 1) { dx /= m; dy /= m; } if (m < .12) dx = dy = 0; }
