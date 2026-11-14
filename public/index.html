@@ -22,17 +22,40 @@ html,body{margin:0;height:100%;overflow:hidden;background:#0b1a2a;color:#fff;fon
 #lobby{position:fixed;inset:0;background:#0b1a2af2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:16px;overflow:auto}
 #lobby h1{margin:0;font-size:32px}
 #lobby input{font-size:18px;padding:12px;border-radius:10px;border:0;width:min(300px,80vw);text-align:center}
-.cls{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:min(320px,86vw)}
-.cls div{padding:10px;border-radius:10px;background:#1c3550;font-size:13px;border:2px solid transparent}
-.cls div b{display:block;font-size:15px}
-.cls div.sel{border-color:#ffd000;background:#274a6d}
 #go{font-size:20px;padding:14px 40px;border-radius:12px;border:0;background:#1e9e6a;color:#fff;font-weight:700}
 #err{color:#ff8a80;min-height:20px}
+#chooseBtn{display:flex;align-items:center;gap:10px;width:min(300px,80vw);padding:10px 14px;border-radius:12px;border:2px solid #ffd000;background:#274a6d;color:#fff;font-size:16px;text-align:left}
+#chooseBtn #cIcon{font-size:26px}
+#chooseBtn b{display:block;font-size:16px}
+#chooseBtn small{display:block;opacity:.85;font-size:12px;color:#ffd000}
+.diaBar{font-size:15px;color:#7fe9ff;font-weight:700}
+.link{font-size:13px;opacity:.75;text-decoration:underline;cursor:pointer}
+.ov{position:fixed;inset:0;background:#06101cf5;display:none;flex-direction:column;z-index:20}
+#picker .top{display:flex;align-items:center;justify-content:space-between;padding:max(12px,env(safe-area-inset-top)) 14px 10px;font-size:18px;font-weight:800;border-bottom:1px solid #fff2}
+#picker .top button,.mini{font-size:15px;padding:8px 16px;border-radius:10px;border:0;background:#1e9e6a;color:#fff;font-weight:700}
+#grid{overflow-y:auto;padding:6px 12px 30px;flex:1;-webkit-overflow-scrolling:touch;touch-action:pan-y}
+.tier{margin:16px 2px 8px;font-size:14px;font-weight:800;color:#ffd000;letter-spacing:.03em}
+.row{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.card{background:#14304a;border:2px solid transparent;border-radius:12px;padding:10px;text-align:center;position:relative}
+.card.sel{border-color:#ffd000;background:#274a6d}
+.card.locked{opacity:.8}
+.card canvas{width:64px;height:64px}
+.card .cn{font-weight:800;font-size:15px;margin-top:2px}
+.card .cd{font-size:12px;opacity:.85;min-height:30px;margin-top:2px}
+.card .cs{font-size:11px;opacity:.7;margin-top:4px}
+.card .cb{margin-top:6px;font-size:13px;font-weight:700;color:#7fe9ff}
+.card.locked .cb{color:#ffd000}
+.dlg{background:#14304a;border:2px solid #fff3;border-radius:14px;padding:18px;max-width:min(340px,86vw);text-align:center;font-size:15px;line-height:1.35}
+.dlg .btns{display:flex;gap:10px;justify-content:center;margin-top:14px}
+.dlg input{font-size:15px;padding:10px;border-radius:8px;border:0;width:90%;text-align:center;margin-top:8px}
+#myCode{font-family:ui-monospace,monospace;font-size:15px;word-break:break-all;background:#0007;padding:8px;border-radius:8px;margin:8px 0}
+.mini.gray{background:#455a64}
+
 #credit{position:absolute;bottom:max(14px,env(safe-area-inset-bottom));left:0;right:0;text-align:center;font-size:13px;letter-spacing:.04em;opacity:.65}
 </style></head><body>
 <div id="vig"></div><div id="hurt"></div>
 <div id="hud" style="display:none">
-  <div class="row"><div><div id="t1"></div><div id="bar"><i></i></div><div id="inv"></div></div><div style="text-align:right"><div id="rm" style="pointer-events:auto"></div><div id="pl"></div></div></div>
+  <div class="row"><div><div id="t1"></div><div id="bar"><i></i></div><div id="inv"></div></div><div style="text-align:right"><div id="rm" style="pointer-events:auto"></div><div id="pl"></div><div style="color:#7fe9ff;font-weight:700">💎 <span class="diaN">0</span></div></div></div>
 </div>
 <div id="banner"></div>
 <div id="snd" style="position:fixed;left:10px;bottom:max(12px,env(safe-area-inset-bottom));width:44px;height:44px;border-radius:50%;background:#0007;border:2px solid #fff4;display:flex;align-items:center;justify-content:center;font-size:20px;z-index:5">🔊</div>
@@ -42,18 +65,30 @@ html,body{margin:0;height:100%;overflow:hidden;background:#0b1a2a;color:#fff;fon
   <h1>🌙 Island Night</h1>
   <div style="opacity:.8;text-align:center;max-width:320px;font-size:14px">Gather wood, keep the fire alive, survive the alien nights together.</div>
   <input id="name" placeholder="Your name" maxlength="12">
-  <div class="cls" id="cls">
-    <div data-c="forester" class="sel"><b>🪓 Forester</b>+25% wood</div>
-    <div data-c="marine"><b>🔫 Marine</b>Tough, hits hard</div>
-    <div data-c="tech"><b>📻 Radio Tech</b>Fire burns slower</div>
-    <div data-c="medic"><b>🩹 Medic</b>Heals, fast revive</div>
-  </div>
+  <button id="chooseBtn"><span id="cIcon">🪓</span><span><b id="cName">Forester</b><small>Choose Classes ▸</small></span></button>
+  <div class="diaBar">💎 <span class="diaN">0</span> Diamonds</div>
   <input id="room" placeholder="Room code (optional)" maxlength="4" style="text-transform:uppercase">
   <button id="go">PLAY</button>
   <div id="err"></div>
+  <div class="link" id="codeLink">Progress code (save / restore)</div>
   <div id="credit">Game by Amelia Alkouri</div>
 </div>
+<div class="ov" id="picker">
+  <div class="top"><span>Choose Classes</span><span class="diaBar">💎 <span class="diaN">0</span></span><button id="pickDone">Done</button></div>
+  <div id="grid"></div>
+</div>
+<div class="ov" id="buy" style="align-items:center;justify-content:center;z-index:30"><div class="dlg"><div id="buyTxt"></div><div class="btns"><button class="mini" id="buyGo">Buy</button><button class="mini gray" id="buyNo">Cancel</button></div></div></div>
+<div class="ov" id="codeBox" style="align-items:center;justify-content:center;z-index:30"><div class="dlg">
+  <b>Your progress code</b>
+  <div id="myCode"></div>
+  <div style="font-size:12px;opacity:.8">Your Diamonds and classes are saved on the server under this code. Keep it private: anyone with it can use your progress. Enter it on another device to continue there.</div>
+  <div class="btns"><button class="mini" id="codeCopy">Copy</button></div>
+  <input id="codeIn" placeholder="Enter a code to restore" autocomplete="off">
+  <div class="btns"><button class="mini gray" id="codeRestore">Restore</button><button class="mini gray" id="codeClose">Close</button></div>
+  <div id="codeMsg" style="margin-top:8px;font-size:13px;min-height:18px"></div>
+</div></div>
 <script src="https://cdn.jsdelivr.net/npm/pixi.js@7.4.2/dist/pixi.min.js"></script>
+<script src="classes.js"></script>
 <script src="audio.js"></script>
 <script src="game.js"></script>
 </body></html>

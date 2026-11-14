@@ -1,12 +1,70 @@
-// Island Night - authoritative multiplayer server (Node + ws)
+// Island Night - authoritative multiplayer server (Node + ws) with saved player profiles
 const http = require('http'), fs = require('fs'), path = require('path');
 const { WebSocketServer } = require('ws');
+const GC = require('./public/classes.js');
 const PORT = process.env.PORT || 80;
 const PUB = path.join(__dirname, 'public');
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
 
+// ---------- player profiles (no login: a secret random id stored in the player's browser) ----------
+function pickDir() {
+  for (const d of [process.env.DATA_DIR, '/var/lib/island-night', path.join(__dirname, 'data')]) {
+    if (!d) continue;
+    try { fs.mkdirSync(d, { recursive: true }); fs.accessSync(d, fs.constants.W_OK); return d; } catch (e) { }
+  }
+  return null;
+}
+const DIR = pickDir(), FILE = DIR && path.join(DIR, 'profiles.json');
+let profiles = {}; try { profiles = JSON.parse(fs.readFileSync(FILE, 'utf8')); } catch (e) { }
+let pcount = Object.keys(profiles).length, dirty = false;
+function save() {
+  if (!dirty || !FILE) return; dirty = false;
+  try { fs.writeFileSync(FILE + '.tmp', JSON.stringify(profiles)); fs.renameSync(FILE + '.tmp', FILE); } catch (e) { console.error('profile save failed:', e.message); }
+}
+setInterval(save, 3000);
+for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => { save(); process.exit(0); });
+const PID = /^[A-Za-z0-9]{16,32}$/;
+function prof(pid, create) {
+  if (!PID.test(pid || '')) return null;
+  let p = profiles[pid];
+  if (!p && create) { if (pcount > 200000) return null; p = profiles[pid] = { d: 0, owned: [], k: 0, n: 0, last: 'forester', t: Date.now() }; pcount++; dirty = true; }
+  return p || null;
+}
+const ownedOf = p => GC.DEFAULT_OWNED.concat(p ? p.owned : []);
+const view = p => ({ d: p ? p.d : 0, owned: ownedOf(p), last: p && ownedOf(p).includes(p.last) ? p.last : 'forester', n: p ? p.n : 0 });
+const send = (ws, o) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); };
+function award(pl, amount, why) {
+  if (!pl.prof) return;
+  const n = Math.max(1, Math.round(amount * GC.BY[pl.cls].dia));
+  pl.prof.d += n; dirty = true; send(pl.ws, { t: 'dia', n, d: pl.prof.d, why });
+}
+
+// tiny per-IP limiter for the API
+const hits = new Map();
+setInterval(() => hits.clear(), 60000);
+function limited(ip) { const n = (hits.get(ip) || 0) + 1; hits.set(ip, n); return n > 120; }
+
+function json(s, code, o) { s.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); s.end(JSON.stringify(o)); }
+
 const srv = http.createServer((q, s) => {
-  let f = q.url.split('?')[0];
+  const u = new URL(q.url, 'http://x');
+  if (u.pathname.startsWith('/api/')) {
+    const ip = q.headers['x-forwarded-for'] || q.socket.remoteAddress || '';
+    if (limited(ip)) return json(s, 429, { ok: false, err: 'slow down' });
+    const pid = u.searchParams.get('pid') || '';
+    if (u.pathname === '/api/profile') return json(s, 200, Object.assign({ ok: true }, view(prof(pid, false))));
+    if (u.pathname === '/api/buy') {
+      const c = GC.BY[u.searchParams.get('cls')];
+      if (!c || c.price <= 0) return json(s, 200, { ok: false, err: 'unknown class' });
+      const p = prof(pid, true); if (!p) return json(s, 200, { ok: false, err: 'bad profile' });
+      if (ownedOf(p).includes(c.id)) return json(s, 200, Object.assign({ ok: false, err: 'already owned' }, view(p)));
+      if (p.d < c.price) return json(s, 200, Object.assign({ ok: false, err: 'need', need: c.price - p.d }, view(p)));
+      p.d -= c.price; p.owned.push(c.id); dirty = true;
+      return json(s, 200, Object.assign({ ok: true }, view(p)));
+    }
+    return json(s, 404, { ok: false });
+  }
+  let f = u.pathname;
   if (f === '/') f = '/index.html';
   const p = path.join(PUB, path.normalize(f));
   if (!p.startsWith(PUB)) { s.writeHead(403); return s.end(); }
@@ -17,21 +75,15 @@ const srv = http.createServer((q, s) => {
   });
 });
 
-// ---- game constants ----
+// ---------- game constants ----------
 const R = 900;                       // island radius
 const DAY = 90, DUSK = 30, NIGHT = 60, CYC = DAY + DUSK + NIGHT;
 const MAXP = 8;
-const CLS = {
-  forester: { hp: 100, spd: 150, dmg: 10 },  // +25% wood
-  marine:   { hp: 130, spd: 150, dmg: 20 },  // tough, hits hard
-  tech:     { hp: 100, spd: 165, dmg: 10 },  // fire burns 25% slower
-  medic:    { hp: 100, spd: 150, dmg: 8 },   // heals allies, 2x revive
-};
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
 class Room {
   constructor(code) {
-    this.code = code; this.players = new Map(); this.nid = 1; this.emptyFor = 0; this.n = 0;
+    this.code = code; this.players = new Map(); this.nid = 1; this.emptyFor = 0;
     this.res = [];
     const add = (k, n) => { for (let i = 0; i < n; i++) { const a = Math.random() * 6.283, d = 130 + Math.sqrt(Math.random()) * (R - 200); this.res.push({ k, x: Math.cos(a) * d, y: Math.sin(a) * d, alive: 1, rt: 0 }); } };
     add('t', 45); add('r', 28); add('b', 22);
@@ -43,22 +95,27 @@ class Room {
     for (const p of this.players.values()) this.respawn(p);
   }
   respawn(p) {
-    const c = CLS[p.cls]; p.mhp = c.hp; p.hp = c.hp; p.down = 0; p.rev = 0;
+    const c = GC.BY[p.cls]; p.mhp = c.hp; p.hp = c.hp; p.down = 0; p.rev = 0;
     const a = Math.random() * 6.283; p.x = Math.cos(a) * 100; p.y = Math.sin(a) * 100;
   }
   ph() { return this.c < DAY ? 0 : this.c < DAY + DUSK ? 1 : 2; }
-  add(ws, name, cls) {
-    const p = { id: this.nid++, ws, name, cls, wood: 0, stone: 0, food: 0, actcd: 0, hitcd: 0, eat: 0, inp: { dx: 0, dy: 0, act: 0, hit: 0 } };
+  add(ws, name, cls, pf) {
+    const p = { id: this.nid++, ws, name, cls, prof: pf, wood: 0, stone: 0, food: 0, actcd: 0, hitcd: 0, eat: 0, inp: { dx: 0, dy: 0, act: 0, hit: 0 } };
     this.respawn(p); this.players.set(p.id, p); return p;
   }
   tick(dt) {
     const P = [...this.players.values()];
     if (!P.length) { this.emptyFor += dt; return; } this.emptyFor = 0;
     if (this.over > 0) { this.over -= dt; if (this.over <= 0) this.reset(); return; }
-    this.c += dt; if (this.c >= CYC) { this.c -= CYC; this.night++; }
+    this.c += dt;
+    if (this.c >= CYC) {
+      this.c -= CYC; this.night++;
+      const survived = this.night - 1, bonus = survived % 5 === 0 ? 10 : 0;
+      for (const p of P) { award(p, 5 + bonus, bonus ? 'milestone' : 'night'); if (p.prof) { p.prof.n++; dirty = true; } }
+    }
     const ph = this.ph(), f = this.fire, maxF = 150 + (f.lvl - 1) * 75;
-    const tech = P.some(p => p.cls === 'tech' && !p.down);
-    f.fuel = Math.max(0, f.fuel - (ph === 0 ? 0.4 : 1) * (tech ? 0.75 : 1) * dt);
+    let burn = 1; for (const p of P) if (!p.down) burn = Math.min(burn, GC.BY[p.cls].burn);
+    f.fuel = Math.max(0, f.fuel - (ph === 0 ? 0.4 : 1) * burn * dt);
     const fr = f.fuel > 0 ? 120 + f.lvl * 40 : 0;
 
     for (const r of this.res) if (!r.alive && (r.rt -= dt) <= 0) r.alive = 1;
@@ -66,7 +123,7 @@ class Room {
 
     for (const p of P) {
       if (p.down) continue;
-      const c = CLS[p.cls], i = p.inp;
+      const c = GC.BY[p.cls], i = p.inp;
       p.actcd -= dt; p.hitcd -= dt;
       let dx = i.dx, dy = i.dy; const m = Math.hypot(dx, dy); if (m > 1) { dx /= m; dy /= m; }
       p.x += dx * c.spd * dt; p.y += dy * c.spd * dt;
@@ -74,33 +131,36 @@ class Room {
 
       if (i.act) {
         const mate = P.find(q => q.down && dist(p, q) < 60);
-        if (mate) { mate.rev += dt * (p.cls === 'medic' ? 2 : 1); mate.rv = 1; }
+        if (mate) { mate.rev += dt * c.rev; mate.rv = 1; }
         else if (p.actcd <= 0) {
           if (d < 80) {
-            if (p.wood > 0) { f.fuel = Math.min(maxF, f.fuel + p.wood * 15); p.wood = 0; p.actcd = 0.3; }
+            if (p.wood > 0) { f.fuel = Math.min(maxF, f.fuel + p.wood * 15 * c.feed); p.wood = 0; p.actcd = 0.3; }
             else if (f.lvl < 5 && p.stone >= 10 * f.lvl) { p.stone -= 10 * f.lvl; f.lvl++; p.actcd = 0.5; }
           } else {
             let best = null, bd = 55;
             for (const r of this.res) if (r.alive) { const dd = dist(p, r); if (dd < bd) { bd = dd; best = r; } }
             if (best) {
               best.alive = 0; best.rt = 45 + Math.random() * 30; p.actcd = 0.4;
-              if (best.k === 't') p.wood += Math.round(3 * (p.cls === 'forester' ? 1.25 : 1));
-              else if (best.k === 'r') p.stone += 2; else p.food += 2;
+              if (best.k === 't') p.wood += Math.max(1, Math.round(3 * c.wood));
+              else if (best.k === 'r') p.stone += Math.max(1, Math.round(2 * c.stone));
+              else p.food += Math.max(1, Math.round(2 * c.food));
             }
           }
         }
       }
       if (i.hit && p.hitcd <= 0) {
-        p.hitcd = 0.45;
-        let best = null, bd = 65;
-        for (const a of this.aliens) { const dd = dist(p, a); if (dd < bd) { bd = dd; best = a; } }
+        p.hitcd = c.cd;
+        let best = null, bd = c.range;
+        for (const a of this.aliens) { if (a.hp <= 0) continue; const dd = dist(p, a); if (dd < bd) { bd = dd; best = a; } }
         if (best) {
-          best.hp -= c.dmg;
-          const kd = Math.max(1, dist(p, best)); best.x += (best.x - p.x) / kd * (p.cls === 'marine' ? 40 : 22); best.y += (best.y - p.y) / kd * (p.cls === 'marine' ? 40 : 22);
+          best.hp -= c.dmg * (Math.random() < c.crit ? 2 : 1);
+          const kd = Math.max(1, dist(p, best)); best.x += (best.x - p.x) / kd * c.knock; best.y += (best.y - p.y) / kd * c.knock;
+          if (best.hp <= 0 && p.prof) { p.prof.k++; dirty = true; if (p.prof.k % 10 === 0) award(p, 1, 'kills'); }
         }
       }
       if (p.food > 0 && p.hp < p.mhp) { p.eat -= dt; if (p.eat <= 0) { p.food--; p.hp = Math.min(p.mhp, p.hp + 12); p.eat = 1; } }
-      if (p.cls === 'medic') for (const q of P) if (!q.down && q.hp < q.mhp && dist(p, q) < 90) q.hp = Math.min(q.mhp, q.hp + 3 * dt);
+      if (c.regen && p.hp < p.mhp) p.hp = Math.min(p.mhp, p.hp + c.regen * dt);
+      if (c.heal) for (const q of P) if (!q.down && q.hp < q.mhp && dist(p, q) < 90) q.hp = Math.min(q.mhp, q.hp + c.heal * dt);
     }
     for (const p of P) if (p.down) {
       if (!p.rv) p.rev = Math.max(0, p.rev - 0.5 * dt);
@@ -118,10 +178,14 @@ class Room {
     for (const a of this.aliens) {
       if (ph !== 2) a.hp -= 25 * dt;       // sunlight burns them
       a.cd -= dt;
-      let tgt = null, bd = 1e9;
-      for (const p of P) if (!p.down) { const dd = dist(a, p); if (dd < bd) { bd = dd; tgt = p; } }
+      let tgt = null, bd = 1e9, slow = 0;
+      for (const p of P) if (!p.down) {
+        const dd = dist(a, p); if (dd < bd) { bd = dd; tgt = p; }
+        const sl = GC.BY[p.cls].slow; if (sl > slow && dd < 110) slow = sl;
+      }
+      const sp = a.sp * (1 - slow);
       const tx = tgt ? tgt.x : 0, ty = tgt ? tgt.y : 0, d = Math.max(1, Math.hypot(tx - a.x, ty - a.y));
-      if (d > 20) { a.x += (tx - a.x) / d * a.sp * dt; a.y += (ty - a.y) / d * a.sp * dt; }
+      if (d > 20) { a.x += (tx - a.x) / d * sp * dt; a.y += (ty - a.y) / d * sp * dt; }
       const ad = Math.hypot(a.x, a.y);
       if (fr > 0 && ad < fr) { const k = fr / Math.max(1, ad); a.x = ad < 1 ? fr : a.x * k; a.y *= ad < 1 ? 1 : k; }   // repelled by firelight
       if (tgt && d < 28 && a.cd <= 0 && (fr === 0 || Math.hypot(tgt.x, tgt.y) >= fr)) {
@@ -154,21 +218,24 @@ wss.on('connection', ws => {
     let m; try { m = JSON.parse(raw); } catch { return; }
     if (m.t === 'join' && !me) {
       const name = String(m.name || 'Survivor').replace(/[^\w \-]/g, '').slice(0, 12) || 'Survivor';
-      const cls = CLS[m.cls] ? m.cls : 'forester';
+      const pf = prof(String(m.pid || ''), true);
+      const owned = ownedOf(pf);
+      const cls = owned.includes(m.cls) ? m.cls : (pf && owned.includes(pf.last) ? pf.last : 'forester');
+      if (pf && pf.last !== cls) { pf.last = cls; dirty = true; }
       let rc = String(m.room || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
       if (!rc) rc = code();
       if (!rooms.has(rc)) rooms.set(rc, new Room(rc));
       room = rooms.get(rc);
-      if (room.players.size >= MAXP) { ws.send(JSON.stringify({ t: 'err', m: 'Room is full' })); return; }
-      me = room.add(ws, name, cls);
-      ws.send(JSON.stringify({ t: 'init', id: me.id, room: rc, R, res: room.res.map(r => [r.k, Math.round(r.x), Math.round(r.y)]) }));
+      if (room.players.size >= MAXP) { send(ws, { t: 'err', m: 'Room is full' }); return; }
+      me = room.add(ws, name, cls, pf);
+      send(ws, { t: 'init', id: me.id, room: rc, R, cls, prof: view(pf), res: room.res.map(r => [r.k, Math.round(r.x), Math.round(r.y)]) });
     } else if (m.t === 'in' && me) {
       const n = v => Math.max(-1, Math.min(1, +v || 0));
       me.inp = { dx: n(m.dx), dy: n(m.dy), act: m.act ? 1 : 0, hit: m.hit ? 1 : 0 };
     }
   });
   ws.on('close', () => { if (room && me) room.players.delete(me.id); });
-  ws.on('error', () => {});
+  ws.on('error', () => { });
 });
 
 let tk = 0;
@@ -181,4 +248,4 @@ setInterval(() => {
   }
 }, 1000 / 30);
 
-srv.listen(PORT, () => console.log('Island Night listening on', PORT));
+srv.listen(PORT, () => console.log('Island Night listening on', PORT, 'profiles:', pcount, 'dir:', DIR));

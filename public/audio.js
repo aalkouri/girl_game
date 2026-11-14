@@ -63,6 +63,7 @@ const SFX = (() => {
     dawn() { for (let i = 0; i < 5; i++) { const b = rnd(2200, 3400); tone({ f: b, f2: b * 1.3, dur: .09, gain: .09, when: i * .13 + rnd(0, .05) }); } [523, 659, 784].forEach((f, i) => tone({ f, dur: 1.4, type: 'sine', gain: .12, attack: .3, when: .2 + i * .05 })); },
     fireOut() { noise({ f: 2500, f2: 300, q: .6, dur: 1.2, gain: .35, attack: .02 }); tone({ f: 90, f2: 40, dur: 1, gain: .25, type: 'triangle' }); },
     step(d, dx) { noise({ type: 'lowpass', f: rnd(350, 600), dur: .07, gain: .16, dist: d, dx }); },
+    coin() { tone({ f: 1318, dur: .08, type: 'square', gain: .09 }); tone({ f: 1976, dur: .28, type: 'square', gain: .09, when: .07 }); },
     pop(d, dx, g) { noise({ type: 'highpass', f: rnd(1800, 4500), q: .6, dur: rnd(.02, .06), gain: (g || .2), dist: d, dx }); },
   };
 
