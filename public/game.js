@@ -530,14 +530,15 @@ function placeCheck(r, x, y) {   // mirrors the server's rules so the silhouette
 const lastRot = {};   // remember the last rotation used for each recipe (handy when lining up walls)
 function startPlacing(r) {
   stopPlacing(); setCraft(false); closeChest(); closePot();
-  const D = SDEF[r.kind]; placingId = r.id; placeRot = lastRot[r.id] || 0;
+  const D = SDEF[r.kind]; placingId = r.id; placeRot = ((lastRot[r.id] || 0) >> 1 << 1) % 8;
   ghost = new PIXI.Container(); ghostRot = new PIXI.Container();
   const sp = new PIXI.Sprite(D.tex); sp.anchor.set(.5, .5); sp.scale.set(D.base);
   ghostRot.y = -(D.ay - .5) * D.tex.height * D.base; ghostRot.addChild(sp); ghost.addChild(ghostRot);
   ghostF = new PIXI.ColorMatrixFilter(); ghost.filters = [ghostF]; ents.addChild(ghost);
   $('placeBar').style.display = 'flex'; $('placeName').textContent = r.e + ' ' + r.n; $('placeMsg').textContent = '';
 }
-function rotatePlace(d) { if (!placingId) return; placeRot = (placeRot + d + 8) % 8; lastRot[placingId] = placeRot; SFX.pickup(); }
+function rotatePlace() { if (!placingId) return; placeRot = (placeRot + 2) % 8;   // 4 quarter-turns, one direction only
+  lastRot[placingId] = placeRot; SFX.pickup(); }
 function stopPlacing() {
   if (ghost) { ghost.destroy({ children: true }); ghost = null; } ghostRot = null;
   ghostF = null; placingId = null; $('placeBar').style.display = 'none';
@@ -556,8 +557,7 @@ function actPress() {   // rising edge of the ACT button while placing: ask the 
   ws.send(JSON.stringify({ t: 'craft', id: placingId, rot: placeRot }));
 }
 $('placeCancel').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); stopPlacing(); });
-$('placeRotL').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); rotatePlace(-1); });
-$('placeRotR').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); rotatePlace(1); });
+$('placeRotR').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); rotatePlace(); });
 
 // ---- crafting menu ----
 const pooled = () => {   // what you can spend on crafting: your bag plus everything in the chests
@@ -1010,7 +1010,7 @@ app.view.addEventListener('pointerup', jend); app.view.addEventListener('pointer
 function jpos() { const dx = joy.x - joy.ox, dy = joy.y - joy.oy, m = Math.min(55, Math.hypot(dx, dy)), a = Math.atan2(dy, dx); jb.style.left = joy.ox + 'px'; jb.style.top = joy.oy + 'px'; jk.style.left = (joy.ox + Math.cos(a) * m) + 'px'; jk.style.top = (joy.oy + Math.sin(a) * m) + 'px'; }
 function bind(id, set) { const b = $(id); b.addEventListener('pointerdown', e => { e.preventDefault(); set(1); b.setPointerCapture(e.pointerId); b.style.transform = 'scale(.92)'; }); ['pointerup', 'pointercancel'].forEach(t => b.addEventListener(t, () => { set(0); b.style.transform = ''; })); }
 bind('act', v => { act = v; if (v) actPress(); }); bind('hit', v => hit = v);
-addEventListener('keydown', e => { const k = e.key.toLowerCase(); if (placingId && (k === 'q' || k === 'r')) rotatePlace(k === 'q' ? -1 : 1); if (!keys[k] && (k === ' ' || k === 'e') && !/INPUT|TEXTAREA/.test((e.target || {}).tagName || '')) actPress(); keys[k] = 1; }); addEventListener('keyup', e => { keys[e.key.toLowerCase()] = 0; });
+addEventListener('keydown', e => { const k = e.key.toLowerCase(); if (placingId && k === 'r') rotatePlace(); if (!keys[k] && (k === ' ' || k === 'e') && !/INPUT|TEXTAREA/.test((e.target || {}).tagName || '')) actPress(); keys[k] = 1; }); addEventListener('keyup', e => { keys[e.key.toLowerCase()] = 0; });
 // never let a lost touch/key leave the character walking: drop all held input whenever the page loses focus or no finger is down
 function clearInput() { joy = null; jb.style.display = jk.style.display = 'none'; act = hit = 0; for (const k in keys) keys[k] = 0; ['act', 'hit'].forEach(i => { $(i).style.transform = ''; }); }
 addEventListener('blur', clearInput); document.addEventListener('visibilitychange', () => { if (document.hidden) clearInput(); }); addEventListener('pagehide', clearInput);
