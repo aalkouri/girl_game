@@ -130,7 +130,7 @@ const STRUCT = { bench: { r: RC.RADIUS.bench }, chest: { r: RC.RADIUS.chest }, p
 const CHEST_CAP = 500, REACH = 62;   // collision radius / hit points of placed structures
 const SPILL = { t: 5, r: 3 };
 // the Charger: from night 4 on, one huge, very fast enemy per night that hammers players far backwards and vanishes at dawn
-const CHARGER = { firstNight: 4, hp0: 150, hpPerNight: 50, sp0: 175, spPerNight: 12, spMax: 320, dmg: 25, rad: 36, reach: 62, stop: 44, knock: 300, stunSec: 0.6 };               // logs per tree / stones per rock (before class bonus)
+const CHARGER = { firstNight: 4, sp0: 175, spPerNight: 12, spMax: 320, dmg: 25, rad: 36, reach: 62, stop: 44, knock: 300, stunSec: 0.6 };               // logs per tree / stones per rock (before class bonus)
 
 class Room {
   constructor(code) {
@@ -280,7 +280,7 @@ class Room {
       if (i.hit && p.hitcd <= 0) {
         p.hitcd = c.cd;
         let best = null, bd = c.range + (p.gear.spear ? 15 : 0);
-        for (const a of this.aliens) { if (a.hp <= 0) continue; const dd = dist(p, a); if (dd < bd) { bd = dd; best = a; } }
+        for (const a of this.aliens) { if (a.hp <= 0 || a.k === 2) continue; const dd = dist(p, a); if (dd < bd) { bd = dd; best = a; } }   // the Charger cannot be hit
         if (best) {
           best.hp -= (c.dmg + (p.gear.spear ? 6 : 0) + (B.dmg > 0 ? 5 : 0)) * (Math.random() < c.crit ? 2 : 1);
           const kd = Math.max(1, dist(p, best)); const kr = best.k === 2 ? 0.2 : 1; best.x += (best.x - p.x) / kd * c.knock * kr; best.y += (best.y - p.y) / kd * c.knock * kr;
@@ -319,7 +319,7 @@ class Room {
     if (ph === 2) {
       let want = Math.min(40, 2 + this.night * 2); if (this.night % 5 === 0) want = Math.floor(want * 1.5);
       if (this.night >= CHARGER.firstNight && this.chargerNight !== this.night) {
-        this.chargerNight = this.night; const a = Math.random() * 6.283, hp = CHARGER.hp0 + CHARGER.hpPerNight * (this.night - CHARGER.firstNight + 1);
+        this.chargerNight = this.night; const a = Math.random() * 6.283, hp = 1;   // it cannot be hurt; hp only exists so dawn can remove it
         this.aliens.push({ id: this.nid++, x: Math.cos(a) * ALIEN_R, y: Math.sin(a) * ALIEN_R, hp, mhp: hp, sp: Math.min(CHARGER.spMax, CHARGER.sp0 + CHARGER.spPerNight * (this.night - CHARGER.firstNight)), dmg: CHARGER.dmg, k: 2, cd: 0, rad: CHARGER.rad, reach: CHARGER.reach, stop: CHARGER.stop });
       }
       if (this.aliens.filter(a => a.k !== 2).length < want && Math.random() < dt * 2) {
@@ -341,7 +341,7 @@ class Room {
       const ad = Math.hypot(a.x, a.y);
       for (const st of this.struct) {   // walls/bench are solid; aliens chew on walls and get hurt by the spikes
         const sd = Math.hypot(a.x - st.x, a.y - st.y), mn = st.r + (a.rad || 12);
-        if (sd < mn) { const k = sd > 0.01 ? mn / sd : 1; a.x = st.x + (a.x - st.x) * k; a.y = st.y + (a.y - st.y) * k; if (st.k === 'wall' && a.cd <= 0) { st.hp -= a.dmg; a.cd = 1; a.hp -= 5; if (st.hp <= 0) st.dead = 1; } }
+        if (sd < mn) { const k = sd > 0.01 ? mn / sd : 1; a.x = st.x + (a.x - st.x) * k; a.y = st.y + (a.y - st.y) * k; if (st.k === 'wall' && a.cd <= 0) { st.hp -= a.dmg; a.cd = 1; if (a.k !== 2) a.hp -= 5; if (st.hp <= 0) st.dead = 1; } }
       }
       if (fr > 0 && ad < fr) { const k = fr / Math.max(1, ad); a.x = ad < 1 ? fr : a.x * k; a.y *= ad < 1 ? 1 : k; }   // repelled by firelight
       if (tgt && d < (a.reach || 28) && a.cd <= 0 && (fr === 0 || Math.hypot(tgt.x, tgt.y) >= fr)) {

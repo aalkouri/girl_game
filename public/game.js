@@ -777,7 +777,7 @@ function hud() {
   { const me = ents2['p' + myId]; if (me) { const dist = Math.hypot(me.x, me.y), ca = $('camp'); if (dist > 420) { ca.style.display = 'block'; $('campArrow').style.transform = 'rotate(' + Math.atan2(-me.y, -me.x) + 'rad)'; $('campDist').textContent = Math.round(dist / 10) + 'm to camp'; } else ca.style.display = 'none'; } }
   const now = performance.now(); let b = '';
   if (S.o) b = 'Everyone is down... restarting';
-  else if (now < warnUntil) b = '⚠ A CHARGER is hunting! Stay inside the fire ring!';
+  else if (now < warnUntil) b = '⚠ A CHARGER is hunting! It cannot be killed - stay inside the fire ring until dawn!';
   else if (mp && mp[10]) b = 'You are down - a teammate can revive you (hold ACT)';
   else if (S.ph === 1) b = (Math.floor(now / 500) % 2 ? '🌆 ' : '') + 'DUSK - get back to the fire!';
   else if (S.ph === 2 && f[0] <= 0) b = '⚠ The fire is out!';
