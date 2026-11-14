@@ -256,14 +256,22 @@ const fogs = []; for (let i = 0; i < 6; i++) { const s = new PIXI.Sprite(T_GLOW)
 stage.addChild(overL);
 const flies = []; for (let i = 0; i < 22; i++) { const s = new PIXI.Sprite(T_GLOW); s.anchor.set(.5); s.tint = 0xd8ff6a; s.blendMode = BM.ADD; s.scale.set(.14); s.fx = rnd(-380, 380); s.fy = rnd(-380, 380); s.ph = rnd(0, TAU); overL.addChild(s); flies.push(s); }
 
+let UZ = 0.85; try { const s = parseFloat(localStorage.getItem('in_zoom')); if (s >= .4 && s <= 1.8) UZ = s; } catch (e) {}
+function setZoom(v) { UZ = Math.max(.4, Math.min(1.8, v)); try { localStorage.setItem('in_zoom', UZ); } catch (e) {} resize(); }
 function resize() {
-  W = innerWidth; H = innerHeight; Z = Math.min(W, H) / 620;
+  W = innerWidth; H = innerHeight; Z = Math.min(W, H) / 620 * UZ;
   water.width = W; water.height = H; waterF.uniforms.uRes = [W, H]; waterF.uniforms.uZoom = Z;
   if (rt) rt.destroy(true);
   rt = PIXI.RenderTexture.create({ width: Math.ceil(W * LS), height: Math.ceil(H * LS) });
   lightSpr.texture = rt; lightSpr.scale.set(1 / LS);
 }
 addEventListener('resize', resize); resize();
+$('zoomIn').addEventListener('click', () => setZoom(UZ * 1.15)); $('zoomOut').addEventListener('click', () => setZoom(UZ / 1.15));
+app.view.addEventListener('wheel', e => { e.preventDefault(); setZoom(UZ * (e.deltaY < 0 ? 1.08 : 1 / 1.08)); }, { passive: false });
+{ let pd = 0, pz = 1; const td = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  app.view.addEventListener('touchstart', e => { if (e.touches.length === 2) { pd = td(e.touches); pz = UZ; } }, { passive: true });
+  app.view.addEventListener('touchmove', e => { if (e.touches.length === 2 && pd > 0) setZoom(pz * td(e.touches) / pd); }, { passive: true });
+  app.view.addEventListener('touchend', e => { if (e.touches.length < 2) pd = 0; }, { passive: true }); }
 
 // ---------- world building (after server init) ----------
 let resNodes = [], built = false, fireStones = null;
