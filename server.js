@@ -38,7 +38,7 @@ class Room {
     this.reset();
   }
   reset() {
-    this.c = 0; this.night = 1; this.fire = { fuel: 150, lvl: 1 }; this.aliens = []; this.over = 0;
+    this.c = +process.env.START_C || 0; this.night = +process.env.START_N || 1; this.fire = { fuel: 150, lvl: 1 }; this.aliens = []; this.over = 0;
     for (const r of this.res) r.alive = 1;
     for (const p of this.players.values()) this.respawn(p);
   }
