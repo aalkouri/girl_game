@@ -406,7 +406,7 @@ class Room {
       case 'timber': case 'quake': {
         let n = 0; for (const r of this.res) if (r.hp > 0 && (ab.id === 'timber' ? WOODY(r.k) : ROCKY(r.k)) && Math.hypot(r.x - p.x, r.y - p.y) < 260) { r.hp = 0; r.rt = 45 + Math.random() * 30; this.spill(r, Math.max(1, Math.round(SPILL[r.k] * (ab.id === 'timber' ? c.wood : c.stone)))); n++; }
         this.rForce = 1; for (const q of all) send(q.ws, { t: 'fx', k: 'boom', x: p.x, y: p.y, r: 260 }); if (!n) return no('Nothing in reach.'); break; }
-      case 'harvest': { for (const r of this.res) if (r.k === 'b' && Math.hypot(r.x - p.x, r.y - p.y) < 500) r.hp = r.mhp; p.food += Math.round(8 * c.food); this.rForce = 1; break; }
+      case 'harvest': { for (const r of this.res) if (r.k === 'b' && Math.hypot(r.x - p.x, r.y - p.y) < 500 && !this.fires().some(F => Math.hypot(r.x - F.x, r.y - F.y) < RC.camp(F.f.lvl))) r.hp = r.mhp; p.food += Math.round(8 * c.food); this.rForce = 1; break; }
       case 'grenade': { const [x, y] = ahead(260); this.aoe(p, x, y, 130, 60, 2); break; }
       case 'meteor': { const [x, y] = ahead(350); this.aoe(p, x, y, 170, 120, 1); break; }
       case 'inferno': this.aoe(p, p.x, p.y, 220, 50, 2); break;
@@ -754,7 +754,9 @@ class Room {
     f.fuel = Math.max(0, f.fuel - (ph === 0 ? 0.4 : 1) * burn * (f.slow > 0 ? 0.5 : 1) * dt); f.slow = Math.max(0, (f.slow || 0) - dt);
     const fr = f.fuel > 0 ? RC.camp(f.lvl) : 0;
 
+    const FR = this.fires();   // nothing grows back inside a campfire's ring (home or any camp)
     for (let ri = 0; ri < this.res.length; ri++) { const r = this.res[ri]; if (r.hp <= 0 && (r.rt -= dt) <= 0) {
+      if (FR.some(F => Math.hypot(r.x - F.x, r.y - F.y) < RC.camp(F.f.lvl))) { r.rt = 0; continue; }
       if (ROCKY(r.k)) { const nk = Math.random() < GOLD_P ? 'g' : 'r'; if (nk !== r.k) { r.k = nk; r.mhp = HP[nk]; this.rForce = 1; for (const q of P) send(q.ws, { t: 'rk', i: ri, k: nk }); } }   // ~1% of regrowing rocks come up as gold ore veins
       r.hp = r.mhp;
     } }
