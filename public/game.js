@@ -1282,8 +1282,15 @@ function useSlotAt(i) {   // tap a slot (or press 1-3): the boat starts placemen
   if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'use', i }));
 }
 document.querySelectorAll('#slots .slot').forEach((el, i) => el.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); useSlotAt(i); }));
+function myFire() {   // [fuel, max, level] of the campfire on the island you are standing on (home's, or that island's camp); nearest one if your island has none
+  const me = ents2['p' + myId]; if (!me) return S.f;
+  const onHome = Math.hypot(me.x, me.y) < RR + 160, is = onHome ? null : ISL.find(q => Math.hypot(me.x - q[0], me.y - q[1]) < q[2] + 160);
+  if (onHome) return S.f;
+  if (is) for (const c of S.cf || []) if (Math.hypot(c[1] - is[0], c[2] - is[1]) < is[2]) return [c[3], c[4], c[5]];
+  let best = S.f, bd = Math.hypot(me.x, me.y); for (const c of S.cf || []) { const d = Math.hypot(c[1] - me.x, c[2] - me.y); if (d < bd) { bd = d; best = [c[3], c[4], c[5]]; } } return best;
+}
 function hud() {
-  const f = S.f, mp = S.p.find(p => p[0] === myId), PH = ['DAY', 'DUSK', 'NIGHT'][S.ph], left = Math.ceil(S.ph === 0 ? 90 - S.c : S.ph === 1 ? 120 - S.c : 180 - S.c);
+  const f = myFire(), mp = S.p.find(p => p[0] === myId), PH = ['DAY', 'DUSK', 'NIGHT'][S.ph], left = Math.ceil(S.ph === 0 ? 90 - S.c : S.ph === 1 ? 120 - S.c : 180 - S.c);
   $('t1').textContent = 'Night ' + S.n + ' · ' + PH + ' ' + left + 's · 🔥 Lv' + f[2];
   $('bar').firstElementChild.style.width = (100 * f[0] / f[1]) + '%';
   if (mp) $('inv').textContent = '🪵' + mp[7] + '  🪨' + mp[8] + '  🍓' + mp[9] + (mp[15] ? '  🔩' + mp[15] : '') + (mp[21] ? '  🍖' + mp[21] : '') + (mp[22] ? '  🪙' + mp[22] : '') + (mp[23] ? '  🐺' + mp[23] : '') + (mp[26] ? '  🐾' + mp[26] : '') + '   ❤ ' + mp[5] + '/' + mp[6];
