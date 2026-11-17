@@ -33,8 +33,37 @@ const BSPEED = { 1: 700, 2: 800, 3: 1000 };
 const COSTI = { wood: '🪵', stone: '🪨', food: '🍓', scrap: '🔩', pelt: '🐺', apelt: '🐾', meat: '🍖', gold: '🪙' }, COSTX = { wood: 7, stone: 8, food: 9, scrap: 15, meat: 21, gold: 22, pelt: 23, apelt: 26 };
 
 // ---------- loot areas ----------
+// ---- desert villages: a few tipis around a campfire that is only for show (no glow, keeps nothing away) ----
+const T_TIPI = tex(120, 136, g => {
+  g.fillStyle = 'rgba(0,0,0,.22)'; g.beginPath(); g.ellipse(60, 122, 52, 11, 0, 0, TAU); g.fill();
+  g.strokeStyle = '#5a3a1c'; g.lineWidth = 4; g.beginPath(); g.moveTo(52, 10); g.lineTo(46, -2); g.moveTo(68, 10); g.lineTo(74, -2); g.stroke();   // the poles poking out of the top
+  g.fillStyle = '#e8d4a6'; g.beginPath(); g.moveTo(60, 8); g.lineTo(112, 122); g.lineTo(8, 122); g.closePath(); g.fill(); g.strokeStyle = 'rgba(0,0,0,.5)'; g.lineWidth = 2; g.stroke();
+  g.fillStyle = '#d3b97d'; g.beginPath(); g.moveTo(60, 8); g.lineTo(112, 122); g.lineTo(76, 122); g.closePath(); g.fill();   // the shaded side
+  g.fillStyle = '#b3402a'; for (let i = 0; i < 3; i++) { const y = 46 + i * 20, w = 12 + i * 11; g.fillRect(60 - w, y, w * 2, 5); }   // painted bands
+  g.fillStyle = '#3a2412'; g.beginPath(); g.moveTo(60, 70); g.lineTo(76, 122); g.lineTo(44, 122); g.closePath(); g.fill();   // the door flap
+});
+const T_VFIRE = tex(90, 60, g => {
+  g.fillStyle = 'rgba(0,0,0,.2)'; g.beginPath(); g.ellipse(45, 42, 36, 12, 0, 0, TAU); g.fill();
+  for (let i = 0; i < 9; i++) { const a = i / 9 * TAU, x = 45 + Math.cos(a) * 28, y = 38 + Math.sin(a) * 11; g.fillStyle = '#8a8d92'; g.beginPath(); g.ellipse(x, y, 7, 5, 0, 0, TAU); g.fill(); g.strokeStyle = 'rgba(0,0,0,.4)'; g.stroke(); }
+  g.strokeStyle = '#4b2f17'; g.lineWidth = 6; g.lineCap = 'round'; g.beginPath(); g.moveTo(30, 40); g.lineTo(60, 34); g.moveTo(32, 33); g.lineTo(58, 42); g.stroke();   // two logs
+});
+let VILL = [];
+function xVillages(m) {
+  VILL = (m.vg || []).map(v => ({ id: v[0], x: v[1], y: v[2], seed: v[3], flames: [] }));
+  for (const v of VILL) {
+    const rng = mulberry(v.seed), c = new PIXI.Container(); c.position.set(v.x, v.y); c.zIndex = v.y;
+    const pad = new PIXI.Graphics(); pad.beginFill(0x8a6a34, .25); pad.drawEllipse(v.x, v.y + 8, 190, 120); pad.endFill(); ground.addChild(pad);
+    const n = 3, a0 = rng() * TAU;
+    for (let i = 0; i < n; i++) {   // tipis in a ring around the fire (each is its own sprite so it sorts by depth)
+      const a = a0 + i * TAU / n + (rng() - .5) * .4, d = 110 + rng() * 25, s = new PIXI.Sprite(T_TIPI); s.anchor.set(.5, .92); s.scale.set(.85 + rng() * .25); s.position.set(v.x + Math.cos(a) * d, v.y + Math.sin(a) * d * .8); s.zIndex = s.y; cullList.push({ c: s, x: s.x, y: s.y });
+    }
+    const ring = new PIXI.Sprite(T_VFIRE); ring.anchor.set(.5, .6); c.addChild(ring);
+    for (let i = 0; i < 2; i++) { const f = new PIXI.Sprite(T_FLAME); f.anchor.set(.5, .9); f.scale.set(.42 - i * .1); f.y = 2; c.addChild(f); v.flames.push(f); }   // normal blending, no glow sprite: just a picture of a fire
+    v.c = c; cullList.push({ c, x: v.x, y: v.y });
+  }
+}
 function xInit(m) {
-  window.mapInit && mapInit(m);
+  window.mapInit && mapInit(m); xVillages(m);
   LOOT = (m.loot || []).map(l => ({ id: l[0], x: l[1], y: l[2], b: l[3], seed: l[4], tier: l[5], cx: l[6], cy: l[7], trader: l[8], tx: l[9], ty: l[10] }));
   for (const l of LOOT) {
     const rng = mulberry(l.seed), list = DECOR[l.b] || DECOR.f, n = 6 + Math.floor(rng() * 4);
@@ -90,6 +119,7 @@ function xStep(dt, me) {
   for (const id in bulletE) { const e = bulletE[id], el = Math.min(.1, (now - e.t0) / 1000), a = e.d[3] / 100, v = BSPEED[e.d[4]] || 800; e.s.position.set(e.d[1] + Math.cos(a) * v * el, e.d[2] + Math.sin(a) * v * el); e.s.rotation = a; e.s.zIndex = e.s.y + 40; }
   for (const id in zoneE) { const e = zoneE[id]; e.s.position.set(e.d[1], e.d[2]); e.s.scale.set(e.d[3] * 2 / 256 * (1 + Math.sin(T * 3) * .02)); e.s.alpha = .35 + Math.sin(T * 5) * .08; }
   for (const id in turretE) { const e = turretE[id]; e.s.position.set(e.d[1], e.d[2]); e.s.zIndex = e.d[2]; }
+  for (const v of VILL) { const fl = 1 + Math.sin(T * 14 + v.id) * .07 + Math.sin(T * 23) * .04; v.flames.forEach((f, i) => f.scale.set((.42 - i * .1) * fl, (.42 - i * .1) * fl * (1 + Math.sin(T * (10 + i * 4)) * .08))); }
   let tipCamp = null;
   for (const id in campE) {
     const e = campE[id], c = e.d, x = c[1], y = c[2], fuelK = clamp(c[3] / c[4], 0, 1), alive = c[3] > 0, fl = 1 + Math.sin(T * 17 + e.ph) * .06 + Math.sin(T * 29) * .04;

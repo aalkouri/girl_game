@@ -201,6 +201,20 @@ function genLoot(islands, code) {
   }
   return out;
 }
+// villages: one tipi camp in the desert of each desert (or mixed) island - decoration plus a home for groups of 3-6 villagers
+function genVillages(islands, code, loot) {
+  const rnd = seeded(code + '@villages'), out = [];
+  for (let i = 1; i < islands.length; i++) {
+    const is = islands[i]; if (is.b !== 'd' && is.b !== 'm') continue;
+    for (let t = 0; t < 80; t++) {
+      const a = rnd() * 6.283, d = 400 + Math.sqrt(rnd()) * Math.max(100, is.r - 1000), x = is.x + Math.cos(a) * d, y = is.y + Math.sin(a) * d;
+      if (RC.biomeAt(is.x, is.y, is.r, is.b, x, y) !== 'd' || Math.hypot(x - is.x, y - is.y) > is.r - 500) continue;
+      if (loot.some(l => Math.hypot(l.x - x, l.y - y) < 500 || Math.hypot(l.cx - x, l.cy - y) < 400 || Math.hypot(l.tx - x, l.ty - y) < 400)) continue;
+      out.push({ id: out.length + 1, isl: i, x: Math.round(x), y: Math.round(y), seed: Math.floor(rnd() * 1e6) }); break;
+    }
+  }
+  return out;
+}
 const SLOTS = 3, TRAP_SEC = 20, ARROW_SPEED = 520;
 const slotCap = (p, room) => { const b = p.boat && room.boats.find(x => x.id === p.boat); return SLOTS + (b ? RC.BOATS[b.type || 'boat'].slots : 0); };   // bigger boats carry extra slots while you are aboard
 const RAB = { home: 20, outer: 8, respawn: 6, see: 260, run: 95, walk: 28, edge: 45, foot: 0.10 };   // rabbits: counts per island, seconds between top-ups, flee range, speeds (players walk 150), shore margin, foot drop chance   // how long a trap holds the big monster   // cooked food you can carry
@@ -230,7 +244,7 @@ class Room {
     } };
     add('t', 540, CAMP_CLEAR); add('r', 336); add('b', BUSHES);   // 4x the area of the old island, same density
     this.islands = genIslands(code); this.islands.forEach((is, i) => { if (i > 0) this.res.push(...islandRes(is, i, code)); });
-    this.loot = genLoot(this.islands, code);
+    this.loot = genLoot(this.islands, code); this.villages = genVillages(this.islands, code, this.loot);
     this.reset();
   }
   endRun() {   // everyone is down: pay out by days survived, send everyone back to the title screen, and start the room fresh
@@ -715,6 +729,20 @@ class Room {
         }
       }
     }
+    if (this.villages && this.villages.length && this.wolfT === WOLF.respawn) {   // (runs on the same timer as the wolves) villagers settle in groups at their camps when nobody can see it
+      const s = 1 + 0.04 * Math.max(0, this.night - 1);
+      for (const v of this.villages) {
+        const alive = this.aliens.filter(a => a.vil === v.id).length;
+        if (alive > 0) { v.rt = 0; continue; }
+        if (v.spawned && !v.rt) v.rt = 120; if (v.rt > 0) { v.rt -= WOLF.respawn; if (v.rt > 0) continue; }
+        if (P.some(p => !p.down && Math.hypot(p.x - v.x, p.y - v.y) < 1300)) continue;   // never pop in where anyone can see
+        const n = 3 + Math.floor(Math.random() * 4); v.spawned = 1; v.rt = 0;
+        for (let k = 0; k < n; k++) {
+          const archer = k % 3 === 2, a = Math.random() * 6.283, d = 60 + Math.random() * 90, hp = Math.round((archer ? 30 : 45) * s);
+          this.spawnA({ id: this.nid++, isl: v.isl, x: v.x + Math.cos(a) * d, y: v.y + Math.sin(a) * d, hp, mhp: hp, sp: archer ? 70 : 80, dmg: (archer ? 6 : 7) * s, k: archer ? 4 : 3, cd: 0, atkCd: 1.5, reach: archer ? 0 : 30, stop: archer ? 250 : 22, range: 290, aim: 0, shotCd: 0, vil: v.id, hx: v.x, hy: v.y });
+        }
+      }
+    }
     const nearFire = () => false;   // wolves, bears and mammoths are no longer scared of fire: they chase until the target is out of range (give-up distance) or they are too far from home (leash)
     for (const w of this.wolves) {
       w.cd -= dt; w.bite -= dt; let dx = 0, dy = 0, spd = 0; const wi = w.isl | 0, is = this.islands[wi] || this.islands[0];
@@ -779,7 +807,7 @@ class Room {
     }
     o.res = undefined; o.homeRes = homeRes; o.dev = dev; o.v = 2; o.at = Date.now();
     const rd = n => Math.round(n * 10) / 10;
-    o.aliens = (o.aliens || []).map(a => ({ id: a.id, isl: a.isl, k: a.k, x: rd(a.x), y: rd(a.y), hp: rd(a.hp), mhp: a.mhp, sp: a.sp, dmg: a.dmg, cd: 0, atkCd: a.atkCd, reach: a.reach, stop: a.stop, range: a.range, rad: a.rad, aim: 0, shotCd: 0, spit: a.spit, spitCd: a.spit ? 3 : undefined }));
+    o.aliens = (o.aliens || []).map(a => ({ id: a.id, isl: a.isl, k: a.k, x: rd(a.x), y: rd(a.y), hp: rd(a.hp), mhp: a.mhp, sp: a.sp, dmg: a.dmg, cd: 0, atkCd: a.atkCd, reach: a.reach, stop: a.stop, range: a.range, rad: a.rad, aim: 0, shotCd: 0, vil: a.vil, hx: a.hx, hy: a.hy, spit: a.spit, spitCd: a.spit ? 3 : undefined }));
     return o;
   }
   static fromSave(b) {   // rebuild the snapshot form that restore() understands, then restore it
@@ -801,7 +829,7 @@ class Room {
         const dx = b.x - best.x, dy = b.y - best.y, L = Math.hypot(dx, dy) || 1; b.x = best.x + dx / L * (best.r + 90); b.y = best.y + dy / L * (best.r + 90);
       }
     }
-    r.loot = genLoot(r.islands, o.code);   // loot areas are derived from the islands; only which chests were opened and the campfires are saved
+    r.loot = genLoot(r.islands, o.code); r.villages = genVillages(r.islands, o.code, r.loot);   // loot areas are derived from the islands; only which chests were opened and the campfires are saved
     if (o.islands && o.isv === ISL_VER) { r.camps = o.camps || []; const op = new Set(o.lootOpen || []); for (const l of r.loot) if (op.has(l.id)) l.open = 1; }
     { let nb = 0; r.res = r.res.filter(x => x.k !== 'b' || x.isl > 0 || ++nb <= BUSHES); }   // rooms saved before the bush cut lose their extra bushes (done before anyone joins, so client indexes stay aligned)
     const now = Date.now(); r.away = new Map((o.away || []).map(([e, v]) => [e, { t: now, s: v.s }]));   // the reconnect window starts from the restart
@@ -1002,14 +1030,16 @@ class Room {
       let tgt = null, bd = 1e9, slow = 0; const ai = a.isl | 0, home = ai === 0, own = this.islands[ai] || this.islands[0];
       let sealed = null, sbd = 1e9;   // players walled in where the enemy cannot path to them
       for (const p of P) if (!p.down && !p.boat && this.onIsland(p, ai)) {   // aliens only hunt players on their own island
-        const dd = dist(a, p), E = this.enclosure(p);
+        const dd = dist(a, p); if (a.vil && dd > (a.chase ? 800 : 420)) continue;   // camp villagers only notice you up close and give up a long chase
+        const E = this.enclosure(p);
         if (E) { if (dd < sbd) { sbd = dd; sealed = E; } continue; }
         if (dd < bd) { bd = dd; tgt = p; }
         const sl = GC.BY[p.cls].slow; if (sl > slow && dd < 110) slow = sl;
       }
       if (!tgt && sealed) { const w = this.nearWall(sealed, a.x, a.y); if (w) tgt = { x: w.qx, y: w.qy, wall: w.st, qr: w.qr }; }   // cannot reach anyone: attack the nearest wall of the enclosure
+      if (a.vil) a.chase = tgt ? 1 : 0;
       const sp = a.sp * (1 - slow) * (a.slowT > 0 ? 0.45 : 1);
-      const tx = tgt ? tgt.x : own.x, ty = tgt ? tgt.y : own.y, d = Math.max(1, Math.hypot(tx - a.x, ty - a.y));   // with nobody to chase they drift to the fire (home) or the island's middle
+      const tx = tgt ? tgt.x : a.vil ? a.hx : own.x, ty = tgt ? tgt.y : a.vil ? a.hy : own.y, d = Math.max(1, Math.hypot(tx - a.x, ty - a.y));   // with nobody to chase they drift to the fire (home) or the island's middle
       if (tgt) a.fa = Math.atan2(ty - a.y, tx - a.x);   // always face the nearest living player, even when standing still against the fire ring
       let mx = (tx - a.x) / d, my = (ty - a.y) / d;
       { // the firelight ring is a wall for aliens: when the straight line to the player would run into it, slide around it (the short way) instead of getting stuck on the near side
@@ -1034,7 +1064,7 @@ class Room {
           if (a.aim >= 1.5) { const ang = Math.atan2(ty - a.y, tx - a.x); this.arrows.push({ id: this.nid++, x: a.x, y: a.y, vx: Math.cos(ang) * ARROW_SPEED, vy: Math.sin(ang) * ARROW_SPEED, dmg: a.dmg, ttl: 1.3 }); a.aim = 0; a.shotCd = 2.6; }
         } else a.aim = 0;
       } else if (a.k === 4) a.aim = 0;
-      if (!stay && d > (a.stop || 20)) { a.x += mx * sp * dt; a.y += my * sp * dt; }
+      if (!stay && d > (a.vil && !tgt ? 90 : (a.stop || 20))) { a.x += mx * sp * (a.vil && !tgt ? 0.6 : 1) * dt; a.y += my * sp * (a.vil && !tgt ? 0.6 : 1) * dt; }
       for (const st of this.struct) {   // every structure is solid and indestructible (except traps)
         if (st.k === 'trap' || st.k === 'spike' || (st.k === 'gate' && st.open)) continue;
         const [qx, qy, qr] = solidPt(st, a.x, a.y), sd = Math.hypot(a.x - qx, a.y - qy), mn = qr + (a.rad || 12);
@@ -1122,7 +1152,7 @@ wss.on('connection', ws => {
       room = rooms.get(rc);
       if (room.players.size >= MAXP) { send(ws, { t: 'err', m: 'Room is full' }); return; }
       me = room.add(ws, name, cls, pf, email);
-      send(ws, { t: 'init', id: me.id, room: rc, R, cls, gear: me.gear, prof: view(pf), res: room.res.map(r => [r.k, Math.round(r.x), Math.round(r.y)]), isl: room.islands.map(i => [i.x, i.y, i.r, i.b]), loot: room.loot.map(l => [l.id, l.x, l.y, l.b, l.seed, l.tier, l.cx, l.cy, l.trader, l.tx, l.ty]) });
+      send(ws, { t: 'init', id: me.id, room: rc, R, cls, gear: me.gear, prof: view(pf), res: room.res.map(r => [r.k, Math.round(r.x), Math.round(r.y)]), isl: room.islands.map(i => [i.x, i.y, i.r, i.b]), loot: room.loot.map(l => [l.id, l.x, l.y, l.b, l.seed, l.tier, l.cx, l.cy, l.trader, l.tx, l.ty]), vg: (room.villages || []).map(v => [v.id, v.x, v.y, v.seed]) });
     } else if (m.t === 'craft' && me) {
       const now = Date.now(); if (now - (me.lastCraft || 0) < 200) { send(ws, { t: 'crafted', id: String(m.id || ''), ok: false, msg: 'Slow down a little.', gear: me.gear }); return; } me.lastCraft = now;
       let res; try { res = room.craft(me, String(m.id || ''), m.rot); } catch (e) { console.error('craft error:', e && e.stack || e); res = { ok: false, msg: 'Could not craft that.' }; }
