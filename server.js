@@ -486,10 +486,10 @@ class Room {
         this.aliens.push({ id: this.nid++, x: Math.cos(a) * ALIEN_R, y: Math.sin(a) * ALIEN_R, hp, mhp: hp, sp: Math.min(CHARGER.spMax, CHARGER.sp0 + CHARGER.spPerNight * (this.night - CHARGER.firstNight)), dmg: CHARGER.dmg, k: 2, cd: 0, rad: CHARGER.rad, reach: CHARGER.reach, stop: CHARGER.stop });
       }
       if (this.night % 5 === 0 && this.raidNight !== this.night) {   // every 5th night villagers raid the camp: 3 the first time, one more each time, stronger every night
-        this.raidNight = this.night; const n = 3 + (this.night / 5 - 1), s = 1 + 0.08 * (this.night - 1), a0 = Math.random() * 6.283, arch = Math.floor(n / 2);
+        this.raidNight = this.night; const n = 3 + (this.night / 5 - 1), s = 1 + 0.04 * (this.night - 1), a0 = Math.random() * 6.283, arch = Math.floor(n / 2);
         for (let i = 0; i < n; i++) {
-          const ang = a0 + (i - (n - 1) / 2) * 0.22, archer = i < arch, hp = Math.round((archer ? 45 : 60) * s);
-          this.aliens.push({ id: this.nid++, x: Math.cos(ang) * (ALIEN_R + 40), y: Math.sin(ang) * (ALIEN_R + 40), hp, mhp: hp, sp: archer ? 80 : 95, dmg: (archer ? 10 : 12) * s, k: archer ? 4 : 3, cd: 0, reach: archer ? 0 : 30, stop: archer ? 250 : 22, range: 290, aim: 0, shotCd: 0 });
+          const ang = a0 + (i - (n - 1) / 2) * 0.22, archer = i < arch, hp = Math.round((archer ? 30 : 45) * s);
+          this.aliens.push({ id: this.nid++, x: Math.cos(ang) * (ALIEN_R + 40), y: Math.sin(ang) * (ALIEN_R + 40), hp, mhp: hp, sp: archer ? 70 : 80, dmg: (archer ? 6 : 7) * s, k: archer ? 4 : 3, cd: 0, atkCd: 1.5, reach: archer ? 0 : 30, stop: archer ? 250 : 22, range: 290, aim: 0, shotCd: 0 });
         }
         for (const q of P) send(q.ws, { t: 'raid', n });
       }
@@ -527,7 +527,7 @@ class Room {
         if (a.shotCd > 0) a.shotCd -= dt;
         if (d <= a.range && a.shotCd <= 0) {
           a.aim = (a.aim || 0) + dt; stay = true;
-          if (a.aim >= 1.5) { const ang = Math.atan2(ty - a.y, tx - a.x); this.arrows.push({ id: this.nid++, x: a.x, y: a.y, vx: Math.cos(ang) * ARROW_SPEED, vy: Math.sin(ang) * ARROW_SPEED, dmg: a.dmg, ttl: 1.3 }); a.aim = 0; a.shotCd = 1.2; }
+          if (a.aim >= 1.5) { const ang = Math.atan2(ty - a.y, tx - a.x); this.arrows.push({ id: this.nid++, x: a.x, y: a.y, vx: Math.cos(ang) * ARROW_SPEED, vy: Math.sin(ang) * ARROW_SPEED, dmg: a.dmg, ttl: 1.3 }); a.aim = 0; a.shotCd = 2.6; }
         } else a.aim = 0;
       } else if (a.k === 4) a.aim = 0;
       if (!stay && d > (a.stop || 20)) { a.x += mx * sp * dt; a.y += my * sp * dt; }
@@ -539,7 +539,7 @@ class Room {
       }
       if (fr > 0 && a.k < 3 && ad < fr) { const k = fr / Math.max(1, ad); a.x = ad < 1 ? fr : a.x * k; a.y *= ad < 1 ? 1 : k; }   // repelled by firelight
       if (tgt && d < (a.reach === undefined ? 28 : a.reach) && a.cd <= 0 && (a.k >= 3 || fr === 0 || Math.hypot(tgt.x, tgt.y) >= fr)) {
-        tgt.hp -= a.dmg; a.cd = 1;
+        tgt.hp -= a.dmg; a.cd = a.atkCd || 1;
         if (a.k === 2) {   // the Charger sends you flying (about 10 steps) and then needs a moment before it can hit again
           const kx = tgt.x - a.x, ky = tgt.y - a.y, kl = Math.max(1, Math.hypot(kx, ky));
           tgt.kb = { dx: kx / kl, dy: ky / kl, t: 0, v0: CHARGER.knock * 3 / CHARGER.stunSec }; a.cd = 1.3;
