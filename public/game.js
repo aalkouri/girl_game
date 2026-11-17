@@ -482,7 +482,7 @@ function buildWorld(list) {
     else if (r[0] === 'c') { s = new PIXI.Sprite(T_CACTUS); s.anchor.set(.5, .9); s.scale.set(.62 + (i % 5) * .03); sh.scale.set(1.1, .6); sh.y = 4; }
     else if (r[0] === 'r' || r[0] === 'g') { s = new PIXI.Sprite(r[0] === 'g' ? T_GOLDV : T_ROCK); s.anchor.set(.5, .8); s.scale.set(.6); sh.scale.set(1.1, .6); sh.y = 4; }
     else { s = new PIXI.Sprite(T_BUSH); s.anchor.set(.5, .8); s.scale.set(.62); sh.scale.set(1, .5); sh.y = 4; }
-    c.addChild(s); c.position.set(r[1], r[2]); c.zIndex = r[2]; ents.addChild(c);
+    c.addChild(s); c.position.set(r[1], r[2]); c.zIndex = r[2];   // (attached to the scene only while near the camera: see the cull loop)
     const mhp = RHP[r[0]] || 1, bar = null;
     resNodes.push({ c, s, k: r[0], x: r[1], y: r[2], pop: 1, hp: mhp, mhp, bar, barT: 0, shake: 0, ph: rnd(0, TAU), base: s.scale.x });
   });
@@ -1142,10 +1142,12 @@ app.ticker.add(() => {
   const cullR = Math.max(W, H) / Z / 2 + 140;
   for (const ic of islandCs) ic.c.visible = Math.hypot(ic.x - camX, ic.y - camY) < ic.r + cullR * 1.42;   // island ground: drawn only when any of it can be on screen
   for (const r of resNodes) {
-    r.c.renderable = Math.abs(r.x - camX) < cullR && Math.abs(r.y - camY) < cullR;   // skip drawing what is off screen
+    const near = Math.abs(r.x - camX) < cullR && Math.abs(r.y - camY) < cullR;   // only resources near the camera are in the scene (there are thousands in the world)
+    if (near) { if (!r.c.parent) ents.addChild(r.c); } else if (r.c.parent && (Math.abs(r.x - camX) > cullR * 1.3 || Math.abs(r.y - camY) > cullR * 1.3)) ents.removeChild(r.c);
+    r.c.renderable = near;
     if (r.barT > 0 && r.bar) { r.barT -= dt; if (r.barT <= 0) r.bar.clear(); else if (r.barT < .4) r.bar.alpha = r.barT / .4; else r.bar.alpha = 1; }
     if (r.shake > 0) r.shake = Math.max(0, r.shake - dt);
-    if (!r.c.visible) continue;
+    if (!r.c.visible || !r.c.parent) continue;
     if (r.shake > 0) { const sh = Math.sin(T * 55) * r.shake; r.s.skew.x = sh * .22; r.s.x = sh * 3; r.s.y = Math.abs(sh) * -1.2; }
     else if (r.s.x !== 0 || r.s.y !== 0) { r.s.x = 0; r.s.y = 0; }
     if (r.pop < 1) { r.pop = Math.min(1, r.pop + dt * 2.5); const b = 1 - Math.pow(1 - r.pop, 3); r.s.scale.set(r.base * (.2 + .8 * b)); }

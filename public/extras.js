@@ -28,7 +28,7 @@ const TRADER_LOOK = { 1: ['#9e9e9e', '#616161', '#3e2723', null, 'pack'], 2: ['#
 const T_TRADER = {}; for (const k in TRADER_LOOK) T_TRADER[k] = PIXI.Texture.from(mkPlayerCanvas(TRADER_LOOK[k]));
 
 // ---------- state ----------
-let LOOT = [], lootE = {}, campE = {}, bulletE = {}, zoneE = {}, turretE = {};
+let LOOT = [], cullList = [], lootE = {}, campE = {}, bulletE = {}, zoneE = {}, turretE = {};
 const BSPEED = { 1: 700, 2: 800, 3: 1000 };
 const COSTI = { wood: '🪵', stone: '🪨', food: '🍓', scrap: '🔩', pelt: '🐺', meat: '🍖', gold: '🪙' }, COSTX = { wood: 7, stone: 8, food: 9, scrap: 15, meat: 21, gold: 22, pelt: 23 };
 
@@ -40,14 +40,14 @@ function xInit(m) {
     const pad = new PIXI.Graphics(); pad.beginFill(l.b === 's' ? 0xcfe0ee : l.b === 'd' ? 0xb98d44 : 0x2e5a2a, .18); pad.drawEllipse(l.x, l.y + 6, 92, 62); pad.endFill(); ground.addChild(pad);
     for (let i = 0; i < n; i++) {
       const a = rng() * TAU, d = Math.sqrt(rng()) * 70, sp = new PIXI.Sprite(list[Math.floor(rng() * list.length)]);
-      sp.anchor.set(.5, .88); sp.position.set(l.x + Math.cos(a) * d, l.y + Math.sin(a) * d * .75); sp.scale.set(.85 + rng() * .5); sp.zIndex = sp.y; ents.addChild(sp);
+      sp.anchor.set(.5, .88); sp.position.set(l.x + Math.cos(a) * d, l.y + Math.sin(a) * d * .75); sp.scale.set(.85 + rng() * .5); sp.zIndex = sp.y; cullList.push({ c: sp, x: sp.x, y: sp.y });
     }
-    if (l.tier) { const c = new PIXI.Container(), sp = new PIXI.Sprite(T_LCHEST[l.tier][0]); sp.anchor.set(.5, .85); c.addChild(sp); c.position.set(l.cx, l.cy); c.zIndex = l.cy; ents.addChild(c); lootE[l.id] = { sp, tier: l.tier, open: 0 }; }
+    if (l.tier) { const c = new PIXI.Container(), sp = new PIXI.Sprite(T_LCHEST[l.tier][0]); sp.anchor.set(.5, .85); c.addChild(sp); c.position.set(l.cx, l.cy); c.zIndex = l.cy; cullList.push({ c, x: l.cx, y: l.cy }); lootE[l.id] = { sp, tier: l.tier, open: 0 }; }
     if (l.trader) {
       const c = new PIXI.Container(), sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5); sh.scale.set(.8, .5); sh.y = 8;
       const body = new PIXI.Sprite(T_TRADER[l.trader]); body.anchor.set(.5); body.scale.set(.95); body.rotation = Math.atan2(l.y - l.ty, l.x - l.tx) + 0;
       const tag = new PIXI.Text(RC.TRADERS[l.trader].e + ' ' + RC.TRADERS[l.trader].n, { fontFamily: 'system-ui,sans-serif', fontSize: 13, fontWeight: '800', fill: 0xffe082, stroke: 0x000000, strokeThickness: 4 }); tag.anchor.set(.5, 1); tag.y = -34; tag.resolution = 2;
-      c.addChild(sh, body, tag); c.position.set(l.tx, l.ty); c.zIndex = l.ty; ents.addChild(c);
+      c.addChild(sh, body, tag); c.position.set(l.tx, l.ty); c.zIndex = l.ty; cullList.push({ c, x: l.tx, y: l.ty });
     }
   }
 }
@@ -75,7 +75,8 @@ function xSnap(m) {
   mk(turretE, m.tr, () => { const s = new PIXI.Sprite(T_TURRET); s.anchor.set(.5, .85); ents.addChild(s); return { s }; });
 }
 function xStep(dt, me) {
-  const now = performance.now();
+  const now = performance.now(), cr = Math.max(W, H) / Z / 2 + 160;
+  for (const o of cullList) { const nr = Math.abs(o.x - camX) < cr && Math.abs(o.y - camY) < cr; if (nr) { if (!o.c.parent) ents.addChild(o.c); } else if (o.c.parent && (Math.abs(o.x - camX) > cr * 1.3 || Math.abs(o.y - camY) > cr * 1.3)) ents.removeChild(o.c); }   // decorations, chests, traders: in the scene only near the camera
   for (const id in bulletE) { const e = bulletE[id], el = Math.min(.1, (now - e.t0) / 1000), a = e.d[3] / 100, v = BSPEED[e.d[4]] || 800; e.s.position.set(e.d[1] + Math.cos(a) * v * el, e.d[2] + Math.sin(a) * v * el); e.s.rotation = a; e.s.zIndex = e.s.y + 40; }
   for (const id in zoneE) { const e = zoneE[id]; e.s.position.set(e.d[1], e.d[2]); e.s.scale.set(e.d[3] * 2 / 256 * (1 + Math.sin(T * 3) * .02)); e.s.alpha = .35 + Math.sin(T * 5) * .08; }
   for (const id in turretE) { const e = turretE[id]; e.s.position.set(e.d[1], e.d[2]); e.s.zIndex = e.d[2]; }
