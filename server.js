@@ -129,6 +129,7 @@ const HP = { t: 4, r: 3, b: 1 };            // hits to break: tree 4, rock 3, be
 const STRUCT = { bench: { r: RC.RADIUS.bench }, chest: { r: RC.RADIUS.chest }, pot: { r: RC.RADIUS.pot }, smelter: { r: RC.RADIUS.smelter }, wall: { r: RC.RADIUS.wall, hp: 60 } };
 const CHEST_CAP = 500, REACH = 62;   // collision radius / hit points of placed structures
 const SPILL = { t: 5, r: 3 };
+const STA = { max: 100, drain: 16, regen: 22, delay: 1, tiredDelay: 1.6, resume: 25, sprint: 1.7 };   // stamina: a full-stick run drains 16/s (~6 s), refills 22/s after a 1 s rest; at 0 you are winded until it climbs back to 25
 // the Charger: from night 4 on, one huge, very fast enemy per night that hammers players far backwards and vanishes at dawn
 const CHARGER = { firstNight: 4, sp0: 175, spPerNight: 12, spMax: 320, dmg: 25, rad: 36, reach: 62, stop: 44, knock: 300, stunSec: 0.6 };               // logs per tree / stones per rock (before class bonus)
 
@@ -147,16 +148,16 @@ class Room {
     for (const p of this.players.values()) { this.respawn(p); p.gear = {}; p.buff = { speed: 0, regen: 0, dmg: 0 }; p.kb = null; }
   }
   respawn(p) {
-    const c = GC.BY[p.cls]; p.mhp = c.hp; p.hp = c.hp; p.down = 0; p.rev = 0;
+    const c = GC.BY[p.cls]; p.mhp = c.hp; p.hp = c.hp; p.down = 0; p.rev = 0; p.sta = STA.max; p.tired = 0; p.staCd = 0;
     const a = Math.random() * 6.283; p.x = Math.cos(a) * 100; p.y = Math.sin(a) * 100;
   }
   // a broken tree/rock leaves pickups on the ground after its fall/crumble animation (client shows them when they appear)
   spill(r, n) {
-    const delay = r.k === 't' ? .95 : .5;
+    const delay = r.k === 't' ? .95 : .5, kind = r.k === 't' ? 'w' : r.k === 'b' ? 'f' : 's';
     for (let i = 0; i < n; i++) {
       const a = Math.random() * 6.283, d = 24 + Math.random() * 28; let x = r.x + Math.cos(a) * d, y = r.y + Math.sin(a) * d;
       const dd = Math.hypot(x, y); if (dd > R - 40) { x *= (R - 40) / dd; y *= (R - 40) / dd; }
-      this.pend.push({ k: r.k === 't' ? 'w' : 's', x, y, t: delay });
+      this.pend.push({ k: kind, x, y, t: delay });
     }
   }
   craft(p, id, rot) {
@@ -230,7 +231,7 @@ class Room {
     this.away.set(p.email, { t: now, s: { wood: p.wood, stone: p.stone, food: p.food, scrap: p.scrap, gear: p.gear, buff: p.buff, cls: p.cls, down: p.down, hp: p.hp, x: p.x, y: p.y } });
   }
   add(ws, name, cls, pf, email) {
-    const p = { id: this.nid++, ws, name, cls, prof: pf, gear: {}, buff: { speed: 0, regen: 0, dmg: 0 }, actPrev: 0, fa: 0, sw: 0, swk: 0, swa: 0, wood: parseInt(process.env.START_WOOD) || 0, stone: parseInt(process.env.START_STONE) || 0, food: parseInt(process.env.START_FOOD) || 0, scrap: 0, actcd: 0, hitcd: 0, eat: 0, inp: { dx: 0, dy: 0, act: 0, hit: 0 } };
+    const p = { id: this.nid++, ws, name, cls, prof: pf, gear: {}, buff: { speed: 0, regen: 0, dmg: 0 }, actPrev: 0, fa: 0, sw: 0, swk: 0, swa: 0, wood: parseInt(process.env.START_WOOD) || 0, stone: parseInt(process.env.START_STONE) || 0, food: parseInt(process.env.START_FOOD) || 0, scrap: 0, sta: STA.max, staCd: 0, tired: 0, actcd: 0, hitcd: 0, eat: 0, inp: { dx: 0, dy: 0, act: 0, hit: 0 } };
     p.email = email; this.respawn(p);
     const a = email && this.away.get(email); this.away.delete(email);
     if (a && Date.now() - a.t <= ROOM_IDLE_SEC * 1000) {   // welcome back: same stuff, same spot (a downed player just respawns)
@@ -259,14 +260,23 @@ class Room {
 
     for (const p of P) {
       if (p.down) continue;
-      if (p.inpAt && Date.now() - p.inpAt > 400) p.inp = { dx: 0, dy: 0, act: 0, hit: 0 };   // client stopped sending (frozen/backgrounded tab): never keep walking
+      if (p.inpAt && Date.now() - p.inpAt > 400) p.inp = { dx: 0, dy: 0, act: 0, hit: 0, rn: 0 };   // client stopped sending (frozen/backgrounded tab): never keep walking
       const c = GC.BY[p.cls], i = p.inp;
       p.actcd -= dt; p.hitcd -= dt;
       const B = p.buff; for (const k in B) if (B[k] > 0) B[k] = Math.max(0, B[k] - dt);
       const actEdge = i.act && !p.actPrev; p.actPrev = i.act;
       if (B.regen > 0 && p.hp < p.mhp) p.hp = Math.min(p.mhp, p.hp + 2 * dt);
       let dx = i.dx, dy = i.dy; const m = Math.hypot(dx, dy); if (m > 1) { dx /= m; dy /= m; }
-      const spd = c.spd * (B.speed > 0 ? 1.25 : 1);
+      let spd = c.spd * (B.speed > 0 ? 1.25 : 1);
+      // running: the further the stick is pushed past the walk ring, the faster (up to 1.7x); it costs stamina, and a winded player can only walk
+      let rn = m > 0.1 ? Math.max(0, Math.min(1, +i.rn || 0)) : 0; if (p.tired) rn = 0;
+      if (rn > 0 && p.sta > 0) {
+        p.sta = Math.max(0, p.sta - STA.drain * rn * dt); p.staCd = STA.delay; spd *= 1 + (STA.sprint - 1) * rn;
+        if (p.sta <= 0) { p.tired = 1; p.staCd = STA.tiredDelay; }
+      } else {
+        p.staCd -= dt; if (p.staCd <= 0) p.sta = Math.min(STA.max, p.sta + STA.regen * dt);
+        if (p.tired && p.sta >= STA.resume) p.tired = 0;
+      }
       let flying = false;
       if (p.kb) { p.kb.t += dt; const u = p.kb.t / CHARGER.stunSec; if (u >= 1) p.kb = null; else { const v = p.kb.v0 * (1 - u) * (1 - u); p.x += p.kb.dx * v * dt; p.y += p.kb.dy * v * dt; flying = true; } }   // knocked back: no steering until it wears off
       if (!flying) { p.x += dx * spd * dt; p.y += dy * spd * dt; } if (m > 0.1) p.fa = Math.atan2(dy, dx);
@@ -291,7 +301,7 @@ class Room {
               best.hp -= best.k === 't' && p.gear.axe ? 1.34 : best.k === 'r' && p.gear.pick ? 1.5 : 1;
               if (best.hp <= 0) {
                 best.rt = 45 + Math.random() * 30;
-                if (best.k === 'b') p.food += Math.max(1, Math.round(2 * c.food));
+                if (best.k === 'b') this.spill(best, Math.max(1, Math.round(2 * c.food)));   // little strawberries pop out around the bush
                 else this.spill(best, Math.max(1, Math.round(SPILL[best.k] * (best.k === 't' ? c.wood : c.stone))));
               }
             } else { p.actcd = 0.55; p.sw = (p.sw + 1) & 255; p.swk = 1; p.swa = p.fa; }   // nothing to chop: still swing
@@ -334,7 +344,7 @@ class Room {
     }
     for (let i = this.drops.length - 1; i >= 0; i--) {
       const d = this.drops[i]; d.ttl -= dt; let taken = false;
-      if (d.ttl > 0) for (const p of P) if (!p.down && dist(p, d) < 30) { if (d.k === 'w') p.wood++; else if (d.k === 's') p.stone++; else p.scrap++; taken = true; break; }
+      if (d.ttl > 0) for (const p of P) if (!p.down && dist(p, d) < 30) { if (d.k === 'w') p.wood++; else if (d.k === 's') p.stone++; else if (d.k === 'f') p.food++; else p.scrap++; taken = true; break; }
       if (taken || d.ttl <= 0) this.drops.splice(i, 1);
     }
     // aliens
@@ -384,7 +394,7 @@ class Room {
     return JSON.stringify({
       t: 's', c: Math.round(this.c * 10) / 10, n: this.night, ph: this.ph(), o: this.over > 0 ? 1 : 0,
       f: [Math.round(f.fuel), 150 + (f.lvl - 1) * 75, f.lvl, f.fuel > 0 ? RC.camp(f.lvl) : 0],
-      p: [...this.players.values()].map(p => [p.id, p.name, p.cls, Math.round(p.x), Math.round(p.y), Math.round(p.hp), p.mhp, p.wood, p.stone, p.food, p.down, Math.round(p.rev * 10) / 10, p.sw, p.swk, Math.round(p.swa * 100), p.scrap, Math.round(p.fa * 100)]),
+      p: [...this.players.values()].map(p => [p.id, p.name, p.cls, Math.round(p.x), Math.round(p.y), Math.round(p.hp), p.mhp, p.wood, p.stone, p.food, p.down, Math.round(p.rev * 10) / 10, p.sw, p.swk, Math.round(p.swa * 100), p.scrap, Math.round(p.fa * 100), Math.round(p.sta), p.tired]),
       a: this.aliens.map(a => [a.id, Math.round(a.x), Math.round(a.y), Math.round(a.hp), a.mhp, a.k]),
       r: this.res.map(r => Math.max(0, Math.ceil(r.hp - 1e-9))).join(''),
       dr: this.drops.map(d => [d.id, d.k, Math.round(d.x), Math.round(d.y)]),
@@ -428,7 +438,7 @@ wss.on('connection', ws => {
       send(ws, { t: 'cooked', id: String(m.id || ''), ok: res.ok, msg: res.msg, b: me.buff });
     } else if (m.t === 'in' && me) {
       const n = v => Math.max(-1, Math.min(1, +v || 0));
-      me.inp = { dx: n(m.dx), dy: n(m.dy), act: m.act ? 1 : 0, hit: m.hit ? 1 : 0 }; me.inpAt = Date.now();
+      me.inp = { dx: n(m.dx), dy: n(m.dy), act: m.act ? 1 : 0, hit: m.hit ? 1 : 0, rn: Math.max(0, Math.min(1, +m.rn || 0)) }; me.inpAt = Date.now();
     }
   });
   ws.on('close', () => { if (room && me) { room.stash(me); room.players.delete(me.id); } });

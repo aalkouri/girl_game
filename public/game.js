@@ -135,6 +135,12 @@ const T_STONE = tex(30, 26, g => {
   poly(g, '#6b7078', [3, 20, 6, 9, 15, 3, 25, 8, 28, 19, 18, 24]); poly(g, '#9aa1aa', [6, 9, 15, 3, 25, 8, 17, 13, 8, 14]); poly(g, '#c6ccd4', [11, 8, 16, 5, 21, 8, 16, 10]);
   g.strokeStyle = 'rgba(0,0,0,.4)'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(3, 20); g.lineTo(6, 9); g.lineTo(15, 3); g.lineTo(25, 8); g.lineTo(28, 19); g.lineTo(18, 24); g.closePath(); g.stroke();
 });
+const T_BERRY = tex(26, 28, g => {
+  g.fillStyle = '#d32f2f'; ell(g, 13, 15, 9, 9); poly(g, '#d32f2f', [4.5, 17, 21.5, 17, 13, 27]);
+  g.fillStyle = 'rgba(255,255,255,.28)'; ell(g, 9.5, 11, 2.5, 3.5);
+  g.fillStyle = '#ffe082'; [[9, 15], [15, 13], [18, 17], [12, 19], [8, 20], [14, 23]].forEach(p => ell(g, p[0], p[1], .9, 1.3));
+  poly(g, '#43a047', [13, 8, 5, 5, 9, 10]); poly(g, '#43a047', [13, 8, 21, 5, 17, 10]); poly(g, '#2e7d32', [13, 8, 10, 3, 16, 3]);
+});
 const T_SLASH = tex(80, 80, g => { g.strokeStyle = '#fff'; g.lineCap = 'round'; g.lineWidth = 7; g.beginPath(); g.arc(8, 40, 52, -.75, .75); g.stroke(); g.lineWidth = 3; g.globalAlpha = .6; g.beginPath(); g.arc(8, 40, 44, -.6, .6); g.stroke(); });
 const T_BENCH = tex(112, 84, g => {
   g.fillStyle = 'rgba(0,0,0,.0)';
@@ -310,6 +316,7 @@ function buildWorld(list) {
 
 // campfire visuals (above darkness)
 const flames = [0, 1, 2].map(i => { const s = new PIXI.Sprite(T_FLAME); s.anchor.set(.5, .9); s.blendMode = BM.ADD; overL.addChild(s); return s; });
+const fireTip = new PIXI.Text('', { fontFamily: 'system-ui,sans-serif', fontSize: 16, fontWeight: '800', fill: 0xffffff, stroke: 0x000000, strokeThickness: 4, align: 'center' }); fireTip.anchor.set(.5, 1); fireTip.resolution = 2; fireTip.position.set(0, -78); fireTip.visible = false; overL.addChild(fireTip);
 const fireGlow = new PIXI.Sprite(T_GLOW); fireGlow.anchor.set(.5); fireGlow.blendMode = BM.ADD; fireGlow.tint = 0xff8a30; overL.addChildAt(fireGlow, 0);
 const ring = new PIXI.Sprite(T_RING); ring.anchor.set(.5); ring.blendMode = BM.ADD; ring.tint = 0xffc266; overL.addChildAt(ring, 0);
 
@@ -341,10 +348,10 @@ function mkPlayer(p) {
   const c = new PIXI.Container(), sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5); sh.scale.set(.8, .5); sh.y = 8; sh.alpha = .9;
   const body = new PIXI.Sprite(T_PL[p[2]]); body.anchor.set(.5); body.scale.set(.85);
   const name = new PIXI.Text(p[1], { fontFamily: 'system-ui,sans-serif', fontSize: 13, fontWeight: '700', fill: 0xffffff, stroke: 0x000000, strokeThickness: 3 }); name.anchor.set(.5, 1); name.y = -30; name.resolution = 2;
-  const hp = new PIXI.Graphics(); hp.y = 28;
+  const hp = new PIXI.Graphics(); hp.y = 28; const sta = new PIXI.Graphics(); sta.y = -27; sta.visible = false;
   const tool = new PIXI.Sprite(T_AXE); tool.anchor.set(.08, .5); tool.scale.set(.62); tool.visible = false;
-  c.addChild(sh, body, tool, name, hp); ents.addChild(c);
-  return { c, body, tool, name, hp, ang: 0, lh: -1, ld: -1, dust: 0, kind: 'p', sw: p[12], swing: null };
+  c.addChild(sh, body, tool, name, hp, sta); ents.addChild(c);
+  return { c, body, tool, name, hp, sta, stv: 100, ang: 0, lh: -1, ld: -1, dust: 0, kind: 'p', sw: p[12], swing: null };
 }
 // per-kind look: 0 = normal alien, 1 = brute (every 5th night), 2 = the Charger (3x a normal alien)
 const AK = {
@@ -427,14 +434,14 @@ function stepFallers(dt) {
 }
 
 // ground pickups (logs from trees, stones from rocks): hop out, bob, fly to the player that grabs them
-const dropE = {}, flyers = [], DROP_S = { w: .8, s: .85, m: .9 };
+const dropE = {}, flyers = [], DROP_S = { w: .8, s: .85, m: .9, f: .75 };
 function syncDrops(m, _d, _dx) {
   const seen = {};
   for (const d of m.dr || []) {
     seen[d[0]] = 1; let e = dropE[d[0]];
     if (!e) {
       const c = new PIXI.Container(), sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5); sh.scale.set(.6, .35); sh.y = 4;
-      const spr = new PIXI.Sprite(d[1] === 'w' ? T_LOG : d[1] === 'm' ? T_SCRAP : T_STONE); spr.anchor.set(.5); spr.scale.set(DROP_S[d[1]]); spr.rotation = d[1] === 'w' ? rnd(-.8, .8) : rnd(-.4, .4);
+      const spr = new PIXI.Sprite(d[1] === 'w' ? T_LOG : d[1] === 'm' ? T_SCRAP : d[1] === 'f' ? T_BERRY : T_STONE); spr.anchor.set(.5); spr.scale.set(DROP_S[d[1]]); spr.rotation = d[1] === 'w' ? rnd(-.8, .8) : rnd(-.4, .4);
       c.addChild(sh, spr); c.position.set(d[2], d[3]); c.zIndex = d[3]; ents.addChild(c);
       e = dropE[d[0]] = { c, spr, sh, x: d[2], y: d[3], t: 0, ph: rnd(0, TAU), k: d[1], dur: d[1] === 'm' ? .5 : .35 };
       if (d[1] === 'm') {   // metal scrap jumps out of the nearest smelter
@@ -451,7 +458,7 @@ function syncDrops(m, _d, _dx) {
     else { e.c.destroy({ children: true }); }
   }
 }
-function overGlow(e) { /* small sparkle when a pickup appears */ emit(overL, T_GLOW, e.x, e.y - 6, 0, -20, .5, .16, .02, e.k === 'w' ? 0xffd9a0 : 0xdfe8f5, .8, true, 0); }
+function overGlow(e) { /* small sparkle when a pickup appears */ emit(overL, T_GLOW, e.x, e.y - 6, 0, -20, .5, .16, .02, e.k === 'w' ? 0xffd9a0 : e.k === 'f' ? 0xffb3b3 : 0xdfe8f5, .8, true, 0); }
 function stepDrops(dt) {
   for (const id in dropE) {
     const e = dropE[id]; e.t += dt; const u = Math.min(1, e.t / e.dur), hop = Math.sin(u * Math.PI) * (e.from ? 46 : 26) * (1 - u * .3);
@@ -530,14 +537,14 @@ function placeCheck(r, x, y) {   // mirrors the server's rules so the silhouette
 const lastRot = {};   // remember the last rotation used for each recipe (handy when lining up walls)
 function startPlacing(r) {
   stopPlacing(); setCraft(false); closeChest(); closePot();
-  const D = SDEF[r.kind]; placingId = r.id; placeRot = ((lastRot[r.id] || 0) >> 1 << 1) % 8;
+  const D = SDEF[r.kind]; placingId = r.id; placeRot = (lastRot[r.id] || 0) % 8;
   ghost = new PIXI.Container(); ghostRot = new PIXI.Container();
   const sp = new PIXI.Sprite(D.tex); sp.anchor.set(.5, .5); sp.scale.set(D.base);
   ghostRot.y = -(D.ay - .5) * D.tex.height * D.base; ghostRot.addChild(sp); ghost.addChild(ghostRot);
   ghostF = new PIXI.ColorMatrixFilter(); ghost.filters = [ghostF]; ents.addChild(ghost);
   $('placeBar').style.display = 'flex'; $('placeName').textContent = r.e + ' ' + r.n; $('placeMsg').textContent = '';
 }
-function rotatePlace() { if (!placingId) return; placeRot = (placeRot + 2) % 8;   // 4 quarter-turns, one direction only
+function rotatePlace(step) { if (!placingId) return; placeRot = (placeRot + (step || 2)) % 8;   // 2 = quarter turn (90°), 1 = half of that (45°); one direction only
   lastRot[placingId] = placeRot; SFX.pickup(); }
 function stopPlacing() {
   if (ghost) { ghost.destroy({ children: true }); ghost = null; } ghostRot = null;
@@ -557,7 +564,8 @@ function actPress() {   // rising edge of the ACT button while placing: ask the 
   ws.send(JSON.stringify({ t: 'craft', id: placingId, rot: placeRot }));
 }
 $('placeCancel').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); stopPlacing(); });
-$('placeRotR').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); rotatePlace(); });
+$('placeRotR').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); rotatePlace(2); });
+$('placeRotH').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); rotatePlace(1); });
 
 // ---- crafting menu ----
 const pooled = () => {   // what you can spend on crafting: your bag plus everything in the chests
@@ -742,6 +750,11 @@ app.ticker.add(() => {
       }
       e.body.rotation = down ? 1.2 : e.ang; e.body.tint = down ? 0x777777 : 0xffffff;
       e.body.y = down ? 0 : Math.sin(T * 16 + e.ph) * (sp > 12 ? 1.8 : .4); e.body.scale.y = (down ? .6 : .85) * (1 + (sp > 12 ? Math.sin(T * 16) * .04 : 0));
+      if (k === 'p' + myId) {   // stamina bar over your own character: shown while it's below full, red when winded
+        const tgt = p[17] === undefined ? 100 : p[17]; e.stv += (tgt - e.stv) * Math.min(1, dt * 14);
+        const show = e.stv < 99 || p[18]; e.sta.visible = !!show && !down;
+        if (e.sta.visible) { const f = Math.max(0, e.stv / 100), tired = !!p[18], col = tired ? (Math.sin(T * 12) > 0 ? 0xff5252 : 0xb71c1c) : f < .3 ? 0xffb74d : 0xffee58; if (e.stDraw !== col + ':' + Math.round(f * 60)) { e.stDraw = col + ':' + Math.round(f * 60); drawHp(e.sta, 34, f, col); } }
+      }
       if (e.lh !== p[5] || e.ld !== p[10] || e.lr !== p[11]) { e.lh = p[5]; e.ld = p[10]; e.lr = p[11]; if (p[10]) drawHp(e.hp, 40, Math.min(1, p[11] / 3), 0x4caf50); else drawHp(e.hp, 34, p[5] / p[6], 0xef5350); }
       if (sp > 30 && !down) { e.st = (e.st || 0) - dt; if (e.st <= 0) { e.st = .3; SFX.step(Math.hypot(e.x - me.x, e.y - me.y), e.x - me.x); } e.dust -= dt; if (e.dust <= 0) { e.dust = .14; emit(pfx, T_GLOW, e.x, e.y + 8, rnd(-8, 8), rnd(-8, 4), .5, .12, .3, 0xd9c79a, .35, false, 0); } }
     } else {
@@ -781,6 +794,15 @@ app.ticker.add(() => {
   // campfire
   const f = S.f, fuelK = clamp(f[0] / f[1], 0, 1), alive = f[0] > 0, fl = 1 + Math.sin(T * 17) * .06 + Math.sin(T * 29) * .04;
   flames.forEach((s, i) => { s.visible = alive; const w = (.5 + .5 * fuelK) * (1 - i * .22) * fl; s.scale.set(w * (1 + Math.sin(T * (9 + i * 3) + i) * .08), w * (1 + Math.sin(T * (13 + i * 4) + i * 2) * .14)); s.rotation = Math.sin(T * (6 + i * 2) + i) * .08; s.position.set((i - 1) * 4, 6); });
+  { // standing at the fire: show what it needs (same rules as the server: ACT refuels with wood, then levels up with stone)
+    const near = Math.hypot(me.x, me.y) < 80 && !me.d[10]; fireTip.visible = near;
+    if (near) {
+      const feed = (GC.BY[me.d[2]] || GC.BY.forester).feed || 1, need = f[1] - f[0], lines = [];
+      if (need > 15 * feed * .5) lines.push('🪵 ×' + Math.ceil(need / (15 * feed)) + ' to refuel');
+      lines.push(f[2] < 5 ? '⬆ Level ' + (f[2] + 1) + ': 🪨 ×' + 10 * f[2] : 'Fire is max level');
+      const t = lines.join('\n'); if (fireTip.text !== t) fireTip.text = t;
+    }
+  }
   fireGlow.visible = alive; fireGlow.position.set(0, -6); fireGlow.scale.set((1.6 + fuelK * 1.4) * fl); fireGlow.alpha = .55;
   if (alive) { if (!ringR) ringR = f[3]; ringR += (f[3] - ringR) * Math.min(1, dt * 2.5); }
   ring.visible = alive; ring.scale.set(ringR * 2 / 256 * 1.0); ring.alpha = .35 + Math.sin(T * 2) * .08;
@@ -828,7 +850,7 @@ function hud() {
   else if (S.ph === 1) b = (Math.floor(now / 500) % 2 ? '🌆 ' : '') + 'DUSK - get back to the fire!';
   else if (S.ph === 2 && f[0] <= 0) b = '⚠ The fire is out!';
   else if (f[0] > 0 && f[0] < 25) b = 'Fire is low - bring wood!';
-  else if (now < tipUntil) b = 'Hold ACT by a tree (4 hits) or rock (3 hits), pick berries, then run over the logs and stones. At the fire, ACT adds wood or upgrades it (stone). HIT: fight aliens.';
+  else if (now < tipUntil) b = 'Hold ACT by a tree (4 hits) or rock (3 hits), pick berries, then run over the logs, stones and berries. Push the stick past the ring to run (uses stamina). At the fire, ACT adds wood or upgrades it (stone). HIT: fight aliens.';
   const bn = $('banner'); if (bn.textContent !== b) { bn.textContent = b; bn.style.fontSize = b.length > 60 ? '15px' : '22px'; }
 }
 
@@ -1014,10 +1036,10 @@ app.view.addEventListener('pointerdown', e => { if (joy || e.clientX > innerWidt
 app.view.addEventListener('pointermove', e => { if (joy && joy.id === e.pointerId) { joy.x = e.clientX; joy.y = e.clientY; jpos(); } });
 const jend = e => { if (joy && joy.id === e.pointerId) { joy = null; jb.style.display = jk.style.display = 'none'; } };
 app.view.addEventListener('pointerup', jend); app.view.addEventListener('pointercancel', jend);
-function jpos() { const dx = joy.x - joy.ox, dy = joy.y - joy.oy, m = Math.min(55, Math.hypot(dx, dy)), a = Math.atan2(dy, dx); jb.style.left = joy.ox + 'px'; jb.style.top = joy.oy + 'px'; jk.style.left = (joy.ox + Math.cos(a) * m) + 'px'; jk.style.top = (joy.oy + Math.sin(a) * m) + 'px'; }
+function jpos() { const dx = joy.x - joy.ox, dy = joy.y - joy.oy, m = Math.min(100, Math.hypot(dx, dy)), a = Math.atan2(dy, dx); jk.style.background = m > 63 ? '#ffb74dd0' : ''; jb.style.left = joy.ox + 'px'; jb.style.top = joy.oy + 'px'; jk.style.left = (joy.ox + Math.cos(a) * m) + 'px'; jk.style.top = (joy.oy + Math.sin(a) * m) + 'px'; }
 function bind(id, set) { const b = $(id); b.addEventListener('pointerdown', e => { e.preventDefault(); set(1); b.setPointerCapture(e.pointerId); b.style.transform = 'scale(.92)'; }); ['pointerup', 'pointercancel'].forEach(t => b.addEventListener(t, () => { set(0); b.style.transform = ''; })); }
 bind('act', v => { act = v; if (v) actPress(); }); bind('hit', v => hit = v);
-addEventListener('keydown', e => { const k = e.key.toLowerCase(); if (placingId && k === 'r') rotatePlace(); if (!keys[k] && (k === ' ' || k === 'e') && !/INPUT|TEXTAREA/.test((e.target || {}).tagName || '')) actPress(); keys[k] = 1; }); addEventListener('keyup', e => { keys[e.key.toLowerCase()] = 0; });
+addEventListener('keydown', e => { const k = e.key.toLowerCase(); if (placingId && (k === 'r' || k === 't')) rotatePlace(k === 'r' ? 2 : 1); if (!keys[k] && (k === ' ' || k === 'e') && !/INPUT|TEXTAREA/.test((e.target || {}).tagName || '')) actPress(); keys[k] = 1; }); addEventListener('keyup', e => { keys[e.key.toLowerCase()] = 0; });
 // never let a lost touch/key leave the character walking: drop all held input whenever the page loses focus or no finger is down
 function clearInput() { joy = null; jb.style.display = jk.style.display = 'none'; act = hit = 0; for (const k in keys) keys[k] = 0; ['act', 'hit'].forEach(i => { $(i).style.transform = ''; }); }
 addEventListener('blur', clearInput); document.addEventListener('visibilitychange', () => { if (document.hidden) clearInput(); }); addEventListener('pagehide', clearInput);
@@ -1027,8 +1049,10 @@ app.view.addEventListener('touchstart', e => { if (e.touches.length >= 2) { joy 
 app.view.addEventListener('contextmenu', e => e.preventDefault());
 function readInput() {
   let dx = 0, dy = 0;
-  if (joy) { dx = (joy.x - joy.ox) / 55; dy = (joy.y - joy.oy) / 55; const m = Math.hypot(dx, dy); if (m > 1) { dx /= m; dy /= m; } if (m < .12) dx = dy = 0; }
+  let rn = 0;
+  if (joy) { dx = (joy.x - joy.ox) / 55; dy = (joy.y - joy.oy) / 55; const m = Math.hypot(dx, dy); if (m > 1) { dx /= m; dy /= m; } if (m < .12) dx = dy = 0; else if (m > 1.15) rn = Math.min(1, (m - 1.15) / .75); }   // past the ring = run, faster the further you push
   if (keys.a || keys.arrowleft) dx -= 1; if (keys.d || keys.arrowright) dx += 1; if (keys.w || keys.arrowup) dy -= 1; if (keys.s || keys.arrowdown) dy += 1;
-  return { dx, dy, act: !placingId && (act || keys[' '] || keys.e) ? 1 : 0, hit: hit || keys.f || keys.j ? 1 : 0 };
+  if (keys.shift && (dx || dy)) rn = 1;
+  return { dx, dy, rn: Math.round(rn * 100) / 100, act: !placingId && (act || keys[' '] || keys.e) ? 1 : 0, hit: hit || keys.f || keys.j ? 1 : 0 };
 }
 setInterval(() => { if (ws && ws.readyState === 1 && myId) ws.send(JSON.stringify(Object.assign({ t: 'in' }, readInput()))); }, 50);
