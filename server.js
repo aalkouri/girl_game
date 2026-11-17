@@ -140,7 +140,8 @@ function solidPt(st, x, y) {
   const a = (st.rot || 0) * Math.PI / 4, ux = Math.cos(a), uy = Math.sin(a), t = Math.max(-GATE_HALF, Math.min(GATE_HALF, (x - st.x) * ux + (y - st.y) * uy));
   return [st.x + ux * t, st.y + uy * t, 12];
 }
-const STRUCT = { bench: { r: RC.RADIUS.bench }, chest: { r: RC.RADIUS.chest }, pot: { r: RC.RADIUS.pot }, smelter: { r: RC.RADIUS.smelter }, wall: { r: RC.RADIUS.wall, hp: 60 }, gate: { r: RC.RADIUS.gate }, trap: { r: RC.RADIUS.trap } };
+const STRUCT = { bench: { r: RC.RADIUS.bench }, chest: { r: RC.RADIUS.chest }, pot: { r: RC.RADIUS.pot }, smelter: { r: RC.RADIUS.smelter }, wall: { r: RC.RADIUS.wall, hp: 150 }, gate: { r: RC.RADIUS.gate, hp: 50 },   // gates are much weaker than walls
+   trap: { r: RC.RADIUS.trap } };
 const CHEST_CAP = 500, REACH = 62;   // collision radius / hit points of placed structures
 const SPILL = { t: 5, r: 3, c: 8, p: 12 };   // a pine gives far more wood
 const SPEAR_REACH = 30;   // how much further than the normal swing the spear's poke reaches (straight ahead)
@@ -315,6 +316,31 @@ class Room {
       b.riders.forEach((id, k) => { const p = this.players.get(id), o = k === 0 ? 12 : -14; p.x = b.x + Math.cos(b.ang) * o; p.y = b.y + Math.sin(b.ang) * o; p.fa = b.ang; });
     }
   }
+  // Is this player sealed in by walls / closed gates? A flood fill from the player over a grid (blocked cells = near a wall); if it never gets out of the
+  // grid, they are enclosed, and the walls the fill touched are what enemies will attack. Cached for half a second.
+  enclosure(p) {
+    const now = Date.now(); if (p._enc && now - p._enc.t < 500) return p._enc.walls;
+    const CELL = 20, H = 30, walls = this.struct.filter(st => (st.k === 'wall' || (st.k === 'gate' && !st.open)) && Math.abs(st.x - p.x) < H * CELL + 80 && Math.abs(st.y - p.y) < H * CELL + 80);
+    let out = null;
+    if (walls.length >= 3) {
+      const N = 2 * H + 1, blk = new Int16Array(N * N).fill(-1), ox = p.x - H * CELL, oy = p.y - H * CELL;
+      walls.forEach((st, wi) => { const len = st.k === 'gate' ? GATE_HALF : 0, a = (st.rot || 0) * Math.PI / 4, ux = Math.cos(a), uy = Math.sin(a), rr = (st.k === 'gate' ? 12 : st.r) + 12;
+        const x0 = Math.floor((st.x - len - rr - ox) / CELL), x1 = Math.ceil((st.x + len + rr - ox) / CELL), y0 = Math.floor((st.y - len - rr - oy) / CELL), y1 = Math.ceil((st.y + len + rr - oy) / CELL);
+        for (let i = Math.max(0, x0); i <= Math.min(N - 1, x1); i++) for (let j = Math.max(0, y0); j <= Math.min(N - 1, y1); j++) { const cx = ox + (i + .5) * CELL, cy = oy + (j + .5) * CELL, t = Math.max(-len, Math.min(len, (cx - st.x) * ux + (cy - st.y) * uy)); if (Math.hypot(cx - st.x - ux * t, cy - st.y - uy * t) < rr) blk[i * N + j] = wi; } });
+      const seen = new Uint8Array(N * N), q = [H * N + H], hit = new Set(); seen[H * N + H] = 1; let escaped = false;
+      for (let qi = 0; qi < q.length && !escaped; qi++) {
+        const c = q[qi], i = (c / N) | 0, j = c % N;
+        if (i === 0 || j === 0 || i === N - 1 || j === N - 1) { escaped = true; break; }
+        for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const n = (i + di) * N + j + dj; if (seen[n]) continue; if (blk[n] >= 0) { hit.add(blk[n]); continue; } seen[n] = 1; q.push(n); }
+      }
+      if (!escaped && hit.size) out = [...hit].map(wi => walls[wi]);
+    }
+    p._enc = { t: now, walls: out }; return out;
+  }
+  nearWall(list, x, y) {   // the closest wall of an enclosure to (x, y): { st, qx, qy, qr }
+    let best = null, bd = 1e9; for (const st of list) { const [qx, qy, qr] = solidPt(st, x, y), d = Math.hypot(qx - x, qy - y); if (d < bd) { bd = d; best = { st, qx, qy, qr }; } } return best;
+  }
+  hitWall(st, dmg) { st.hp -= dmg; if (st.hp <= 0) st.dead = 1; }
   gateNear(p) { let best = null, bd = 70; for (const st of this.struct) if (st.k === 'gate') { const [qx, qy] = solidPt(st, p.x, p.y), d = Math.hypot(p.x - qx, p.y - qy); if (d < bd) { bd = d; best = st; } } return best; }
   boatNear(p) { let best = null, bd = 125; for (const b of this.boats) { const d = Math.hypot(p.x - b.x, p.y - b.y); if (d < bd) { bd = d; best = b; } } return best; }
   enterBoat(p, b) {
@@ -660,9 +686,10 @@ class Room {
         if (tg && Math.hypot(tg.x - w.x, tg.y - w.y) > WOLF.give) tg = null;
         if (!tg) { let nd = w.see || WOLF.see; for (const p of P) if (!p.down && !p.boat && this.onIsland(p, wi)) { const d = Math.hypot(p.x - w.x, p.y - w.y); if (d < nd) { nd = d; tg = p; } } }
         if (tg && !nearFire(tg.x, tg.y)) {
-          w.st = 1; w.tg = tg.id; const d = Math.hypot(tg.x - w.x, tg.y - w.y) || 1; dx = (tg.x - w.x) / d; dy = (tg.y - w.y) / d;
-          if (d > (w.reach || WOLF.reach) * (w.alpha ? 1.25 : 1)) spd = w.run || WOLF.run;
-          else if (w.cd <= 0) { w.cd = w.bcd || WOLF.cd; w.bite = 0.25; this.hurt(tg, w.dmg || WOLF.dmg); }
+          w.st = 1; w.tg = tg.id; let tp = tg, wl = null; const E = this.enclosure(tg); if (E) { wl = this.nearWall(E, w.x, w.y); if (wl) tp = { x: wl.qx, y: wl.qy }; }   // walled in: go for the nearest wall
+          const d = Math.hypot(tp.x - w.x, tp.y - w.y) || 1; dx = (tp.x - w.x) / d; dy = (tp.y - w.y) / d;
+          if (d - (wl ? wl.qr : 0) > (w.reach || WOLF.reach) * (w.alpha ? 1.25 : 1)) spd = w.run || WOLF.run;
+          else if (w.cd <= 0) { w.cd = w.bcd || WOLF.cd; w.bite = 0.25; if (wl) this.hitWall(wl.st, w.dmg || WOLF.dmg); else this.hurt(tg, w.dmg || WOLF.dmg); }
         } else if (w.st === 1) { w.st = 2; w.rt = 0; continue; }   // lost them (or they reached the fire): head home
         else {   // roaming around its spot
           w.wt -= dt; if (w.wt <= 0) { w.wt = 1.5 + Math.random() * 3; w.sit = Math.random() < 0.5; w.wa = home > 260 ? Math.atan2(w.hy - w.y, w.hx - w.x) : Math.random() * 6.283; }
@@ -673,6 +700,7 @@ class Room {
       let nx = w.x + dx * spd * dt, ny = w.y + dy * spd * dt;
       if (w.st !== 2 && (nearFire(nx, ny) || Math.hypot(nx - w.hx, ny - w.hy) > WOLF.leash)) { w.st = 2; w.rt = 0; continue; }   // got near the fire / too far from home: back it goes
       { const ex = nx - is.x, ey = ny - is.y, L = Math.hypot(ex, ey); if (L > is.r - 45) { nx = is.x + ex * (is.r - 45) / L; ny = is.y + ey * (is.r - 45) / L; } }   // stays on its island
+      for (const st of this.struct) { if (st.k === 'trap' || (st.k === 'gate' && st.open)) continue; const [qx, qy, qr] = solidPt(st, nx, ny), sd = Math.hypot(nx - qx, ny - qy), mn = qr + (w.big ? 26 : 12); if (sd < mn && sd > 0.01) { nx = qx + (nx - qx) / sd * mn; ny = qy + (ny - qy) / sd * mn; } }   // walls and gates are solid for wolves too
       w.x = nx; w.y = ny; w.fa = Math.atan2(dy, dx);
     }
     for (const w of this.wolves) if (w.hp <= 0 && !w.dropped) { w.dropped = 1; const BG = BIG[w.big], AL = w.alpha || w.big === 2, n = BG ? BG.meat[0] + (Math.random() * (BG.meat[1] + 1) | 0) : 1 + (Math.random() < 0.5 ? 1 : 0); for (let i = 0; i < n; i++) { const a = Math.random() * 6.283, d = 8 + Math.random() * (BG ? 40 : 18); this.pend.push({ k: 'n', x: w.x + Math.cos(a) * d, y: w.y + Math.sin(a) * d, t: 0.15 }); }
@@ -917,10 +945,14 @@ class Room {
       if (a.stunT > 0) { a.stunT -= dt; a.cd = Math.max(a.cd, 0.3); continue; }   // stunned by an ability
       if (a.slowT > 0) a.slowT -= dt;
       let tgt = null, bd = 1e9, slow = 0; const ai = a.isl | 0, home = ai === 0, own = this.islands[ai] || this.islands[0];
+      let sealed = null, sbd = 1e9;   // players walled in where the enemy cannot path to them
       for (const p of P) if (!p.down && !p.boat && this.onIsland(p, ai)) {   // aliens only hunt players on their own island
-        const dd = dist(a, p); if (dd < bd) { bd = dd; tgt = p; }
+        const dd = dist(a, p), E = this.enclosure(p);
+        if (E) { if (dd < sbd) { sbd = dd; sealed = E; } continue; }
+        if (dd < bd) { bd = dd; tgt = p; }
         const sl = GC.BY[p.cls].slow; if (sl > slow && dd < 110) slow = sl;
       }
+      if (!tgt && sealed) { const w = this.nearWall(sealed, a.x, a.y); if (w) tgt = { x: w.qx, y: w.qy, wall: w.st, qr: w.qr }; }   // cannot reach anyone: attack the nearest wall of the enclosure
       const sp = a.sp * (1 - slow) * (a.slowT > 0 ? 0.45 : 1);
       const tx = tgt ? tgt.x : own.x, ty = tgt ? tgt.y : own.y, d = Math.max(1, Math.hypot(tx - a.x, ty - a.y));   // with nobody to chase they drift to the fire (home) or the island's middle
       if (tgt) a.fa = Math.atan2(ty - a.y, tx - a.x);   // always face the nearest living player, even when standing still against the fire ring
@@ -951,7 +983,8 @@ class Room {
       }
       { const LF = a.k < 3 ? this.litAt(a.x, a.y, 0) : null; if (LF) { const r0 = RC.camp(LF.f.lvl), dx = a.x - LF.x, dy = a.y - LF.y, dd = Math.max(1, Math.hypot(dx, dy)); a.x = LF.x + dx * r0 / dd; a.y = LF.y + dy * r0 / dd; } }   // repelled by firelight (the main fire or any campfire)
       if (!home) { const ox = a.x - own.x, oy = a.y - own.y, od = Math.hypot(ox, oy), lim = own.r - 30; if (od > lim) { a.x = own.x + ox * lim / od; a.y = own.y + oy * lim / od; } }   // outer-island enemies stay ashore
-      if (tgt && d < (a.reach === undefined ? 28 : a.reach) && a.cd <= 0 && (a.k >= 3 || !this.litAt(tgt.x, tgt.y))) {
+      if (tgt && tgt.wall) { if (a.k !== 4 && d - tgt.qr < (a.reach === undefined ? 28 : a.reach) + (a.rad || 12) && a.cd <= 0) { this.hitWall(tgt.wall, a.dmg); a.cd = a.atkCd || 1; } }   // walls take the hits (they do no damage back)
+      else if (tgt && d < (a.reach === undefined ? 28 : a.reach) && a.cd <= 0 && (a.k >= 3 || !this.litAt(tgt.x, tgt.y))) {
         this.hurt(tgt, a.dmg); a.cd = a.atkCd || 1;
         if (a.k === 2) {   // the Charger sends you flying (about 10 steps) and then needs a moment before it can hit again
           const kx = tgt.x - a.x, ky = tgt.y - a.y, kl = Math.max(1, Math.hypot(kx, ky));
@@ -962,7 +995,7 @@ class Room {
     }
     for (let i = this.arrows.length - 1; i >= 0; i--) {   // arrows fly straight; spike walls / stations stop them, players take the damage
       const w = this.arrows[i]; w.x += w.vx * dt; w.y += w.vy * dt; w.ttl -= dt; let dead = w.ttl <= 0;
-      if (!dead) for (const st of this.struct) if (st.k !== 'trap' && !(st.k === 'gate' && st.open)) { const [qx, qy, qr] = solidPt(st, w.x, w.y); if (Math.hypot(w.x - qx, w.y - qy) < qr) { dead = true; break; } }
+      if (!dead) for (const st of this.struct) if (st.k !== 'trap' && !(st.k === 'gate' && st.open)) { const [qx, qy, qr] = solidPt(st, w.x, w.y); if (Math.hypot(w.x - qx, w.y - qy) < qr) { if (st.hp > 0) this.hitWall(st, w.dmg); dead = true; break; } }
       if (!dead) for (const p of P) if (!p.down && !p.boat && Math.hypot(p.x - w.x, p.y - w.y) < 18) { this.hurt(p, w.dmg); dead = true; break; }
       if (dead) this.arrows.splice(i, 1);
     }

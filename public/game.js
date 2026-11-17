@@ -785,7 +785,7 @@ function stepStructs(dt) {
       if (working) { e.sm = (e.sm || 0) - dt; if (e.sm <= 0) { e.sm = .16; emit(pfx, T_GLOW, e.x - 16 + rnd(-3, 3), e.y - 52, rnd(-8, 8), rnd(-40, -22), 1.4, .14, .45, 0x888888, .35, false, 0); if (Math.random() < .5) emit(overL, T_GLOW, e.x - 16 + rnd(-4, 4), e.y - 52, rnd(-14, 14), rnd(-70, -40), .6, .06, .01, 0xffb347, 1, true, 60); } }
     }
     if (e.k === 'pot') { e.steam = (e.steam || 0) - dt; if (e.steam <= 0) { e.steam = .22; emit(pfx, T_GLOW, e.x + rnd(-8, 8), e.y - 34, rnd(-6, 6), rnd(-30, -16), 1.3, .12, .4, 0xffffff, .28, false, 0); } }
-    if (e.k === 'wall') { if (e.barT > 0) { e.barT -= dt; e.hp.alpha = Math.min(1, e.barT * 2); if (e.lbar !== e.hpv) { e.lbar = e.hpv; drawHp(e.hp, 34, e.hpv / e.mhp, 0xffb74d); } } else if (e.hp.alpha) e.hp.alpha = 0; }
+    if (e.k === 'wall' || e.k === 'gate') { if (e.barT > 0) { e.barT -= dt; e.hp.alpha = Math.min(1, e.barT * 2); if (e.lbar !== e.hpv) { e.lbar = e.hpv; drawHp(e.hp, 34, e.hpv / e.mhp, 0xffb74d); } } else if (e.hp.alpha) e.hp.alpha = 0; }
   }
 }
 // ---- placement ghost: craft a placeable item, walk to aim, press ACT to put it down ----
