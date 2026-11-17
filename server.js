@@ -704,7 +704,7 @@ class Room {
         }
       }
     }
-    const nearFire = (x, y) => this.fires().some(F => Math.hypot(x - F.x, y - F.y) < (F.f.fuel > 0 ? RC.camp(F.f.lvl) : RC.FIRE_R) + WOLF.fireGap);
+    const nearFire = () => false;   // wolves, bears and mammoths are no longer scared of fire: they chase until the target is out of range (give-up distance) or they are too far from home (leash)
     for (const w of this.wolves) {
       w.cd -= dt; w.bite -= dt; let dx = 0, dy = 0, spd = 0; const wi = w.isl | 0, is = this.islands[wi] || this.islands[0];
       const home = Math.hypot(w.x - w.hx, w.y - w.hy);
