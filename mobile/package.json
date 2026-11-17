@@ -1,0 +1,19 @@
+{
+  "name": "island-night-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Capacitor wrapper that packages ../public as the Android (and later iPhone) app",
+  "scripts": {
+    "web": "node prepare-web.js",
+    "sync": "node prepare-web.js && npx cap sync android",
+    "open:android": "npx cap open android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.6.2",
+    "@capacitor/app": "^8.0.0",
+    "@capacitor/core": "^8.6.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.6.2"
+  }
+}

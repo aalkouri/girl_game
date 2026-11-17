@@ -1492,7 +1492,9 @@ function hud() {
 }
 
 // ---------- accounts (Google or emailed code) / lobby ----------
-const post = async (path, body) => { try { const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); return await r.json(); } catch (e) { return { ok: false, err: 'Network problem. Check your connection.' }; } };
+// In the Android/iPhone app the game files are inside the app and window.GAME_BASE (set when the app is built) is the server's address; on the website it is empty.
+const BASE = window.GAME_BASE || '', WSBASE = BASE ? BASE.replace(/^http/, 'ws') : (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host;
+const post = async (path, body) => { try { const r = await fetch(BASE + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); return await r.json(); } catch (e) { return { ok: false, err: 'Network problem. Check your connection.' }; } };
 let token = '', myEmail = '', cfg = {}, runOver = false;
 try { token = localStorage.getItem('tok') || ''; } catch (e) { }
 const PF = { d: 0, owned: GC.DEFAULT_OWNED.slice() };
@@ -1586,6 +1588,11 @@ $('verify').onclick = async () => {
 $('code').addEventListener('keydown', e => { if (e.key === 'Enter') $('verify').click(); });
 $('backEmail').onclick = () => { $('lmsg').textContent = ''; $('stepCode').style.display = 'none'; $('stepEmail').style.display = ''; };
 $('signout').onclick = async () => { await post('/api/auth/logout', { token }); logoutUI(''); };
+$('delacct').onclick = async () => {
+  if (!confirm('Delete your account and ALL of your progress (diamonds, classes, saved game)? This cannot be undone.')) return;
+  if (!confirm('Really delete everything? Last chance.')) return;
+  const r = await post('/api/account/delete', { token }); if (r.ok) { try { localStorage.removeItem('tok'); } catch (e) { } logoutUI('Your account was deleted.'); } else alert(r.err || 'Could not delete the account. Try again.');
+};
 function initGoogle(clientId) {
   const sc = document.createElement('script'); sc.src = 'https://accounts.google.com/gsi/client'; sc.async = true;
   sc.onload = () => {
@@ -1615,9 +1622,9 @@ function initApple(clientId) {
   document.addEventListener('AppleIDSignInOnFailure', ev => { const e = ev.detail && ev.detail.error; if (e && e !== 'popup_closed_by_user' && e !== 'user_cancelled_authorize') $('lmsg').textContent = 'Apple sign-in was cancelled or failed.'; });
 }
 (async function boot() {
-  try { cfg = await (await fetch('/api/config', { cache: 'no-store' })).json(); } catch (e) { cfg = {}; }
-  if (cfg.google) initGoogle(cfg.google);
-  if (cfg.apple) initApple(cfg.apple);
+  try { cfg = await (await fetch(BASE + '/api/config', { cache: 'no-store' })).json(); } catch (e) { cfg = {}; }
+  if (cfg.google && !window.IN_APP) initGoogle(cfg.google);   // (Google / Apple pop-ups do not work inside an app's web view: the app signs in with an emailed code)
+  if (cfg.apple && !window.IN_APP) initApple(cfg.apple);
   if (token) { const r = await post('/api/auth/session', { token }); if (r.ok) { loggedIn(r); return; } token = ''; try { localStorage.removeItem('tok'); } catch (e) { } }
   showLogin('');
 })();
@@ -1627,14 +1634,14 @@ $('go').onclick = () => {
   SFX.init();
   const name = $('name').value.trim() || 'Survivor'; try { localStorage.setItem('nm', name); } catch (e) { }
   $('err').textContent = 'Connecting...';
-  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
+  ws = new WebSocket(WSBASE);
   const wantLoad = !!window.loadSaveFlag; window.loadSaveFlag = false;
   ws.onopen = () => ws.send(JSON.stringify({ t: 'join', name, cls: sel, room: $('room').value, token, load: wantLoad }));
   ws.onerror = () => $('err').textContent = 'Could not connect';
   ws.onclose = () => {
     if (!myId || runOver) return; $('banner').textContent = 'Connection lost - reconnecting...';
     try { sessionStorage.setItem('rejoin', String(Date.now())); } catch (e) { }
-    const tryBack = async () => { try { const r = await fetch('/api/config', { cache: 'no-store' }); if (r.ok) { location.reload(); return; } } catch (e) { } setTimeout(tryBack, 2000); };
+    const tryBack = async () => { try { const r = await fetch(BASE + '/api/config', { cache: 'no-store' }); if (r.ok) { location.reload(); return; } } catch (e) { } setTimeout(tryBack, 2000); };
     setTimeout(tryBack, 1500);
   };
   ws.onmessage = e => {
@@ -1692,7 +1699,7 @@ $('go').onclick = () => {
     } else if (m.t === 's') onSnap(m);
   };
 };
-$('rm').onclick = () => { const u = location.origin + '/?room=' + roomCode; try { navigator.clipboard.writeText(u); $('rm').textContent = 'Link copied!'; } catch (e) { prompt('Share this link', u); } };
+$('rm').onclick = () => { const u = (BASE || location.origin) + '/?room=' + roomCode; try { navigator.clipboard.writeText(u); $('rm').textContent = 'Link copied!'; } catch (e) { prompt('Share this link', u); } };
 
 const snd = $('snd'); const sndIcon = () => snd.style.backgroundImage = SFX.isMuted() ? 'url(ui/mute.webp)' : 'url(ui/sound.webp)'; sndIcon();
 snd.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); SFX.init(); SFX.setMuted(!SFX.isMuted()); sndIcon(); });

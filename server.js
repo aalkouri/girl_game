@@ -95,6 +95,12 @@ async function api(q, s, u) {
     }
     case '/api/auth/session': { const e = auth.sessionEmail(b.token); return json(s, 200, e ? login(e, b.token) : { ok: false }); }
     case '/api/auth/logout': auth.logout(b.token); return json(s, 200, { ok: true });
+    case '/api/account/delete': {   // app stores require a way to delete the account and its data from inside the app
+      const e = auth.sessionEmail(b.token); if (!e) return json(s, 200, { ok: false, err: 'auth' });
+      if (profiles[e]) { delete profiles[e]; pcount--; dirty = true; }
+      try { const f = saveFile(e); if (f) fs.unlinkSync(f); } catch (x) { }
+      auth.deleteSessions(e); return json(s, 200, { ok: true });
+    }
     case '/api/profile': { const e = auth.sessionEmail(b.token); return json(s, 200, e ? { ok: true, profile: view(acct(e, true)) } : { ok: false, err: 'auth' }); }
     case '/api/buy': {
       const e = auth.sessionEmail(b.token); if (!e) return json(s, 200, { ok: false, err: 'auth' });
@@ -111,7 +117,10 @@ async function api(q, s, u) {
 
 const srv = http.createServer((q, s) => {
   const u = new URL(q.url, 'http://x');
-  if (u.pathname.startsWith('/api/')) { api(q, s, u).catch(e => { console.error('api error', e); if (!s.headersSent) json(s, 500, { ok: false, err: 'Server error.' }); }); return; }
+  if (u.pathname.startsWith('/api/')) {
+    const og = q.headers.origin; if (og && /^(https?:\/\/localhost(:\d+)?|capacitor:\/\/localhost|ionic:\/\/localhost)$/.test(og)) { s.setHeader('Access-Control-Allow-Origin', og); s.setHeader('Vary', 'Origin'); s.setHeader('Access-Control-Allow-Headers', 'Content-Type'); s.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS'); }   // the Android / iPhone app's web view runs from localhost
+    if (q.method === 'OPTIONS') { s.writeHead(204); return s.end(); }
+    api(q, s, u).catch(e => { console.error('api error', e); if (!s.headersSent) json(s, 500, { ok: false, err: 'Server error.' }); }); return; }
   let f = u.pathname;
   if (f === '/') f = '/index.html';
   const p = path.join(PUB, path.normalize(f));

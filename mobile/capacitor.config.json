@@ -1,0 +1,8 @@
+{
+  "appId": "com.alkouri.islandnight",
+  "appName": "Island Night",
+  "webDir": "www",
+  "backgroundColor": "#0b1623",
+  "server": { "androidScheme": "https" },
+  "android": { "allowMixedContent": false }
+}

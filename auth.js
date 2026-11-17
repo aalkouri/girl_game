@@ -28,6 +28,7 @@ module.exports = function makeAuth({ dir, config }) {
     if (s.x < Date.now()) { delete sessions[sha(token)]; dirty = true; return null; }
     return s.e;
   }
+  function deleteSessions(email) { for (const h in sessions) if (sessions[h].e === email) delete sessions[h]; dirty = true; save(); }   // sign out everywhere (used when an account is deleted)
   function logout(token) { if (typeof token === 'string' && sessions[sha(token)]) { delete sessions[sha(token)]; dirty = true; } }
 
   // ---- rate limiting (sliding window in memory) ----
@@ -115,5 +116,5 @@ async function verifyIdToken(prov, cred) {
 }
 const verifyGoogle = c => verifyIdToken('google', c), verifyApple = c => verifyIdToken('apple', c);
 
-  return { normEmail, createSession, sessionEmail, logout, startEmail, verifyEmail, verifyGoogle, verifyApple, save, allow };
+  return { normEmail, createSession, sessionEmail, logout, deleteSessions, startEmail, verifyEmail, verifyGoogle, verifyApple, save, allow };
 };

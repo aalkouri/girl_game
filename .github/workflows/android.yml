@@ -1,0 +1,66 @@
+name: Android build
+# Builds the Android app: an installable debug APK every time, and (when the signing secrets exist) a signed release bundle (.aab) for Google Play.
+# Run it from the Actions tab (Run workflow). The game server address comes from the "game_url" input, or the repository variable GAME_URL,
+# or the first line of mobile/game-url.txt.
+on:
+  workflow_dispatch:
+    inputs:
+      game_url:
+        description: 'Game server address, e.g. https://play.example.com (leave empty to use the GAME_URL variable / game-url.txt)'
+        required: false
+        default: ''
+  push:
+    tags: ['android-v*']
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      GAME_URL: ${{ github.event.inputs.game_url || vars.GAME_URL }}
+      VERSION_CODE: ${{ github.run_number }}
+      VERSION_NAME: 1.0.${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Check for signing secrets
+        run: echo "HAVE_KEYS=${{ secrets.ANDROID_KEYSTORE_B64 != '' && 'yes' || 'no' }}" >> "$GITHUB_ENV"
+      - run: npm ci
+      - name: Package the game files into the app
+        run: npm run sync
+      - name: Debug APK (installable for testing)
+        working-directory: mobile/android
+        run: ./gradlew assembleDebug --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: island-night-debug-apk
+          path: mobile/android/app/build/outputs/apk/debug/*.apk
+      - name: Signed release bundle (only when the signing secrets are set)
+        if: ${{ env.HAVE_KEYS == 'yes' }}
+        working-directory: mobile/android
+        env:
+          KEYSTORE_FILE: ${{ runner.temp }}/release.keystore
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_B64 }}" | base64 -d > "$KEYSTORE_FILE"
+          ./gradlew bundleRelease --no-daemon
+      - uses: actions/upload-artifact@v4
+        if: ${{ env.HAVE_KEYS == 'yes' }}
+        with:
+          name: island-night-release-aab
+          path: mobile/android/app/build/outputs/bundle/release/*.aab
