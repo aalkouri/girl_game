@@ -284,6 +284,15 @@ class Room {
   landPoint(x, y, m = 30) { let best = null, bd = 1e9; for (const s of this.islands) { const d = Math.hypot(x - s.x, y - s.y) - s.r; if (d < bd) { bd = d; best = s; } } const dx = x - best.x, dy = y - best.y, L = Math.hypot(dx, dy) || 1, k = Math.min(L, best.r - m) / L; return [best.x + dx * k, best.y + dy * k]; }
   // ----- boats: placed in the water near the shore; two riders, the first one steers -----
   tickBoats(dt) {
+    for (const b of this.boats) {   // boats rot away over time; one that falls apart takes everyone aboard down with it
+      const bt = RC.BOATS[b.type || 'boat']; b.life = (b.life == null ? bt.life : b.life) - dt;
+      if (b.life < bt.life * 0.2 && !b.warned) { b.warned = 1; for (const id of b.riders) { const q = this.players.get(id); if (q) send(q.ws, { t: 'toast', msg: 'The boat is falling apart! Get to shore!' }); } }
+      if (b.life <= 0) {
+        for (const id of b.riders) { const q = this.players.get(id); if (!q) continue; q.boat = 0; q.hp = 0; q.down = 1; q.rev = 0; q.sea = 1; send(q.ws, { t: 'toast', msg: 'The boat fell apart! Another boat has to reach you to revive you.' }); }
+        b.riders = []; b.drv = 0; b.gone = 1;
+      }
+    }
+    if (this.boats.some(b => b.gone)) this.boats = this.boats.filter(b => !b.gone);
     for (const b of this.boats) {
       b.riders = b.riders.filter(id => { const p = this.players.get(id); return p && p.boat === b.id; });
       if (!b.riders.includes(b.drv)) b.drv = b.riders[0] || 0;
@@ -302,7 +311,7 @@ class Room {
   boatNear(p) { let best = null, bd = 125; for (const b of this.boats) { const d = Math.hypot(p.x - b.x, p.y - b.y); if (d < bd) { bd = d; best = b; } } return best; }
   enterBoat(p, b) {
     if (b.riders.length >= RC.BOATS[b.type || 'boat'].riders) { send(p.ws, { t: 'toast', msg: 'The boat is full.' }); return; }
-    b.riders.push(p.id); p.boat = b.id; if (!b.drv) b.drv = p.id; p.x = b.x; p.y = b.y;
+    b.riders.push(p.id); p.boat = b.id; p.sea = 0; if (!b.drv) b.drv = p.id; p.x = b.x; p.y = b.y;
   }
   releaseBoat(p) { if (!p.boat) return; const b = this.boats.find(x => x.id === p.boat); p.boat = 0; if (b) { b.riders = b.riders.filter(id => id !== p.id); if (b.drv === p.id) b.drv = b.riders[0] || 0; } }
   exitBoat(p) {   // step out onto the nearest shore (must be close to land)
@@ -677,7 +686,7 @@ class Room {
   }
   snapshot() {   // everything needed to rebuild this room after a server restart; connected players are saved as 'away' so they get their character back when they reconnect
     const away = [...this.away]; for (const p of this.players.values()) if (p.email) away.push([p.email, this.awayEntry(p)]);
-    return { code: this.code, c: this.c, night: this.night, fire: this.fire, aliens: this.aliens, res: this.res, islands: this.islands, isv: ISL_VER, camps: this.camps, lootOpen: this.loot.filter(l => l.open).map(l => l.id), boats: this.boats.map(b => ({ id: b.id, type: b.type || 'boat', x: b.x, y: b.y, ang: b.ang })), scrapFound: this.scrapFound, drops: this.drops, pend: this.pend, struct: this.struct, chargerNight: this.chargerNight, raidNight: this.raidNight, islNight: this.islNight, nid: this.nid, away };
+    return { code: this.code, c: this.c, night: this.night, fire: this.fire, aliens: this.aliens, res: this.res, islands: this.islands, isv: ISL_VER, camps: this.camps, lootOpen: this.loot.filter(l => l.open).map(l => l.id), boats: this.boats.map(b => ({ id: b.id, type: b.type || 'boat', x: b.x, y: b.y, ang: b.ang, life: b.life == null ? undefined : Math.round(b.life) })), scrapFound: this.scrapFound, drops: this.drops, pend: this.pend, struct: this.struct, chargerNight: this.chargerNight, raidNight: this.raidNight, islNight: this.islNight, nid: this.nid, away };
   }
   saveBlob() {   // everything about this game, compactly: island resources are re-made from the room code, so only home's resources and the changed island ones are stored
     const o = this.snapshot(); delete o.islands;
@@ -702,7 +711,7 @@ class Room {
   static restore(o) {
     const r = new Room(o.code), genIsl = r.islands, genExtra = r.res.filter(x => x.isl > 0), fresh = r.res;
     Object.assign(r, { c: o.c, night: o.night, fire: o.fire, aliens: o.aliens || [], res: o.res, drops: (o.drops || []).filter(d => d.k !== 'q' || RC.ITEM_BY[d.food]), pend: o.pend || [], struct: o.struct || [], chargerNight: o.chargerNight || 0, raidNight: o.raidNight || 0, islNight: o.islNight || {}, nid: o.nid || 1, over: 0, emptyFor: 0 });
-    if (o.islands) { r.islands = o.islands; r.boats = (o.boats || []).map(b => ({ id: b.id, type: b.type || 'boat', x: b.x, y: b.y, ang: b.ang, riders: [], drv: 0 })); r.scrapFound = !!o.scrapFound; }
+    if (o.islands) { r.islands = o.islands; r.boats = (o.boats || []).map(b => ({ id: b.id, type: b.type || 'boat', x: b.x, y: b.y, ang: b.ang, life: b.life, riders: [], drv: 0 })); r.scrapFound = !!o.scrapFound; }
     else { r.islands = genIsl; r.res = o.res.concat(genExtra); }   // rooms saved before the islands existed get the archipelago added
     if (o.islands && o.isv !== ISL_VER) {   // older island layouts: regenerate the outer islands (seeded by room code) and their resources
       r.islands = genIsl; r.res = fresh;   // the whole archipelago (home too) is regenerated
@@ -761,6 +770,8 @@ class Room {
       const actEdge = i.act && !p.actPrev; p.actPrev = i.act;
       if (p.boat) {   // aboard a boat: the boat carries you; ACT gets you out near land. Passengers (not the captain) can shoot projectiles with ATTACK
         if (actEdge) this.exitBoat(p);
+        { const mate = P.find(q => q.down && q !== p && Math.hypot(q.x - p.x, q.y - p.y) < 110);   // revive someone floating in the water from the boat
+          if (mate && i.act && Math.hypot(i.dx, i.dy) <= 0.1) { mate.rev += dt * c.rev; mate.rv = 1; } }
         const bt = this.boats.find(x => x.id === p.boat);
         if (bt && bt.drv !== p.id && i.hit && p.hitcd <= 0) {
           if (!this.spendSta(p, STA.attack)) { p.hitcd = 0.3; this.winded(p); }
@@ -860,7 +871,7 @@ class Room {
     }
     for (const p of P) if (p.down) {
       if (!p.rv) p.rev = Math.max(0, p.rev - REVIVE.decay * dt);
-      if (p.rev >= REVIVE.sec) { p.down = 0; p.rev = 0; p.hp = p.mhp * REVIVE.hp; }
+      if (p.rev >= REVIVE.sec) { p.down = 0; p.rev = 0; p.hp = p.mhp * REVIVE.hp; if (this.landAt(p.x, p.y) < 0) { p.sea = 0; const bn = this.boatNear(p); if (bn) this.enterBoat(p, bn); } }   // revived in the water: climb aboard the boat that reached you
     }
 
     // smelters: one scrap per SMELT.time seconds, then it hops out onto the ground
@@ -955,7 +966,7 @@ class Room {
       t: 's', c: Math.round(this.c * 10) / 10, n: this.night, ph: this.ph(), o: this.over > 0 ? 1 : 0,
       f: [Math.round(f.fuel), RC.fuelMax(f.lvl), f.lvl, f.fuel > 0 ? RC.camp(f.lvl) : 0],
       p: [...this.players.values()].map(p => [p.id, p.name, p.cls, Math.round(p.x), Math.round(p.y), Math.round(p.hp), p.mhp, p.wood, p.stone, p.food, p.down, Math.round(p.rev * 10) / 10, p.sw, p.swk, Math.round(p.swa * 100), p.scrap, Math.round(p.fa * 100), Math.round(p.sta), p.tired, p.slots, p.boat || 0, p.meat || 0, p.gold || 0, p.pelt || 0, slotCap(p, this), !(p.prof && p.prof.abil && p.prof.abil[p.cls]) ? 0 : p.abilCd > 0 ? Math.ceil(p.abilCd) + 1 : 1, p.apelt || 0]),
-      bt: this.boats.map(b => [b.id, Math.round(b.x), Math.round(b.y), Math.round(b.ang * 100), b.riders.length, b.drv, b.type || 'boat']), sf: this.scrapFound ? 1 : 0,
+      bt: this.boats.map(b => [b.id, Math.round(b.x), Math.round(b.y), Math.round(b.ang * 100), b.riders.length, b.drv, b.type || 'boat', Math.round(100 * (b.life == null ? 1 : b.life / RC.BOATS[b.type || 'boat'].life))]), sf: this.scrapFound ? 1 : 0,
       a: this.aliens.map(a => [a.id, Math.round(a.x), Math.round(a.y), Math.round(a.hp), a.mhp, a.k, a.fa === undefined ? null : Math.round(a.fa * 100), Math.ceil(a.trapT > 0 ? a.trapT : 0), a.aim > 0 ? Math.round(Math.min(1, a.aim / 1.5) * 100) : 0]),
       wf: (this.wolves || []).map(w => [w.id, Math.round(w.x), Math.round(w.y), Math.round(w.fa * 100), Math.round(w.hp), w.mhp, w.st, w.bite > 0 ? 1 : 0, w.alpha || 0, w.big || 0]),
       rb: this.rabbits.map(b => [b.id, Math.round(b.x), Math.round(b.y), Math.round(b.fa * 100), b.run ? 1 : b.sit ? 0 : 2]),

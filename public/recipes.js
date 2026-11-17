@@ -63,7 +63,7 @@
     const [ux, uy] = homeDir(ix, iy); return ((x - ix) * -uy + (y - iy) * ux) < 0 ? 's' : 'd';
   }
   // boat types (what the Boat Dealer sells): speed, riders, extra carry slots while aboard
-  const BOATS = { boat: { speed: 190, riders: 2, slots: 0, sc: .8 }, sloop: { speed: 250, riders: 3, slots: 2, sc: 1 }, galleon: { speed: 320, riders: 4, slots: 4, sc: 1.25 } };
+  const BOATS = { boat: { speed: 190, riders: 2, slots: 0, sc: .8, life: 900 }, sloop: { speed: 250, riders: 3, slots: 2, sc: 1, life: 1200 }, galleon: { speed: 320, riders: 4, slots: 4, sc: 1.25, life: 1800 } };   // life: seconds until the boat falls apart
   const ARMOR = [0, .15, .30, .45];   // damage reduction by armor level
   const ARM_PC = { ah: 0.10, al: 0.12, ab: 0.23 };   // head / legs / body armor pieces (pelt trader): damage reduction, all three = 45%
   const armorOf = g => (g.ah ? ARM_PC.ah : 0) + (g.al ? ARM_PC.al : 0) + (g.ab ? ARM_PC.ab : 0);

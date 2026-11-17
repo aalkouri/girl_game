@@ -719,6 +719,10 @@ function syncBoats(m) {
       e = boatE[b[0]] = { c, sp, x: b[1], y: b[2], tx: b[1], ty: b[2], ang: b[3] / 100, ta: b[3] / 100, ph: rnd(0, TAU) }; c.position.set(e.x, e.y);
     }
     e.tx = b[1]; e.ty = b[2]; e.ta = b[3] / 100; e.riders = b[4]; e.drv = b[5];
+    const lf = b[7] == null ? 100 : b[7];   // how much of its life is left: the hull darkens and a bar shows once it is below half
+    if (e.lf !== lf) { e.lf = lf; const base = b[6] === 'sloop' ? [0xb8, 0xd4, 0xf0] : b[6] === 'galleon' ? [0xf0, 0xd4, 0x8a] : [255, 255, 255], k = .45 + .55 * Math.min(1, lf / 60);
+      e.sp.tint = (Math.round(base[0] * k) << 16) | (Math.round(base[1] * k * .9) << 8) | Math.round(base[2] * k * .8);
+      if (lf < 50) { if (!e.bar) { e.bar = new PIXI.Graphics(); e.bar.y = -46; e.c.addChild(e.bar); } e.bar.clear(); e.bar.beginFill(0x000000, .6); e.bar.drawRect(-21, -3, 42, 6); e.bar.endFill(); e.bar.beginFill(lf < 20 ? 0xff5252 : 0xffb74d); e.bar.drawRect(-20, -2, 40 * lf / 50, 4); e.bar.endFill(); } }
   }
   for (const id in boatE) if (!seen[id]) { boatE[id].c.destroy({ children: true }); delete boatE[id]; }
 }
