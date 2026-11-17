@@ -1007,6 +1007,11 @@ function updateCampPtr(wx, wy) {   // (wx, wy) = where world (0,0) is on screen 
 
 let snapDur = .066, lastSnapAt = 0;
 function aim(e, x, y, now) { e.px = e.x; e.py = e.y; if (Math.hypot(x - e.x, y - e.y) > 250) { e.px = e.x = x; e.py = e.y = y; } e.tx = x; e.ty = y; e.t0 = now; }
+const islandIdx = (x, y) => { if (Math.hypot(x, y) < RR + 160) return 0; const i = ISL.findIndex(q => Math.hypot(x - q[0], y - q[1]) < q[2] + 160); return i < 0 ? -1 : i + 1; };
+function fireSound(fx, fy, name) {   // a fire's sound comes from the fire: quieter the farther away, silent from another island (or at sea)
+  const me = ents2['p' + myId]; if (!me) return; const a = islandIdx(fx, fy); if (a < 0 || a !== islandIdx(me.x, me.y)) return;
+  SFX[name](Math.hypot(fx - me.x, fy - me.y), fx - me.x);
+}
 function onSnap(m) {
   const nowS = performance.now(); if (lastSnapAt) snapDur += (Math.max(.04, Math.min(.15, (nowS - lastSnapAt) / 1000)) - snapDur) * .2; lastSnapAt = nowS;
   const prevS = S; S = m; const seen = {};
@@ -1079,10 +1084,11 @@ function onSnap(m) {
   if (prevS) {
     if (m.ph === 1 && prevS.ph !== 1) notice('Night is approaching...');
     if (prevS.f[0] >= 25 && m.f[0] < 25 && m.f[0] > 0) notice('Fire is low - bring wood!');
+    for (const c of m.cf || []) { const o = (prevS.cf || []).find(q => q[0] === c[0]); if (o && o[3] >= 25 && c[3] < 25 && c[3] > 0) notice('A campfire is low - bring wood!'); }   // everyone hears about any campfire running low
     if (m.ph !== prevS.ph) { if (m.ph === 1) SFX.horn(); else if (m.ph === 2) SFX.night(); else SFX.dawn(); }
-    if (m.f[0] > prevS.f[0] + 5) SFX.feed();
-    if (m.f[2] > prevS.f[2]) SFX.levelup();
-    if (prevS.f[0] > 0 && m.f[0] <= 0) SFX.fireOut();
+    if (m.f[0] > prevS.f[0] + 5) fireSound(0, 0, 'feed');
+    if (m.f[2] > prevS.f[2]) fireSound(0, 0, 'levelup');
+    if (prevS.f[0] > 0 && m.f[0] <= 0) fireSound(0, 0, 'fireOut');
     for (const p of m.p) { const o = prevS.p.find(q => q[0] === p[0]); if (!o) continue; if (!o[10] && p[10] && p[0] === myId) SFX.down(); if (o[10] && !p[10]) SFX.revive(); }
   }
 }

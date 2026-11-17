@@ -67,8 +67,7 @@ function xSnap(m) {
       e = campE[c[0]] = { flames, glow, ring, stones, ringR: 0, ph: rnd(0, TAU) };
     }
     if (e.d) {   // sounds for campfires, like the main fire has (only for ones you are near)
-      const me = ents2['p' + myId], near = me && Math.hypot(me.x - c[1], me.y - c[2]) < 900;
-      if (near) { if (c[5] > e.d[5]) SFX.levelup(); else if (c[3] > e.d[3] + 5) SFX.feed(); if (e.d[3] > 0 && c[3] <= 0) SFX.fireOut(); }
+      if (c[5] > e.d[5]) fireSound(c[1], c[2], 'levelup'); else if (c[3] > e.d[3] + 5) fireSound(c[1], c[2], 'feed'); if (e.d[3] > 0 && c[3] <= 0) fireSound(c[1], c[2], 'fireOut');
     }
     e.d = c;
   }
