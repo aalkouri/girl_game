@@ -254,8 +254,6 @@ class Room {
     p.slots.splice(i, 1);
     if (id === 'juice') p.hp = Math.min(p.mhp, p.hp + 40);
     else if (id === 'tea') p.buff.speed = 60;
-    else if (id === 'stew') { p.hp = Math.min(p.mhp, p.hp + 60); p.buff.regen = 30; }
-    else if (id === 'pie') p.buff.dmg = 60;
     send(p.ws, { t: 'ate', id, msg: RC.FOOD_BY[id].n, b: p.buff });
   }
   ph() { return this.c < DAY ? 0 : this.c < DAY + DUSK ? 1 : 2; }
@@ -270,7 +268,7 @@ class Room {
   }
   static restore(o) {
     const r = new Room(o.code);
-    Object.assign(r, { c: o.c, night: o.night, fire: o.fire, aliens: o.aliens || [], res: o.res, drops: o.drops || [], pend: o.pend || [], struct: o.struct || [], chargerNight: o.chargerNight || 0, nid: o.nid || 1, over: 0, emptyFor: 0 });
+    Object.assign(r, { c: o.c, night: o.night, fire: o.fire, aliens: o.aliens || [], res: o.res, drops: (o.drops || []).filter(d => d.k !== 'q' || RC.FOOD_BY[d.food]), pend: o.pend || [], struct: o.struct || [], chargerNight: o.chargerNight || 0, nid: o.nid || 1, over: 0, emptyFor: 0 });
     { let nb = 0; r.res = r.res.filter(x => x.k !== 'b' || ++nb <= BUSHES); }   // rooms saved before the bush cut lose their extra bushes (done before anyone joins, so client indexes stay aligned)
     const now = Date.now(); r.away = new Map((o.away || []).map(([e, v]) => [e, { t: now, s: v.s }]));   // the reconnect window starts from the restart
     return r;
