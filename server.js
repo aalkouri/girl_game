@@ -363,7 +363,7 @@ class Room {
     for (const b of this.boats) {   // boats rot away over time; one that falls apart takes everyone aboard down with it
       const bt = RC.BOATS[b.type || 'boat'], storm = this.ph() === 2 && b.riders.length > 0;   // sailing at night: a storm batters the boat
       if (storm && b.stormNight !== this.night) { b.stormNight = this.night; for (const id of b.riders) { const q = this.players.get(id); if (q) send(q.ws, { t: 'toast', msg: 'A storm! The boat is taking a beating - get to shore!' }); } }
-      b.storm = storm ? 1 : 0; b.life = (b.life == null ? bt.life : b.life) - dt * (storm ? 8 : 1);
+      b.storm = storm ? 1 : 0; if (b.life == null) b.life = bt.life; if (b.riders.length) b.life -= dt * (storm ? 8 : 1);   // boats only wear while someone is riding them (a flat rate; 8x in a night storm); parked boats do not age
       if (b.life < bt.life * 0.2 && !b.warned) { b.warned = 1; for (const id of b.riders) { const q = this.players.get(id); if (q) send(q.ws, { t: 'toast', msg: 'The boat is falling apart! Get to shore!' }); } }
       if (b.life <= 0) {
         for (const id of b.riders) { const q = this.players.get(id); if (!q) continue; q.boat = 0; q.hp = 0; q.down = 1; q.rev = 0; q.sea = 1; send(q.ws, { t: 'toast', msg: 'The boat fell apart! Another boat has to reach you to revive you.' }); }
