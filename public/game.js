@@ -14,6 +14,7 @@ const cv2 = (w, h, fn) => { const c = document.createElement('canvas'); c.width 
 const tex = (w, h, fn) => PIXI.Texture.from(cv2(w, h, fn));
 const circ = (g, x, y, r) => { g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill(); };
 const ell = (g, x, y, rx, ry) => { g.beginPath(); g.ellipse(x, y, rx, ry, 0, 0, TAU); g.fill(); };
+const poly = (g, c, pts) => { g.fillStyle = c; g.beginPath(); g.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) g.lineTo(pts[i], pts[i + 1]); g.closePath(); g.fill(); };
 const radial = (size, stops) => tex(size, size, g => { const h = size / 2, r = g.createRadialGradient(h, h, 0, h, h, h); stops.forEach(s => r.addColorStop(s[0], s[1])); g.fillStyle = r; g.fillRect(0, 0, size, size); });
 
 const T_GLOW = radial(128, [[0, 'rgba(255,255,255,1)'], [.35, 'rgba(255,255,255,.4)'], [1, 'rgba(255,255,255,0)']]);
@@ -53,6 +54,36 @@ const T_ROCK = tex(72, 60, g => {
   g.fillStyle = '#b5bbc4'; g.beginPath(); g.moveTo(24, 20); g.lineTo(34, 12); g.lineTo(46, 16); g.lineTo(34, 24); g.closePath(); g.fill();
   g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 2; g.beginPath(); g.moveTo(40, 30); g.lineTo(58, 52); g.stroke();
 });
+const T_SNOW = noiseTile('#e8eff6', ['#f6faff', '#d6e2ee', '#ffffff', '#cbd9e6'], ['#ffffff', '#c3d3e2']);
+const T_PINE = tex(120, 170, g => {   // snowy pine: stacked dark-green tiers with snow on their tops and edges
+  g.fillStyle = '#4b2f17'; g.fillRect(53, 122, 14, 34); g.fillStyle = '#6b4423'; g.fillRect(53, 122, 6, 34);
+  for (const [cx, by, hw, h] of [[60, 132, 54, 58], [60, 100, 44, 52], [60, 70, 34, 46], [60, 42, 22, 38]]) {
+    poly(g, '#173d2b', [cx, by - h, cx + hw, by, cx - hw, by]);
+    poly(g, '#225a3c', [cx, by - h, cx + hw * .15, by - 4, cx - hw, by]);
+    poly(g, '#f4f8fc', [cx, by - h, cx + hw * .55, by - h * .45, cx + hw * .3, by - h * .5, cx + hw * .1, by - h * .38, cx - hw * .2, by - h * .48, cx - hw * .55, by - h * .42]);
+    g.fillStyle = '#eef4fa'; ell(g, cx - hw * .45, by - 3, hw * .35, 4); ell(g, cx + hw * .4, by - 2, hw * .3, 3.5);
+  }
+});
+const T_GOLDV = tex(72, 60, g => {   // gold ore vein: a darker rock shot through with gold
+  g.fillStyle = '#55504a'; g.beginPath(); g.moveTo(8, 48); g.lineTo(14, 22); g.lineTo(32, 8); g.lineTo(54, 14); g.lineTo(66, 36); g.lineTo(58, 52); g.lineTo(20, 54); g.closePath(); g.fill();
+  g.fillStyle = '#7f7870'; g.beginPath(); g.moveTo(14, 22); g.lineTo(32, 8); g.lineTo(54, 14); g.lineTo(40, 30); g.lineTo(18, 36); g.closePath(); g.fill();
+  g.strokeStyle = '#d9a21f'; g.lineWidth = 3; g.lineCap = 'round'; g.beginPath(); g.moveTo(16, 42); g.lineTo(30, 30); g.lineTo(46, 34); g.lineTo(58, 26); g.stroke();
+  g.fillStyle = '#f2c443'; [[22, 26, 3.6], [36, 18, 3], [48, 40, 4], [28, 44, 3], [56, 30, 2.6], [40, 28, 2.4]].forEach(b => circ(g, b[0], b[1], b[2]));
+  g.fillStyle = '#fff3b0'; [[21, 25], [35, 17], [47, 39]].forEach(b => circ(g, b[0], b[1], 1.3));
+  g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 2; g.beginPath(); g.moveTo(40, 30); g.lineTo(58, 52); g.stroke();
+});
+const T_ORE = tex(30, 26, g => {   // a gold ore nugget
+  poly(g, '#c98a17', [4, 16, 8, 6, 18, 3, 26, 9, 25, 19, 15, 23, 6, 22]); poly(g, '#f2c443', [8, 7, 18, 4, 22, 10, 12, 13]);
+  g.fillStyle = '#fff3b0'; circ(g, 13, 8, 2); g.strokeStyle = 'rgba(70,40,0,.6)'; g.lineWidth = 1.4;
+  g.beginPath(); g.moveTo(4, 16); g.lineTo(8, 6); g.lineTo(18, 3); g.lineTo(26, 9); g.lineTo(25, 19); g.lineTo(15, 23); g.lineTo(6, 22); g.closePath(); g.stroke();
+});
+const T_PELT = tex(40, 30, g => {   // a grey wolf pelt laid flat
+  const P = [6, 10, 2, 4, 10, 8, 30, 8, 38, 4, 34, 10, 36, 22, 38, 28, 30, 23, 10, 23, 2, 28, 4, 22];
+  poly(g, '#80868e', P); g.fillStyle = '#a3a9b0'; ell(g, 20, 15, 11, 5); g.fillStyle = '#5c6168'; ell(g, 20, 13, 9, 2);
+  g.strokeStyle = 'rgba(0,0,0,.45)'; g.lineWidth = 1.4; g.beginPath(); g.moveTo(P[0], P[1]); for (let i = 2; i < P.length; i += 2) g.lineTo(P[i], P[i + 1]); g.closePath(); g.stroke();
+});
+const WOODY = k => k === 't' || k === 'c' || k === 'p', ROCKY = k => k === 'r' || k === 'g';
+const RHP = { t: 4, c: 4, p: 8, r: 3, g: 5, b: 1 };   // hits to break (matches the server)
 const T_BUSH = tex(64, 56, g => {
   [[20, 36, 16, '#1d5a2a'], [44, 36, 16, '#1d5a2a'], [32, 28, 18, '#27763a'], [26, 24, 11, '#3a9a4a']].forEach(b => { g.fillStyle = b[3]; circ(g, b[0], b[1], b[2]); });
   g.fillStyle = '#e53935'; [[22, 30], [38, 26], [32, 40], [46, 36], [16, 40], [30, 20]].forEach(b => circ(g, b[0], b[1], 3.6));
@@ -68,7 +99,6 @@ const T_FLAME = tex(64, 100, g => {
 
 // ---- hand-held tools and back items (drawn facing +x, origin at body centre) ----
 const stroke = (g, c, w, x1, y1, x2, y2) => { g.strokeStyle = c; g.lineWidth = w; g.lineCap = 'round'; g.beginPath(); g.moveTo(x1, y1); g.lineTo(x2, y2); g.stroke(); };
-const poly = (g, c, pts) => { g.fillStyle = c; g.beginPath(); g.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) g.lineTo(pts[i], pts[i + 1]); g.closePath(); g.fill(); };
 const FRONTS = {
   axe: g => { stroke(g, '#7b4f24', 3, 10, 18, 30, 8); poly(g, '#cfd8dc', [26, 2, 34, 6, 30, 14]); },
   gun: g => { g.fillStyle = '#37474f'; g.fillRect(10, 8, 22, 6); g.fillStyle = '#90a4ae'; g.fillRect(26, 9, 8, 4); },
@@ -116,6 +146,16 @@ const T_AXE = tex(72, 44, g => {
   stroke(g, '#7a4a22', 6, 4, 22, 50, 22); stroke(g, '#a56b34', 2, 6, 20, 48, 20);
   poly(g, '#b0bec5', [42, 5, 66, 10, 68, 22, 66, 34, 42, 39, 49, 22]); poly(g, '#eceff1', [50, 11, 64, 14, 65, 19, 50, 19]);
   g.strokeStyle = 'rgba(0,0,0,.45)'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(42, 5); g.lineTo(66, 10); g.lineTo(68, 22); g.lineTo(66, 34); g.lineTo(42, 39); g.stroke();
+});
+const T_SPEARP = tex(240, 18, g => {   // the spear for the poke: a long shaft with a steel head
+  stroke(g, '#6d4320', 6, 2, 9, 200, 9); stroke(g, '#a56b34', 2, 4, 7.5, 198, 7.5);
+  g.fillStyle = '#3e2723'; g.fillRect(186, 5, 10, 8);
+  poly(g, '#b0bec5', [196, 2, 238, 9, 196, 16, 202, 9]); poly(g, '#eceff1', [200, 5, 232, 9, 200, 9]);
+  g.strokeStyle = 'rgba(0,0,0,.45)'; g.lineWidth = 1.2; g.beginPath(); g.moveTo(196, 2); g.lineTo(238, 9); g.lineTo(196, 16); g.stroke();
+});
+const T_THRUST = tex(200, 24, g => {   // the white streak left by a spear poke
+  const gr = g.createLinearGradient(0, 0, 200, 0); gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(.7, 'rgba(255,255,255,.7)'); gr.addColorStop(1, 'rgba(255,255,255,1)');
+  g.fillStyle = gr; g.beginPath(); g.moveTo(0, 12); g.lineTo(196, 4); g.lineTo(200, 12); g.lineTo(196, 20); g.closePath(); g.fill();
 });
 const T_PICK = tex(72, 56, g => {
   stroke(g, '#7a4a22', 6, 4, 28, 50, 28); stroke(g, '#a56b34', 2, 6, 26, 48, 26);
@@ -245,6 +285,33 @@ const T_RABBIT = tex(44, 30, g => {   // seen from above, facing right: round bo
   g.fillStyle = '#1a1a1a'; circ(g, 34, 12.6, 1.2); circ(g, 34, 17.4, 1.2); g.fillStyle = '#e48a9a'; circ(g, 37.6, 15, 1.1);
   g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 1.2; g.beginPath(); g.ellipse(18, 15, 12, 9.5, 0, 0, TAU); g.stroke();
 });
+const T_WOLF = tex(76, 44, g => {   // seen from above, facing right
+  g.fillStyle = '#5f6670'; ell(g, 9, 22, 10, 4.5);
+  g.fillStyle = '#7e8792'; ell(g, 32, 22, 20, 11); g.fillStyle = '#5a616b'; ell(g, 30, 22, 15, 4);
+  g.fillStyle = '#8b949f'; ell(g, 53, 22, 10, 9); g.fillStyle = '#9aa3ad'; ell(g, 63, 22, 7, 4.5);
+  poly(g, '#4b5159', [47, 13, 51, 5, 55, 14]); poly(g, '#4b5159', [47, 31, 51, 39, 55, 30]);
+  g.fillStyle = '#ffca28'; circ(g, 57, 18, 1.7); circ(g, 57, 26, 1.7); g.fillStyle = '#222'; circ(g, 70, 22, 1.7);
+  g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 1.3; g.beginPath(); g.ellipse(32, 22, 20, 11, 0, 0, TAU); g.stroke();
+});
+const T_WOLFA = tex(84, 50, g => {   // alpha wolf: near-black, scarred, a spiky mane over the shoulders
+  g.fillStyle = '#2b2e33'; poly(g, '#2b2e33', [2, 25, 10, 19, 20, 22, 10, 31]);
+  g.fillStyle = '#3c4046'; ell(g, 35, 25, 22, 13);
+  for (let i = 0; i < 9; i++) { const x = 30 + i * 3.2, s = i % 2 ? 1 : -1; poly(g, '#1d1f23', [x - 3, 25 + s * 8, x, 25 + s * 17, x + 3, 25 + s * 8]); }   // bristling mane
+  g.fillStyle = '#1d1f23'; ell(g, 34, 25, 17, 4.5);
+  g.fillStyle = '#464b52'; ell(g, 59, 25, 11, 10); g.fillStyle = '#50565e'; ell(g, 70, 25, 8, 5);
+  poly(g, '#1d1f23', [52, 15, 55, 5, 60, 15]); poly(g, '#1d1f23', [52, 35, 55, 45, 60, 35]);
+  g.fillStyle = '#ff1a1a'; circ(g, 63, 20, 2.2); circ(g, 63, 30, 2.2); g.fillStyle = '#111'; circ(g, 78, 25, 1.9);
+  g.fillStyle = '#f1f1f1'; poly(g, '#f1f1f1', [72, 21, 76, 22.5, 73, 23]); poly(g, '#f1f1f1', [72, 29, 76, 27.5, 73, 27]);   // fangs
+  g.strokeStyle = '#8a2a2a'; g.lineWidth = 1.2; g.beginPath(); g.moveTo(56, 17); g.lineTo(62, 22); g.stroke();   // scar
+  g.strokeStyle = 'rgba(0,0,0,.5)'; g.lineWidth = 1.4; g.beginPath(); g.ellipse(35, 25, 22, 13, 0, 0, TAU); g.stroke();
+});
+function mkWolf(w) {
+  const al = !!w[8], c = new PIXI.Container(), sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5); sh.scale.set(al ? 1.25 : .9, al ? .6 : .45); sh.y = al ? 8 : 6;
+  const body = new PIXI.Sprite(al ? T_WOLFA : T_WOLF); body.anchor.set(.5); body.scale.set(al ? 1.2 : .85); const hp = new PIXI.Graphics(); hp.visible = false;
+  c.addChild(sh, body, hp); ents.addChild(c); c.alpha = 0;
+  const eyes = al ? [0, 1].map(() => { const s = new PIXI.Sprite(T_GLOW); s.anchor.set(.5); s.tint = 0xff2a2a; s.blendMode = BM.ADD; s.scale.set(.16); overL.addChild(s); return s; }) : [];   // glowing red eyes
+  return { c, body, sh, hp, eyes, al, kind: 'w', ang: w[3] / 100, age: 0, lh: -1, flash: 0, lunge: 0, gait: 0, st: w[6] };
+}
 function mkRabbit(b) {
   const c = new PIXI.Container(), sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5); sh.scale.set(.55, .32); sh.y = 5;
   const body = new PIXI.Sprite(T_RABBIT); body.anchor.set(.5); body.scale.set(.8); c.addChild(sh, body); ents.addChild(c); c.alpha = 0;
@@ -337,7 +404,7 @@ function buildIsland(is, idx) {   // is = [x, y, radius, biome]: the quarter fac
   const [ix, iy, R, biome] = is, s = idx * 1.7, ef = a => edgeJ(a, R, s), c = new PIXI.Container(); c.position.set(ix, iy); ground.addChild(c); islandCs.push({ c, x: ix, y: iy, r: R + 80 });
   const inF = (x, y) => RC.inForestPart(ix, iy, R, ix + x, iy + y);   // local coords
   const shore = new PIXI.Graphics(); shore.beginFill(0x9d8c58, .5); shore.drawPolygon(polyOf(a => ef(a) + 10)); shore.endFill(); c.addChild(shore);
-  const sand = new PIXI.TilingSprite(T_SAND, R * 2 + 120, R * 2 + 120); sand.position.set(-R - 60, -R - 60); if (biome === 'd') sand.tint = 0xf2c076;
+  const sand = new PIXI.TilingSprite(biome === 's' ? T_SNOW : T_SAND, R * 2 + 120, R * 2 + 120); sand.position.set(-R - 60, -R - 60); if (biome === 'd') sand.tint = 0xf2c076;
   const sm = new PIXI.Graphics(); sm.beginFill(0xffffff); sm.drawPolygon(polyOf(ef)); sm.endFill(); sand.mask = sm; c.addChild(sm, sand);
   const rng = mulberry(idx * 977 + 13);
   if (biome === 'd') {   // desert: a few darker dunes, kept off the forest
@@ -360,12 +427,12 @@ function buildIsland(is, idx) {   // is = [x, y, radius, biome]: the quarter fac
       const rim = new PIXI.Graphics(); rim.lineStyle(10, 0x25552a, .35); rim.drawPolygon(pts); rim.mask = sm; c.addChild(gm, gr, rim);
     }
   }
-  const N = Math.round(Math.PI * R * R * 8e-5 / 1.5);
+  const N = Math.round(Math.PI * R * R * 4e-5 / 1.5);   // (half the home density: these islands are huge now)
   for (let i = 0; i < N; i++) {
     const a = rng() * TAU, d = Math.sqrt(rng()) * (R - 90), k = rng(), x = Math.cos(a) * d, y = Math.sin(a) * d, f = inF(x, y);
     const tx = f ? (k < .6 ? T_TUFT : k < .85 ? T_FLOWER : T_PEBBLE) : (k < .55 ? T_PEBBLE : T_TUFT);
     const sp = new PIXI.Sprite(tx); sp.anchor.set(.5, .9); sp.position.set(x, y); sp.scale.set(.8 + rng() * .6); sp.rotation = (rng() - .5) * .4;
-    if (!f && biome === 'd' && tx === T_TUFT) sp.tint = 0xb59a58; else if (tx === T_FLOWER) sp.tint = [0xffffff, 0xff8aa0, 0xffe066, 0xa0c4ff][i % 4];
+    if (!f && biome === 'd' && tx === T_TUFT) sp.tint = 0xb59a58; else if (!f && biome === 's') sp.tint = tx === T_TUFT ? 0xdfe9f2 : 0xaab6c2; else if (tx === T_FLOWER) sp.tint = [0xffffff, 0xff8aa0, 0xffe066, 0xa0c4ff][i % 4];
     c.addChild(sp);
   }
 }
@@ -380,14 +447,27 @@ function buildWorld(list) {
   const gm = new PIXI.Graphics(); gm.beginFill(0xffffff); gm.drawPolygon(poly(grassR)); gm.endFill(); gr.mask = gm;
   const rim = new PIXI.Graphics(); rim.lineStyle(10, 0x25552a, .35); rim.drawPolygon(poly(a => grassR(a) - 4)); rim.lineStyle(0);
   ground.addChild(gm, gr, rim);
+  {   // the snow quarter (same shape as RC.inSnow on the server): out along one wavy side, round the shore, back down the other side, round the inner edge
+    const sa = RC.SNOW_A, out = a => edge(a) - 6, pts = [], side = sgn => { const o = []; for (let d = 300; d < RR + 300; d += 30) { const a = sa + sgn * RC.snowHalf(d); if (d < RC.snowIn(a)) continue; if (d > out(a)) break; o.push([a, d]); } return o; };
+    const sp = side(1), sm2 = side(-1);
+    for (const [a, d] of sp) pts.push(Math.cos(a) * d, Math.sin(a) * d);
+    const a1 = sp[sp.length - 1][0], a2 = sm2[sm2.length - 1][0]; for (let i = 0; i <= 80; i++) { const a = a1 + (a2 - a1) * i / 80; pts.push(Math.cos(a) * out(a), Math.sin(a) * out(a)); }
+    for (let i = sm2.length - 1; i >= 0; i--) { const [a, d] = sm2[i]; pts.push(Math.cos(a) * d, Math.sin(a) * d); }
+    const b1 = sm2[0][0], b2 = sp[0][0]; for (let i = 0; i <= 40; i++) { const a = b1 + (b2 - b1) * i / 40; pts.push(Math.cos(a) * RC.snowIn(a), Math.sin(a) * RC.snowIn(a)); }
+    const sn = new PIXI.TilingSprite(T_SNOW, RR * 2, RR * 2); sn.position.set(-RR, -RR);
+    const snm = new PIXI.Graphics(); snm.beginFill(0xffffff); snm.drawPolygon(pts); snm.endFill(); sn.mask = snm;
+    const srim = new PIXI.Graphics(); srim.lineStyle(14, 0xffffff, .35); srim.drawPolygon(pts); srim.lineStyle(5, 0xb9cde0, .4); srim.drawPolygon(pts);
+    ground.addChild(snm, sn, srim);
+  }
   const dirt = new PIXI.Graphics(); dirt.beginFill(0x5e4526, .5); dirt.drawCircle(0, 0, 78); dirt.beginFill(0x3d2c17, .55); dirt.drawCircle(0, 0, 46); dirt.endFill(); ground.addChild(dirt);
   const rng = mulberry(7), N = Math.round(320 * (RR / 900) * (RR / 900) / 1.5);
-  const pcs = [T_TUFT, T_FLOWER, T_PEBBLE].map(() => { const pc = new PIXI.ParticleContainer(4000, { position: true, rotation: true, scale: true, tint: true }); ground.addChild(pc); return pc; });
+  const pcs = [T_TUFT, T_FLOWER, T_PEBBLE].map(() => { const pc = new PIXI.ParticleContainer(8000, { position: true, rotation: true, scale: true, tint: true }); ground.addChild(pc); return pc; });
   for (let i = 0; i < N; i++) {
     const a = rng() * TAU, d = Math.sqrt(rng()) * (RR - 110); if (d < 90) continue;
-    const k = rng(), ti = k < .6 ? 0 : k < .85 ? 1 : 2; const sp = new PIXI.Sprite([T_TUFT, T_FLOWER, T_PEBBLE][ti]);
-    sp.anchor.set(.5, .9); sp.position.set(Math.cos(a) * d, Math.sin(a) * d); sp.scale.set(.8 + rng() * .6); sp.rotation = (rng() - .5) * .4;
-    if (ti === 1) sp.tint = [0xffffff, 0xff8aa0, 0xffe066, 0xa0c4ff][i % 4];
+    const k = rng(), x = Math.cos(a) * d, y = Math.sin(a) * d, snow = RC.inSnow(x, y); let ti = k < .6 ? 0 : k < .85 ? 1 : 2; if (snow && ti === 1) ti = 2;   // no flowers in the snow
+    const sp = new PIXI.Sprite([T_TUFT, T_FLOWER, T_PEBBLE][ti]);
+    sp.anchor.set(.5, .9); sp.position.set(x, y); sp.scale.set(.8 + rng() * .6); sp.rotation = (rng() - .5) * .4;
+    if (snow) sp.tint = ti === 0 ? 0xdfe9f2 : 0xaab6c2; else if (ti === 1) sp.tint = [0xffffff, 0xff8aa0, 0xffe066, 0xa0c4ff][i % 4];
     pcs[ti].addChild(sp);
   }
   // fire pit stones
@@ -397,12 +477,13 @@ function buildWorld(list) {
   list.forEach((r, i) => {
     const c = new PIXI.Container(), sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5); c.addChild(sh);
     let s;
-    if (r[0] === 't') { s = new PIXI.Sprite(T_TREE); s.anchor.set(.5, .88); s.scale.set(.62 + (i % 5) * .03); sh.scale.set(1.7, .8); sh.y = 4; }
+    if (r[0] === 'p') { s = new PIXI.Sprite(T_PINE); s.anchor.set(.5, .9); s.scale.set(.66 + (i % 5) * .03); sh.scale.set(1.6, .75); sh.y = 4; }
+    else if (r[0] === 't') { s = new PIXI.Sprite(T_TREE); s.anchor.set(.5, .88); s.scale.set(.62 + (i % 5) * .03); sh.scale.set(1.7, .8); sh.y = 4; }
     else if (r[0] === 'c') { s = new PIXI.Sprite(T_CACTUS); s.anchor.set(.5, .9); s.scale.set(.62 + (i % 5) * .03); sh.scale.set(1.1, .6); sh.y = 4; }
-    else if (r[0] === 'r') { s = new PIXI.Sprite(T_ROCK); s.anchor.set(.5, .8); s.scale.set(.6); sh.scale.set(1.1, .6); sh.y = 4; }
+    else if (r[0] === 'r' || r[0] === 'g') { s = new PIXI.Sprite(r[0] === 'g' ? T_GOLDV : T_ROCK); s.anchor.set(.5, .8); s.scale.set(.6); sh.scale.set(1.1, .6); sh.y = 4; }
     else { s = new PIXI.Sprite(T_BUSH); s.anchor.set(.5, .8); s.scale.set(.62); sh.scale.set(1, .5); sh.y = 4; }
     c.addChild(s); c.position.set(r[1], r[2]); c.zIndex = r[2]; ents.addChild(c);
-    const mhp = r[0] === 't' || r[0] === 'c' ? 4 : r[0] === 'r' ? 3 : 1, bar = null;
+    const mhp = RHP[r[0]] || 1, bar = null;
     resNodes.push({ c, s, k: r[0], x: r[1], y: r[2], pop: 1, hp: mhp, mhp, bar, barT: 0, shake: 0, ph: rnd(0, TAU), base: s.scale.x });
   });
   built = true;
@@ -473,8 +554,14 @@ const ease = u => u < .5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
 function startSwing(e, p, d, dx) {
   const kind = p[13], ang = p[14] / 100;
   e.swing = { t: 0, kind, ang, hit: false }; e.ang = ang;
-  if (kind === 1) e.tool.texture = T_AXE; else if (kind === 2) e.tool.texture = T_PICK; else if (kind === 4) e.tool.texture = T_BLADE;
+  if (kind === 1) e.tool.texture = T_AXE; else if (kind === 2) e.tool.texture = T_PICK; else if (kind === 4) e.tool.texture = T_BLADE; else if (kind === 5) e.tool.texture = T_SPEARP;
+  e.tool.anchor.set(kind === 5 ? .16 : .08, .5); e.tool.scale.set(kind === 5 ? .6 : .62);
   e.tool.visible = kind !== 3; SFX.whoosh(d, dx);
+}
+function pokeOff(t) {   // spear poke: pull back, shoot forward, slide back
+  if (t < .12) return -12 * ease(t / .12);
+  if (t < .2) { const u = (t - .12) / .08; return -12 + 70 * u; }
+  return 58 * (1 - ease(Math.min(1, (t - .2) / .22)));
 }
 function swingOff(t) {   // relative tool angle: wind-up back, fast strike, recover
   if (t < .14) return .3 - 1.8 * ease(t / .14);
@@ -485,22 +572,22 @@ function drawPips(r) {
   const g = r.bar || (r.bar = r.c.addChild(new PIXI.Graphics())); g.clear(); if (r.hp <= 0 || r.hp >= r.mhp && r.barT <= 0) { return; }
   const w = 9, gap = 3, tot = r.mhp * w + (r.mhp - 1) * gap, y = -(r.s.height * r.s.anchor.y) - 14;
   g.beginFill(0x000000, .55); g.drawRoundedRect(-tot / 2 - 3, y - 3, tot + 6, 11, 4); g.endFill();
-  for (let i = 0; i < r.mhp; i++) { g.beginFill(i < r.hp ? (r.k === 't' || r.k === 'c' ? 0x7bd37b : 0xcfd8dc) : 0x444444); g.drawRoundedRect(-tot / 2 + i * (w + gap), y, w, 5, 2); g.endFill(); }
+  for (let i = 0; i < r.mhp; i++) { g.beginFill(i < r.hp ? (WOODY(r.k) ? 0x7bd37b : r.k === 'g' ? 0xffd54f : 0xcfd8dc) : 0x444444); g.drawRoundedRect(-tot / 2 + i * (w + gap), y, w, 5, 2); g.endFill(); }
 }
 function hitFx(r, d, dx) {
   r.shake = .32; r.barT = 1.6;
-  if (r.k === 't' || r.k === 'c') { SFX.chop(d, dx); burst(r.x, r.y - 30, 6, 0x6fcf6a, 90, false, .11); burst(r.x, r.y - 6, 5, 0xb98349, 80, false, .09); for (let i = 0; i < 4; i++) emit(pfx, T_GLOW, r.x + rnd(-14, 14), r.y - rnd(40, 70), rnd(-30, 30), rnd(20, 60), rnd(.8, 1.3), .09, .05, 0x4caf50, .9, false, 40); }
-  else { SFX.mine(d, dx); burst(r.x, r.y - 8, 8, 0xc5cbd3, 130, false, .1); burst(r.x, r.y - 10, 4, 0xfff59d, 90, true, .08); }
+  if (WOODY(r.k)) { SFX.chop(d, dx); burst(r.x, r.y - 30, 6, r.k === 'p' ? 0xf4f8ff : 0x6fcf6a, 90, false, .11); burst(r.x, r.y - 6, 5, 0xb98349, 80, false, .09); for (let i = 0; i < 4; i++) emit(pfx, T_GLOW, r.x + rnd(-14, 14), r.y - rnd(40, 70), rnd(-30, 30), rnd(20, 60), rnd(.8, 1.3), .09, .05, 0x4caf50, .9, false, 40); }
+  else { SFX.mine(d, dx); burst(r.x, r.y - 8, 8, r.k === 'g' ? 0xf2c443 : 0xc5cbd3, 130, false, .1); burst(r.x, r.y - 10, 4, 0xfff59d, 90, true, .08); }
 }
 const fallers = [];
 function breakFx(r, fromX, d, dx) {
   r.c.visible = false; if (r.bar) r.bar.clear();
-  if (r.k === 't' || r.k === 'c') {
-    const spr = new PIXI.Sprite(r.k === 'c' ? T_CACTUS : T_TREE); spr.anchor.set(.5, r.k === 'c' ? .9 : .88); spr.position.set(r.x, r.y); spr.scale.set(r.s.scale.x); spr.zIndex = r.y; ents.addChild(spr);
+  if (WOODY(r.k)) {
+    const spr = new PIXI.Sprite(r.k === 'c' ? T_CACTUS : r.k === 'p' ? T_PINE : T_TREE); spr.anchor.set(.5, r.k !== 't' ? .9 : .88); spr.position.set(r.x, r.y); spr.scale.set(r.s.scale.x); spr.zIndex = r.y; ents.addChild(spr);
     const sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5); sh.scale.set(1.7, .8); sh.position.set(r.x, r.y + 4); sh.zIndex = r.y - 1; ents.addChild(sh);
     fallers.push({ k: 't', spr, sh, t: 0, dir: r.x >= fromX ? 1 : -1, r, landed: false, d, dx });
   } else {
-    const spr = new PIXI.Sprite(T_ROCK); spr.anchor.set(.5, .8); spr.position.set(r.x, r.y); spr.scale.set(r.base); spr.zIndex = r.y; ents.addChild(spr);
+    const spr = new PIXI.Sprite(r.k === 'g' ? T_GOLDV : T_ROCK); spr.anchor.set(.5, .8); spr.position.set(r.x, r.y); spr.scale.set(r.base); spr.zIndex = r.y; ents.addChild(spr);
     SFX.rockbreak(d, dx); shake = Math.max(shake, .08);
     burst(r.x, r.y - 8, 14, 0xaab0b8, 170, false, .16); burst(r.x, r.y - 10, 8, 0x8d939b, 120, false, .2);
     for (let i = 0; i < 7; i++) emit(pfx, T_STONE, r.x, r.y - 10, rnd(-110, 110), rnd(-150, -40), rnd(.5, .8), .5, .3, 0xffffff, 1, false, 420);
@@ -533,14 +620,14 @@ function stepFallers(dt) {
 }
 
 // ground pickups (logs from trees, stones from rocks): hop out, bob, fly to the player that grabs them
-const dropE = {}, flyers = [], DROP_S = { w: .8, s: .85, m: .9, f: .75, d: .9, q: 1, n: .8 };
+const dropE = {}, flyers = [], DROP_S = { w: .8, s: .85, m: .9, f: .75, d: .9, q: 1, n: .8, o: .85, h: .9 };
 function syncDrops(m, _d, _dx) {
   const seen = {};
   for (const d of m.dr || []) {
     seen[d[0]] = 1; let e = dropE[d[0]];
     if (!e) {
       const c = new PIXI.Container(), sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5); sh.scale.set(.6, .35); sh.y = 4;
-      const spr = d[1] === 'q' ? Object.assign(new PIXI.Text((RC.ITEM_BY[d[4]] || {}).e || '🍲', { fontSize: 30 }), { resolution: 2 }) : new PIXI.Sprite(d[1] === 'w' ? T_LOG : d[1] === 'm' ? T_SCRAP : d[1] === 'f' ? T_BERRY : d[1] === 'd' ? T_GEM : d[1] === 'n' ? T_MEAT : T_STONE); spr.anchor.set(.5); spr.scale.set(DROP_S[d[1]]); spr.rotation = d[1] === 'w' ? rnd(-.8, .8) : rnd(-.4, .4);
+      const spr = d[1] === 'q' ? Object.assign(new PIXI.Text((RC.ITEM_BY[d[4]] || {}).e || '🍲', { fontSize: 30 }), { resolution: 2 }) : new PIXI.Sprite(d[1] === 'w' ? T_LOG : d[1] === 'm' ? T_SCRAP : d[1] === 'f' ? T_BERRY : d[1] === 'd' ? T_GEM : d[1] === 'n' ? T_MEAT : d[1] === 'o' ? T_ORE : d[1] === 'h' ? T_PELT : T_STONE); spr.anchor.set(.5); spr.scale.set(DROP_S[d[1]]); spr.rotation = d[1] === 'w' ? rnd(-.8, .8) : rnd(-.4, .4);
       c.addChild(sh, spr); c.position.set(d[2], d[3]); c.zIndex = d[3]; ents.addChild(c);
       e = dropE[d[0]] = { c, spr, sh, x: d[2], y: d[3], t: 0, ph: rnd(0, TAU), k: d[1], dur: d[1] === 'm' || d[1] === 'q' ? .5 : .35 };
       if (d[1] === 'm' || (d[1] === 'q' && d[4] !== 'foot')) {   // metal scrap jumps out of the nearest smelter; cooked food pops out of the nearest pot
@@ -897,6 +984,14 @@ function onSnap(m) {
     if (e.lh >= 0 && a[3] < e.lh) { e.flash = .12; burst(e.x, e.y, 6, 0xc6ff2a, 120, true, .1); SFX.hit(_d(e.x, e.y), _dx(e.x)); }
     e.lh = a[3]; aim(e, a[1], a[2], nowS); e.d = a;
   }
+  for (const w of m.wf || []) {   // snow wolves
+    const k = 'w' + w[0]; seen[k] = 1; let e = ents2[k];
+    if (!e) { e = ents2[k] = mkWolf(w); e.x = e.tx = w[1]; e.y = e.ty = w[2]; e.c.position.set(e.x, e.y); }
+    if (e.lh >= 0 && w[4] < e.lh) { e.flash = .12; burst(e.x, e.y, 6, 0xffffff, 110, false, .1); SFX.hit(_d(e.x, e.y), _dx(e.x)); }
+    if (w[6] === 1 && e.st !== 1) SFX.growl(_d(e.x, e.y), _dx(e.x));   // it noticed you
+    if (w[7] && !(e.d && e.d[7])) e.lunge = .25;   // bite
+    e.st = w[6]; e.lh = w[4]; aim(e, w[1], w[2], nowS); e.d = w;
+  }
   for (const b of m.rb || []) {   // rabbits
     const k = 'r' + b[0]; seen[k] = 1; let e = ents2[k];
     if (!e) { e = ents2[k] = mkRabbit(b); e.x = e.tx = b[1]; e.y = e.ty = b[2]; e.c.position.set(e.x, e.y); }
@@ -904,11 +999,12 @@ function onSnap(m) {
   }
   for (const k in ents2) if (!seen[k]) {
     const e = ents2[k];
+    if (e.kind === 'w') { e.eyes.forEach(s => s.destroy()); SFX.hit(_d(e.x, e.y), _dx(e.x)); burst(e.x, e.y, 12, 0x9aa3ad, 140, false, .14); burst(e.x, e.y, 6, 0xc62828, 90, false, .1); }
     if (e.kind === 'r') { SFX.hit(_d(e.x, e.y), _dx(e.x)); burst(e.x, e.y, 9, 0xc62828, 110, false, .1); burst(e.x, e.y, 5, 0xf5f5f5, 70, false, .08); }
     if (e.kind === 'a') { SFX.alienDie(_d(e.x, e.y), _dx(e.x)); burst(e.x, e.y, 14, 0xb45fe0, 160, true, .2); burst(e.x, e.y, 8, 0xc6ff2a, 90, true, .12); e.eyes.forEach(s => s.destroy()); }
     e.c.destroy({ children: true }); delete ents2[k];
   }
-  if (built) for (let i = 0; i < resNodes.length; i++) {
+  if (built && m.r) for (let i = 0; i < resNodes.length; i++) {   // (the server only sends this when something changed)
     const r = resNodes[i], hp = +m.r[i];
     if (!r.init) { r.init = true; r.hp = hp; if (hp <= 0) r.c.visible = false; continue; }
     if (hp < r.hp) {
@@ -981,7 +1077,14 @@ app.ticker.add(() => {
         const sw = e.swing; sw.t += dt;
         if (sw.t >= .42) { e.swing = null; e.tool.visible = false; }
         else {
-          e.ang = sw.ang; e.tool.rotation = sw.ang + swingOff(sw.t); e.tool.position.set(Math.cos(sw.ang) * 6, Math.sin(sw.ang) * 6);
+          e.ang = sw.ang;
+          if (sw.kind === 5) { const po = 6 + pokeOff(sw.t); e.tool.rotation = sw.ang; e.tool.position.set(Math.cos(sw.ang) * po, Math.sin(sw.ang) * po); }
+          else { e.tool.rotation = sw.ang + swingOff(sw.t); e.tool.position.set(Math.cos(sw.ang) * 6, Math.sin(sw.ang) * 6); }
+          if (sw.kind === 5 && !sw.hit && sw.t >= .2) {   // a long white streak along the poke, and a spark at the tip
+            sw.hit = true; const th = new PIXI.Sprite(T_THRUST); th.anchor.set(0, .5); th.rotation = sw.ang; th.position.set(e.x + Math.cos(sw.ang) * 24, e.y + Math.sin(sw.ang) * 24); th.blendMode = BM.ADD; th.scale.set(.8); overL.addChild(th);
+            parts.push({ s: th, vx: 0, vy: 0, life: .2, max: .2, s0: .8, s1: .86, a0: .85, g: 0 });
+            const tip = 24 + 200 * .8; burst(e.x + Math.cos(sw.ang) * tip, e.y + Math.sin(sw.ang) * tip, 5, 0xffffff, 90, true, .08);
+          }
           if (!sw.hit && sw.t >= .2) { sw.hit = true; const sl = new PIXI.Sprite(T_SLASH); sl.anchor.set(.1, .5); sl.rotation = sw.ang; sl.position.set(e.x + Math.cos(sw.ang) * 16, e.y + Math.sin(sw.ang) * 16); sl.blendMode = BM.ADD; sl.scale.set(.75); overL.addChild(sl); parts.push({ s: sl, vx: 0, vy: 0, life: .16, max: .16, s0: .75, s1: 1, a0: .75, g: 0 }); }
         }
       }
@@ -997,6 +1100,18 @@ app.ticker.add(() => {
       }
       if (e.lh !== p[5] || e.ld !== p[10] || e.lr !== p[11]) { e.lh = p[5]; e.ld = p[10]; e.lr = p[11]; if (p[10]) drawHp(e.hp, 40, Math.min(1, p[11] / 10), 0x4caf50); else drawHp(e.hp, 34, p[5] / p[6], 0xef5350); }
       if (sp > 30 && !down && !p[20]) { e.st = (e.st || 0) - dt; if (e.st <= 0) { e.st = .3; SFX.step(Math.hypot(e.x - me.x, e.y - me.y), e.x - me.x); } e.dust -= dt; if (e.dust <= 0) { e.dust = .14; emit(pfx, T_GLOW, e.x, e.y + 8, rnd(-8, 8), rnd(-8, 4), .5, .12, .3, 0xd9c79a, .35, false, 0); } }
+    } else if (e.kind === 'w') {   // wolf: trots when roaming, gallops when chasing or running home, lunges when it bites
+      const w = e.d; e.age += dt; e.c.alpha = Math.min(1, e.age * 2);
+      e.c.renderable = Math.abs(e.x - camX) < W / Z / 2 + 90 && Math.abs(e.y - camY) < H / Z / 2 + 90;
+      e.ang = angLerp(e.ang, w[3] / 100, Math.min(1, dt * 10)); e.body.rotation = e.ang;
+      const run = sp > 60; e.gait += dt * (run ? 16 : sp > 6 ? 8 : 0);
+      e.lunge = Math.max(0, e.lunge - dt); const lo = e.lunge > 0 ? Math.sin(e.lunge / .25 * Math.PI) * 10 : 0;
+      e.body.x = Math.cos(e.ang) * lo; e.body.y = (sp > 6 ? -Math.abs(Math.sin(e.gait)) * (run ? 3 : 1.5) : 0) + Math.sin(e.ang) * lo;
+      e.flash = Math.max(0, e.flash - dt); e.body.tint = e.flash > 0 ? 0xff8a80 : 0xffffff;
+      if (w[4] < w[5] && e.lh2 !== w[4]) { e.lh2 = w[4]; drawHp(e.hp, e.al ? 42 : 30, w[4] / w[5], 0xef5350); e.hp.y = e.al ? -34 : -24; e.hp.visible = true; }
+      if (e.eyes.length) { const ca = Math.cos(e.ang), sa = Math.sin(e.ang), o = 28 * 1.2 / 1, sy = 6; const bx = e.x + e.body.x, by = e.y + e.body.y;
+        e.eyes[0].position.set(bx + ca * o - sa * -sy, by + sa * o + ca * -sy); e.eyes[1].position.set(bx + ca * o - sa * sy, by + sa * o + ca * sy);
+        e.eyes.forEach(s => { s.visible = e.c.renderable; s.alpha = e.c.alpha * (.75 + Math.sin(T * 7 + e.x) * .25); }); }
     } else if (e.kind === 'r') {   // rabbit: faces where it hops, bounces while moving, fast hops when it runs
       const b = e.d; e.age += dt; e.c.alpha = Math.min(1, e.age * 2);
       e.c.renderable = Math.abs(e.x - camX) < W / Z / 2 + 80 && Math.abs(e.y - camY) < H / Z / 2 + 80;
@@ -1025,7 +1140,7 @@ app.ticker.add(() => {
   }
   // resources: sway + pop-in
   const cullR = Math.max(W, H) / Z / 2 + 140;
-  for (const ic of islandCs) ic.c.renderable = Math.hypot(ic.x - camX, ic.y - camY) < ic.r + cullR * 1.42;   // island ground: drawn only when any of it can be on screen
+  for (const ic of islandCs) ic.c.visible = Math.hypot(ic.x - camX, ic.y - camY) < ic.r + cullR * 1.42;   // island ground: drawn only when any of it can be on screen
   for (const r of resNodes) {
     r.c.renderable = Math.abs(r.x - camX) < cullR && Math.abs(r.y - camY) < cullR;   // skip drawing what is off screen
     if (r.barT > 0 && r.bar) { r.barT -= dt; if (r.barT <= 0) r.bar.clear(); else if (r.barT < .4) r.bar.alpha = r.barT / .4; else r.bar.alpha = 1; }
@@ -1034,7 +1149,7 @@ app.ticker.add(() => {
     if (r.shake > 0) { const sh = Math.sin(T * 55) * r.shake; r.s.skew.x = sh * .22; r.s.x = sh * 3; r.s.y = Math.abs(sh) * -1.2; }
     else if (r.s.x !== 0 || r.s.y !== 0) { r.s.x = 0; r.s.y = 0; }
     if (r.pop < 1) { r.pop = Math.min(1, r.pop + dt * 2.5); const b = 1 - Math.pow(1 - r.pop, 3); r.s.scale.set(r.base * (.2 + .8 * b)); }
-    if (r.shake <= 0) { if (r.k === 't' || r.k === 'c') r.s.skew.x = Math.sin(T * 1.3 + r.ph) * .035 + Math.sin(T * 3.1 + r.ph) * .01; else if (r.k === 'b') r.s.skew.x = Math.sin(T * 2 + r.ph) * .02; }
+    if (r.shake <= 0) { if (WOODY(r.k)) r.s.skew.x = Math.sin(T * 1.3 + r.ph) * .035 + Math.sin(T * 3.1 + r.ph) * .01; else if (r.k === 'b') r.s.skew.x = Math.sin(T * 2 + r.ph) * .02; }
   }
   updateGhost(me);
   { // the ACT button names whatever ACT would do right now (same priority and ranges as the server)
@@ -1053,7 +1168,7 @@ app.ticker.add(() => {
         lab = S.f[1] - S.f[0] > 15 * feed * .5 ? 'REFUEL' : S.f[2] < RC.FIRE_MAX ? 'UPGRADE' : 'ACT';
       } else {
         let bd = 55, near = null; for (const r of resNodes) if (r.hp > 0) { const dd = dist(r.x, r.y); if (dd < bd) { bd = dd; near = r; } }
-        if (near) lab = near.k === 't' || near.k === 'c' ? 'CHOP' : near.k === 'r' ? 'MINE' : 'PICK';
+        if (near) lab = WOODY(near.k) ? 'CHOP' : ROCKY(near.k) ? 'MINE' : 'PICK';
         else if (!(S.st || []).some(t => t[1] === 'bench') && Math.hypot(me.x, me.y) < RC.camp(S.f[2])) lab = 'BUILD';   // no bench yet: ACT in camp opens the build menu
       }
     }
@@ -1127,7 +1242,7 @@ function hud() {
   const f = S.f, mp = S.p.find(p => p[0] === myId), PH = ['DAY', 'DUSK', 'NIGHT'][S.ph], left = Math.ceil(S.ph === 0 ? 90 - S.c : S.ph === 1 ? 120 - S.c : 180 - S.c);
   $('t1').textContent = 'Night ' + S.n + ' · ' + PH + ' ' + left + 's · 🔥 Lv' + f[2];
   $('bar').firstElementChild.style.width = (100 * f[0] / f[1]) + '%';
-  if (mp) $('inv').textContent = '🪵' + mp[7] + '  🪨' + mp[8] + '  🍓' + mp[9] + (mp[15] ? '  🔩' + mp[15] : '') + (mp[21] ? '  🍖' + mp[21] : '') + '   ❤ ' + mp[5] + '/' + mp[6];
+  if (mp) $('inv').textContent = '🪵' + mp[7] + '  🪨' + mp[8] + '  🍓' + mp[9] + (mp[15] ? '  🔩' + mp[15] : '') + (mp[21] ? '  🍖' + mp[21] : '') + (mp[22] ? '  🪙' + mp[22] : '') + (mp[23] ? '  🐺' + mp[23] : '') + '   ❤ ' + mp[5] + '/' + mp[6];
   if (mp) { const sl = mp[19] || [], sig = sl.join(','); if (sig !== slotSig) { slotSig = sig; document.querySelectorAll('#slots .slot').forEach((el, i) => { const f = RC.ITEM_BY[sl[i]]; el.textContent = f ? f.e : ''; el.classList.toggle('full', !!f); el.title = f ? f.n + ' - tap to use' : 'empty'; }); } }
   $('pl').textContent = S.p.length + ' player' + (S.p.length > 1 ? 's' : '');
   { const el = (performance.now() - buffAt) / 1000, bt = []; if (BUFF.speed - el > 0) bt.push('⚡' + Math.ceil(BUFF.speed - el) + 's'); if (BUFF.regen - el > 0) bt.push('💚' + Math.ceil(BUFF.regen - el) + 's'); if (BUFF.dmg - el > 0) bt.push('⚔' + Math.ceil(BUFF.dmg - el) + 's'); const bs = bt.join('  '); if ($('buffs').textContent !== bs) $('buffs').textContent = bs; }
@@ -1318,6 +1433,8 @@ $('go').onclick = () => {
     } else if (m.t === 'dism') {
       const me = ents2['p' + myId]; if (me) floatText(me.x, me.y - 12, m.msg, m.ok ? 0xffe082 : 0xff8a80);
       if (m.ok) { SFX.levelup(); closeChest(); closePot(); closeSmelt(); setCraft(false); }
+    } else if (m.t === 'rk') {   // a rock grew back as a gold ore vein (or a mined vein came back as a rock)
+      const r = resNodes[m.i]; if (r) { r.k = m.k; r.mhp = RHP[m.k] || 3; r.s.texture = m.k === 'g' ? T_GOLDV : T_ROCK; }
     } else if (m.t === 'trapSet') {
       const me = ents2['p' + myId]; if (me) floatText(me.x, me.y - 10, 'Trap set!', 0xffe082);   // (the trap appearing already plays the build sound)
     } else if (m.t === 'ate') {

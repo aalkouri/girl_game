@@ -11,7 +11,7 @@
     { id: 'bench', n: 'Crafting Bench', e: '🛠️', kind: 'bench', cost: { wood: 10, stone: 5 }, d: 'Place it in your camp (inside the fire ring) to unlock more recipes.' },
     { id: 'axe', n: 'Stone Axe', e: '🪓', kind: 'gear', gear: 'axe', cost: { wood: 3, stone: 4 }, d: 'Trees fall in 3 hits instead of 4.' },
     { id: 'pick', n: 'Stone Pickaxe', e: '⛏️', kind: 'gear', gear: 'pick', cost: { wood: 3, stone: 5 }, d: 'Rocks break in 2 hits instead of 3.' },
-    { id: 'spear', n: 'Wooden Spear', e: '🔱', kind: 'gear', gear: 'spear', cost: { wood: 4, stone: 3 }, d: '+6 damage and longer reach against aliens.' },
+    { id: 'spear', n: 'Wooden Spear', e: '🔱', kind: 'gear', gear: 'spear', cost: { wood: 4, stone: 3 }, d: '+6 damage, and your attack becomes a long-reaching poke straight ahead.' },
     { id: 'chest', n: 'Storage Chest', e: '📦', kind: 'chest', cost: { wood: 15, stone: 5 }, max: 1, d: 'Shared storage that only takes things in. Everything inside is used automatically when anyone crafts. Press ACT next to it.' },
     { id: 'pot', n: 'Cooking Pot', e: '🍲', kind: 'pot', norot: true, cost: { wood: 5, stone: 15 }, max: 1, d: 'Press ACT next to it to cook food and drinks from berries.' },
     { id: 'smelter', n: 'Smelter', e: '⚒️', kind: 'smelter', norot: true, cost: { wood: 10, stone: 25 }, max: 1, d: 'Press ACT next to it and put rocks in: every 5 rocks smelt into 1 metal scrap, which pops out for pickup.' },
@@ -46,5 +46,13 @@
     const [ux, uy] = homeDir(ix, iy), dx = x - ix, dy = y - iy, t = (dx * ux + dy * uy) / r, w = (dx * -uy + dy * ux) / r;
     return t > forestEdge(ix, iy, w);
   }
-  return { FIRE_MAX, fuelMax, LIST, BY, FOOD, FOOD_BY, ITEM_BY, camp, SMELT, RADIUS, FIRE_R, fireClear, STATION_GAP: 120, WALL_GAP: 80, FOREST_CUT, homeDir, forestEdge, inForestPart };
+  // the home island's snow quarter: a 90-degree wedge to the north, from a little past the camp out to the shore, with wavy edges
+  const SNOW_A = -Math.PI / 2, SNOW_IN = 650;
+  const snowIn = a => SNOW_IN + 60 * Math.sin(5 * a + 1.3);
+  const snowHalf = d => Math.PI / 4 + 0.05 * Math.sin(d / 210) + 0.03 * Math.sin(d / 77 + 2);
+  function inSnow(x, y) {
+    const d = Math.hypot(x, y), a = Math.atan2(y, x); if (d < snowIn(a)) return false;
+    const da = ((a - SNOW_A + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI; return Math.abs(da) < snowHalf(d);
+  }
+  return { FIRE_MAX, fuelMax, LIST, BY, FOOD, FOOD_BY, ITEM_BY, camp, SMELT, RADIUS, FIRE_R, fireClear, STATION_GAP: 120, WALL_GAP: 80, FOREST_CUT, homeDir, forestEdge, inForestPart, SNOW_A, snowIn, snowHalf, inSnow };
 });
