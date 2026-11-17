@@ -851,7 +851,7 @@ class Room {
   }
   snapshot() {   // everything needed to rebuild this room after a server restart; connected players are saved as 'away' so they get their character back when they reconnect
     const away = [...this.away]; for (const p of this.players.values()) if (p.email) away.push([p.email, this.awayEntry(p)]);
-    return { code: this.code, c: this.c, night: this.night, fire: this.fire, aliens: this.aliens, res: this.res, islands: this.islands, isv: ISL_VER, camps: this.camps, lootOpen: this.loot.filter(l => l.open).map(l => l.id), boats: this.boats.map(b => ({ id: b.id, type: b.type || 'boat', x: b.x, y: b.y, ang: b.ang, life: b.life == null ? undefined : Math.round(b.life) })), scrapFound: this.scrapFound, drops: this.drops, pend: this.pend, struct: this.struct, chargerNight: this.chargerNight, raidNight: this.raidNight, islNight: this.islNight, nid: this.nid, away };
+    return { code: this.code, c: this.c, night: this.night, fire: this.fire, aliens: this.aliens, res: this.res, islands: this.islands, isv: ISL_VER, camps: this.camps, lootOpen: this.loot.filter(l => l.open).map(l => l.id), boats: this.boats.map(b => ({ id: b.id, type: b.type || 'boat', x: b.x, y: b.y, ang: b.ang, life: b.life == null ? undefined : Math.round(b.life) })), scrapFound: this.scrapFound, drops: this.drops, pend: this.pend, struct: this.struct, chargerNight: this.chargerNight, raidNight: this.raidNight, islNight: this.islNight, nid: this.nid, wolves: this.wolves || [], rabbits: this.rabbits || [], pools: this.pools || [], away };
   }
   saveBlob() {   // everything about this game, compactly: island resources are re-made from the room code, so only home's resources and the changed island ones are stored
     const o = this.snapshot(); delete o.islands;
@@ -864,6 +864,11 @@ class Room {
     o.res = undefined; o.homeRes = homeRes; o.dev = dev; o.v = 2; o.at = Date.now();
     const rd = n => Math.round(n * 10) / 10;
     o.aliens = (o.aliens || []).map(a => ({ id: a.id, isl: a.isl, k: a.k, x: rd(a.x), y: rd(a.y), hp: rd(a.hp), mhp: a.mhp, sp: a.sp, dmg: a.dmg, cd: 0, atkCd: a.atkCd, reach: a.reach, stop: a.stop, range: a.range, rad: a.rad, aim: 0, shotCd: 0, vil: a.vil, hx: a.hx, hy: a.hy, spit: a.spit, spitCd: a.spit ? 3 : undefined }));
+    // wolves, bears, mammoths, vultures, rabbits and fish pools: just where they are and how hurt they are (their moods reset when the game loads)
+    const pick = (w, keys) => { const q = {}; for (const k of keys) if (w[k] !== undefined) q[k] = typeof w[k] === 'number' ? rd(w[k]) : w[k]; return q; };
+    o.wolves = (o.wolves || []).map(w => pick(w, ['id', 'wolf', 'isl', 'alpha', 'big', 'heavy', 'vul', 'air', 'vs', 'x', 'y', 'hx', 'hy', 'hp', 'mhp', 'run', 'dmg', 'reach', 'bcd', 'see', 'walk', 'fa', 'oa']));
+    o.rabbits = (o.rabbits || []).map(w => pick(w, ['id', 'rab', 'isl', 'x', 'y', 'hx', 'hy', 'hp', 'fa']));
+    o.pools = (o.pools || []).map(w => pick(w, ['id', 'isl', 'x', 'y', 'kind', 'left', 'ttl']));
     return o;
   }
   static fromSave(b) {   // rebuild the snapshot form that restore() understands, then restore it
@@ -875,7 +880,8 @@ class Room {
   }
   static restore(o) {
     const r = new Room(o.code), genIsl = r.islands, genExtra = r.res.filter(x => x.isl > 0), fresh = r.res;
-    Object.assign(r, { c: o.c, night: o.night, fire: o.fire, aliens: o.aliens || [], res: o.res, drops: (o.drops || []).filter(d => d.k !== 'q' || RC.ITEM_BY[d.food]), pend: o.pend || [], struct: o.struct || [], chargerNight: o.chargerNight || 0, raidNight: o.raidNight || 0, islNight: o.islNight || {}, nid: o.nid || 1, over: 0, emptyFor: 0 });
+    Object.assign(r, { c: o.c, night: o.night, fire: o.fire, aliens: o.aliens || [], res: o.res, drops: (o.drops || []).filter(d => d.k !== 'q' || RC.ITEM_BY[d.food]), pend: o.pend || [], struct: o.struct || [], chargerNight: o.chargerNight || 0, raidNight: o.raidNight || 0, islNight: o.islNight || {}, nid: o.nid || 1, over: 0, emptyFor: 0,
+      wolves: (o.wolves || []).map(w => Object.assign({ st: 0, tg: 0, cd: 0, wt: 0, wa: 0, bite: 0, t: 0 }, w)), rabbits: (o.rabbits || []).map(w => Object.assign({ wt: 0, wa: 0, run: 0, sit: 1, side: 1 }, w)), pools: o.pools || [], wolfFull: o.wolves ? 1 : 0, rabFull: o.rabbits ? 1 : 0 });
     if (o.islands) { r.islands = o.islands; r.boats = (o.boats || []).map(b => ({ id: b.id, type: b.type || 'boat', x: b.x, y: b.y, ang: b.ang, life: b.life, riders: [], drv: 0 })); r.scrapFound = !!o.scrapFound; }
     else { r.islands = genIsl; r.res = o.res.concat(genExtra); }   // rooms saved before the islands existed get the archipelago added
     if (o.islands && o.isv !== ISL_VER) {   // older island layouts: regenerate the outer islands (seeded by room code) and their resources
