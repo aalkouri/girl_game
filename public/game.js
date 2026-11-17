@@ -733,6 +733,66 @@ function syncBoats(m) {
   }
   for (const id in boatE) if (!seen[id]) { boatE[id].c.destroy({ children: true }); delete boatE[id]; }
 }
+// ---- fishing pools (shimmering spots near the shore) and the fishing minigame ----
+const poolE = {}, FISH = { 1: { n: 'Common fish', e: '🐟', col: 0x9fd8ff, zh: .34, fs: .55, chg: 1.6, fill: .30, drain: .10 }, 2: { n: 'Rare fish', e: '🐠', col: 0xc79bff, zh: .26, fs: .95, chg: 1.0, fill: .24, drain: .15 }, 3: { n: 'Legendary fish', e: '🐡', col: 0xffd54f, zh: .19, fs: 1.5, chg: .65, fill: .19, drain: .20 } };
+let fishOpen = false, fishG = null;
+function syncPools(m) {
+  const seen = {};
+  for (const q of m.fp || []) {
+    seen[q[0]] = 1; if (poolE[q[0]]) continue;
+    const c = new PIXI.Container(), col = FISH[q[3]].col, g = new PIXI.Graphics();
+    g.beginFill(0x0f5a8a, .55); g.drawEllipse(0, 0, 54, 34); g.endFill(); g.beginFill(col, .18); g.drawEllipse(0, 0, 40, 25); g.endFill();
+    const r1 = new PIXI.Graphics(), r2 = new PIXI.Graphics(); for (const r of [r1, r2]) { r.lineStyle(2.5, col, .9); r.drawEllipse(0, 0, 40, 25); }
+    const sh = new PIXI.Graphics(); sh.beginFill(q[3] === 3 ? 0xfff2a8 : 0x0a3550, .8); sh.drawEllipse(-10, 2, 13, 5); sh.drawPolygon([-22, 2, -32, -4, -32, 8]); sh.endFill();   // a fish shape under the surface
+    c.addChild(g, r1, r2, sh); c.position.set(q[1], q[2]); c.zIndex = -5; ground.addChild(c);
+    poolE[q[0]] = { c, r1, r2, sh, ph: rnd(0, TAU), k: q[3], x: q[1], y: q[2] };
+  }
+  for (const id in poolE) if (!seen[id]) { poolE[id].c.destroy({ children: true }); delete poolE[id]; }
+}
+function stepPoolFx(dt) {
+  for (const id in poolE) {
+    const e = poolE[id]; e.c.visible = Math.abs(e.x - camX) < W / Z / 2 + 100 && Math.abs(e.y - camY) < H / Z / 2 + 100; if (!e.c.visible) continue;
+    for (const [r, o] of [[e.r1, 0], [e.r2, .5]]) { const u = (T * .45 + e.ph / TAU + o) % 1; r.scale.set(.55 + u * .7); r.alpha = (1 - u) * .9; }
+    e.sh.x = Math.sin(T * .8 + e.ph) * 18; e.sh.y = Math.cos(T * .6 + e.ph) * 7; e.sh.rotation = Math.sin(T * .8 + e.ph + 1.2) * .5;
+    if (e.k === 3 && Math.random() < dt * 3) emit(overL, T_GLOW, e.x + rnd(-40, 40), e.y + rnd(-22, 22), 0, -20, .8, .1, .02, 0xffe082, .9, true, 0);   // legendary pools sparkle
+  }
+}
+function closeFish(ok) {
+  if (!fishOpen) return; fishOpen = false; if (fishG.raf) cancelAnimationFrame(fishG.raf); $('fishG').style.display = 'none';
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'fishdone', id: fishG.id, ok: !!ok }));
+}
+function openFish(id, kind) {
+  const F = FISH[kind] || FISH[1];
+  if (!$('fishG')) {
+    const d = document.createElement('div'); d.id = 'fishG'; d.style.cssText = 'position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:40;background:#02101ccc;touch-action:none;user-select:none';
+    d.innerHTML = '<div style="background:#14304a;border:2px solid #ffd000;border-radius:14px;padding:14px 18px;text-align:center;box-shadow:0 8px 30px #000a;width:min(300px,88vw)"><div id="fgT" style="font-weight:800;font-size:16px;margin-bottom:6px"></div><div id="fgH" style="font-size:12px;opacity:.85;margin-bottom:8px">Hold REEL (or Space) to raise the green zone. Keep the fish inside it!</div>' +
+      '<div style="display:flex;gap:14px;justify-content:center"><div id="fgTrack" style="position:relative;width:54px;height:230px;border:2px solid #fff6;border-radius:10px;background:linear-gradient(#0e4a73,#0a2c46);overflow:hidden"><div id="fgZone" style="position:absolute;left:0;right:0;background:#4caf5088;border-top:2px solid #81c784;border-bottom:2px solid #81c784"></div><div id="fgFish" style="position:absolute;left:0;right:0;text-align:center;font-size:26px;line-height:26px"></div></div>' +
+      '<div style="width:16px;height:230px;border:2px solid #fff6;border-radius:8px;background:#0a1a28;position:relative;overflow:hidden"><div id="fgProg" style="position:absolute;left:0;right:0;bottom:0;background:#ffd54f"></div></div></div>' +
+      '<button class="mini" id="fgReel" style="display:block;width:100%;margin:10px 0 6px;padding:16px;font-size:16px;background:#2e7d32;touch-action:none">🎣 REEL (hold)</button><button class="mini gray" id="fgCancel" style="display:block;width:100%;padding:8px">Let it go</button></div>';
+    document.body.appendChild(d);
+    const down = e => { e.preventDefault(); e.stopPropagation(); if (fishG) fishG.hold = 1; }, up = e => { e.preventDefault(); if (fishG) fishG.hold = 0; };
+    for (const el of [d.querySelector('#fgReel'), d.querySelector('#fgTrack')]) { el.addEventListener('pointerdown', down); el.addEventListener('pointerup', up); el.addEventListener('pointerleave', up); el.addEventListener('pointercancel', up); }
+    d.querySelector('#fgCancel').onclick = () => closeFish(false);
+    addEventListener('keydown', e => { if (fishOpen && (e.key === ' ' || e.key.toLowerCase() === 'e')) { e.preventDefault(); e.stopImmediatePropagation(); if (fishG) fishG.hold = 1; } if (fishOpen && e.key === 'Escape') { e.stopImmediatePropagation(); closeFish(false); } }, true);
+    addEventListener('keyup', e => { if (fishOpen && (e.key === ' ' || e.key.toLowerCase() === 'e')) { e.stopImmediatePropagation(); if (fishG) fishG.hold = 0; } }, true);
+  }
+  fishOpen = true; const zh = F.zh * (GEAR.rod ? 1.25 : 1);
+  fishG = { id, kind, F, zh, zc: .5, zv: 0, fp: .5, ft: .5, tt: 0, prog: .2, t: 0, hold: 0, last: performance.now() };
+  $('fgT').textContent = F.e + ' ' + F.n + (kind === 3 ? ' - very hard!' : kind === 2 ? ' - tricky' : ''); $('fishG').style.display = 'flex'; $('fgZone').style.height = zh * 100 + '%';
+  const step = now => {
+    if (!fishOpen) return; const dt = Math.min(.05, (now - fishG.last) / 1000); fishG.last = now; const g = fishG;
+    g.t += dt; g.zv += (g.hold ? 2.4 : -2.0) * dt; g.zc += g.zv * dt;
+    if (g.zc < zh / 2) { g.zc = zh / 2; g.zv = Math.max(0, g.zv) * -.2; } if (g.zc > 1 - zh / 2) { g.zc = 1 - zh / 2; g.zv = Math.min(0, g.zv) * -.2; }
+    g.tt -= dt; if (g.tt <= 0) { g.tt = F.chg * (.6 + Math.random() * .8); g.ft = .07 + Math.random() * .86; }
+    const dd = g.ft - g.fp, mv = F.fs * dt; g.fp += Math.abs(dd) < mv ? dd : Math.sign(dd) * mv;
+    const inside = Math.abs(g.fp - g.zc) < zh / 2 + .02; g.prog += (inside ? F.fill : -F.drain) * dt;
+    $('fgZone').style.bottom = (g.zc - zh / 2) * 100 + '%'; $('fgFish').style.bottom = 'calc(' + g.fp * 100 + '% - 13px)'; $('fgFish').textContent = F.e; $('fgProg').style.height = Math.max(0, Math.min(1, g.prog)) * 100 + '%'; $('fgProg').style.background = inside ? '#ffd54f' : '#ef6c00';
+    const me = ents2['p' + myId], q = poolE[id]; if (me && q && Math.hypot(me.x - q.x, me.y - q.y) > 160) { closeFish(false); notice('You walked away from the pool.'); return; }
+    if (g.prog >= 1) { closeFish(true); return; } if (g.prog <= 0 || g.t > 30) { closeFish(false); return; }
+    g.raf = requestAnimationFrame(step);
+  };
+  fishG.raf = requestAnimationFrame(step);
+}
 let stormEl = null, stormLt = 3, stormFlash = 0;
 function stormFx(dt) {   // aboard a boat at night: rain, whitecaps, dark sky and the odd flash of lightning
   const me = ents2['p' + myId], mp = S && S.p.find(q => q[0] === myId), on = !!(me && mp && mp[20] && S.ph === 2 && Object.values(boatE).some(e => e.storm));
@@ -923,7 +983,7 @@ function setCraft(open) { if (open) { if ((S && S.st || []).some(t => t[1] === '
 $('craftClose').onclick = () => setCraft(false);
 
 // ---- shared chest + cooking pot menus ----
-const BUFF = { speed: 0, regen: 0, dmg: 0 }; let buffAt = 0;
+const BUFF = { speed: 0, regen: 0, dmg: 0, regen2: 0, invuln: 0 }; let buffAt = 0;
 const nearStruct = id => { const e = structE[id], me = ents2['p' + myId]; return !!(e && me && Math.hypot(me.x - e.x, me.y - e.y) < 125); };
 const anyPotNear = () => { for (const id in structE) if (structE[id].k === 'pot' && nearStruct(id)) return true; return false; };
 function openChest(id) { setCraft(false); closePot(); closeSmelt(); chestId = id; chestSig = ''; $('chest').style.display = 'flex'; armDismantle($('chestDis'), () => chestId); buildChest(); }
@@ -956,11 +1016,11 @@ const nearestOf = kind => { const me = ents2['p' + myId]; let best = null, bd = 
 function openPot() { setCraft(false); closeChest(); closeSmelt(); armDismantle($('potDis'), () => nearestOf('pot')); potOpen = true; potSig = ''; $('pot').style.display = 'flex'; $('potMsg').textContent = ''; buildPot(); }
 function closePot() { potOpen = false; $('pot').style.display = 'none'; }
 function buildPot() {
-  const pl = pooled(), food = pl.food, meat = (S && S.p.find(p => p[0] === myId) || [])[21] || 0, sig = food + ',' + meat; if (sig === potSig) return; potSig = sig;
-  $('potInv').textContent = '🍓 ' + food + (meat ? '  🍖 ' + meat : '') + ' (chests incl.)'; const list = $('potList'); list.innerHTML = '';
+  const pl = pooled(), mpp = (S && S.p.find(p => p[0] === myId) || []), food = pl.food, meat = mpp[21] || 0, fish1 = mpp[27] || 0, fish2 = mpp[28] || 0, fish3 = mpp[29] || 0, sig = food + ',' + meat + ',' + fish1 + ',' + fish2 + ',' + fish3; if (sig === potSig) return; potSig = sig;
+  $('potInv').textContent = '🍓 ' + food + (meat ? '  🍖 ' + meat : '') + (fish1 ? '  🐟 ' + fish1 : '') + (fish2 ? '  🐠 ' + fish2 : '') + (fish3 ? '  🐡 ' + fish3 : '') + ' (chests incl.)'; const list = $('potList'); list.innerHTML = '';
   for (const f of RC.FOOD) {
-    const have = { food, meat }, ok = Object.entries(f.cost).every(([k, n]) => (have[k] || 0) >= n), d = document.createElement('div'); d.className = 'rc';
-    const co = Object.entries(f.cost).map(([k, n]) => '<span class="' + ((have[k] || 0) >= n ? '' : 'no') + '">' + (k === 'meat' ? '🍖' : '🍓') + ' ' + (have[k] || 0) + '/' + n + '</span>').join(' &nbsp; ');
+    const have = { food, meat, fish1, fish2, fish3 }, FI = { meat: '🍖', fish1: '🐟', fish2: '🐠', fish3: '🐡' }, ok = Object.entries(f.cost).every(([k, n]) => (have[k] || 0) >= n), d = document.createElement('div'); d.className = 'rc';
+    const co = Object.entries(f.cost).map(([k, n]) => '<span class="' + ((have[k] || 0) >= n ? '' : 'no') + '">' + (FI[k] || '🍓') + ' ' + (have[k] || 0) + '/' + n + '</span>').join(' &nbsp; ');
     d.innerHTML = '<div class="ic">' + f.e + '</div><div class="tx"><div class="nm">' + f.n + ' <span style="font-weight:400;opacity:.7;font-size:11px">' + f.type + '</span></div><div class="ds">' + f.d + '</div><div class="co">' + co + '</div></div>';
     d.classList.add('pick'); if (!ok) d.classList.add('dim');   // the whole row is the button: tap anywhere on it to cook
     d.onclick = () => {
@@ -1106,7 +1166,7 @@ function onSnap(m) {
     r.hp = hp;
   }
   syncDrops(m, _d, _dx);
-  syncStructs(m, !prevS); syncBoats(m); syncArrows(m); window.xSnap && xSnap(m);
+  syncStructs(m, !prevS); syncBoats(m); syncPools(m); syncArrows(m); window.xSnap && xSnap(m);
   if (chestId !== null) { if (!nearStruct(chestId)) closeChest(); else buildChest(); }
   if (potOpen) { if (!anyPotNear()) closePot(); else buildPot(); }
   if (smeltId !== null) { if (!nearStruct(smeltId)) closeSmelt(); else buildSmelt(); }
@@ -1249,10 +1309,12 @@ app.ticker.add(() => {
       for (const t of S.st || []) { if (t[1] !== 'bench' && t[1] !== 'chest' && t[1] !== 'pot' && t[1] !== 'smelter') continue; const dd = dist(t[2], t[3]); if (dd < RC.RADIUS[t[1]] + 62 && dd < sd) { sd = dd; st = t; } }
       if (st && Math.hypot(me.x, me.y) < 80 && Math.hypot(me.x, me.y) < sd) st = null;   // the fire is closer than the station
       let gt = null, gd = 70; for (const t of S.st || []) if (t[1] === 'gate') { const a = (t[7] || 0) * Math.PI / 4, ux = Math.cos(a), uy = Math.sin(a), u = Math.max(-52, Math.min(52, (me.x - t[2]) * ux + (me.y - t[3]) * uy)), d = Math.hypot(me.x - (t[2] + ux * u), me.y - (t[3] + uy * u)); if (d < gd) { gd = d; gt = t; } }   // a gate in reach: ACT swings it open / shut
+      const pool = !me.d[20] && (S.fp || []).find(q => dist(q[1], q[2]) < 80);
       const nb = (S.bt || []).find(b => dist(b[1], b[2]) < 125);
       if (S.p.some(q => q[10] && q[0] !== myId && dist(q[3], q[4]) < 60)) lab = 'REVIVE';
       else if (nb) lab = nb[4] >= 2 ? 'FULL' : 'ENTER';
       else if (window.xActLabel && xActLabel(me)) lab = xActLabel(me);
+      else if (pool && !fishOpen) lab = 'FISH';
       else if (gt) lab = gt[8] ? 'CLOSE' : 'OPEN';
       else if (st) lab = st[1] === 'bench' ? 'CRAFT' : st[1] === 'chest' ? 'OPEN' : st[1] === 'pot' ? 'COOK' : 'SMELT';
       else if (Math.hypot(me.x, me.y) < 80) {
@@ -1292,7 +1354,7 @@ app.ticker.add(() => {
   ring.visible = alive; ring.scale.set(ringR * 2 / 256 * 1.0); ring.alpha = .35 + Math.sin(T * 2) * .08;
   if (alive) { fireTick += dt * (20 + 40 * fuelK); while (fireTick > 1) { fireTick--; emit(overL, T_GLOW, rnd(-8, 8), -2, rnd(-14, 14), rnd(-70, -35), rnd(.6, 1.3), .08, .01, Math.random() < .5 ? 0xffb347 : 0xffe08a, 1, true, -10); } }
   smokeTick += dt * (alive ? 4 : 9); while (smokeTick > 1) { smokeTick--; emit(pfx, T_GLOW, rnd(-6, 6), -14, rnd(-6, 6), rnd(-26, -14), 2.2, .25, .9, alive ? 0x555555 : 0x444444, alive ? .22 : .35, false, 0); }
-  stepParts(dt); stepFallers(dt); stepDrops(dt); stepStructs(dt); stepBoats(dt); stepArrows(); window.xStep && xStep(dt, me);
+  stepParts(dt); stepFallers(dt); stepDrops(dt); stepStructs(dt); stepBoats(dt); stepPoolFx(dt); stepArrows(); window.xStep && xStep(dt, me);
   for (let i = ftexts.length - 1; i >= 0; i--) { const q = ftexts[i]; q.life -= dt; q.t.y -= dt * 34; q.t.alpha = clamp(q.life * 2, 0, 1); if (q.life <= 0) { q.t.destroy(); ftexts.splice(i, 1); } }
   // lighting
   const d = darkness(S.c);
@@ -1342,11 +1404,11 @@ function hud() {
   const f = myFire(), mp = S.p.find(p => p[0] === myId), PH = ['DAY', 'DUSK', 'NIGHT'][S.ph], left = Math.ceil(S.ph === 0 ? 90 - S.c : S.ph === 1 ? 120 - S.c : 180 - S.c);
   $('t1').textContent = 'Night ' + S.n + ' · ' + PH + ' ' + left + 's · 🔥 Lv' + f[2];
   $('bar').firstElementChild.style.width = (100 * f[0] / f[1]) + '%';
-  if (mp) $('inv').textContent = '🪵' + mp[7] + '  🪨' + mp[8] + '  🍓' + mp[9] + (mp[15] ? '  🔩' + mp[15] : '') + (mp[21] ? '  🍖' + mp[21] : '') + (mp[22] ? '  🪙' + mp[22] : '') + (mp[23] ? '  🐺' + mp[23] : '') + (mp[26] ? '  🐾' + mp[26] : '') + '   ❤ ' + mp[5] + '/' + mp[6];
+  if (mp) $('inv').textContent = '🪵' + mp[7] + '  🪨' + mp[8] + '  🍓' + mp[9] + (mp[15] ? '  🔩' + mp[15] : '') + (mp[21] ? '  🍖' + mp[21] : '') + (mp[22] ? '  🪙' + mp[22] : '') + (mp[23] ? '  🐺' + mp[23] : '') + (mp[26] ? '  🐾' + mp[26] : '') + (mp[27] ? '  🐟' + mp[27] : '') + (mp[28] ? '  🐠' + mp[28] : '') + (mp[29] ? '  🐡' + mp[29] : '') + '   ❤ ' + mp[5] + '/' + mp[6];
   if (window.xHud) xHud(mp);
   if (mp && !window.xHud) { const sl = mp[19] || [], sig = sl.join(','); if (sig !== slotSig) { slotSig = sig; document.querySelectorAll('#slots .slot').forEach((el, i) => { const f = RC.ITEM_BY[sl[i]]; el.textContent = f ? f.e : ''; el.classList.toggle('full', !!f); el.title = f ? f.n + ' - tap to use' : 'empty'; }); } }
   $('pl').textContent = S.p.length + ' player' + (S.p.length > 1 ? 's' : '');
-  { const el = (performance.now() - buffAt) / 1000, bt = []; if (BUFF.speed - el > 0) bt.push('⚡' + Math.ceil(BUFF.speed - el) + 's'); if (BUFF.regen - el > 0) bt.push('💚' + Math.ceil(BUFF.regen - el) + 's'); if (BUFF.dmg - el > 0) bt.push('⚔' + Math.ceil(BUFF.dmg - el) + 's'); const bs = bt.join('  '); if ($('buffs').textContent !== bs) $('buffs').textContent = bs; }
+  { const el = (performance.now() - buffAt) / 1000, bt = []; if (BUFF.speed - el > 0) bt.push('⚡' + Math.ceil(BUFF.speed - el) + 's'); if (BUFF.regen - el > 0) bt.push('💚' + Math.ceil(BUFF.regen - el) + 's'); if (BUFF.dmg - el > 0) bt.push('⚔' + Math.ceil(BUFF.dmg - el) + 's'); if (BUFF.regen2 - el > 0) bt.push('💖' + Math.ceil(BUFF.regen2 - el) + 's'); if (BUFF.invuln - el > 0) bt.push('✨' + Math.ceil(BUFF.invuln - el) + 's'); const bs = bt.join('  '); if ($('buffs').textContent !== bs) $('buffs').textContent = bs; }
   const now = performance.now(); let b = '';
   if (S.o) b = 'Everyone is down... heading back to the title screen';
   else if (now < warnUntil) b = '⚠ A CHARGER is hunting! It cannot be killed - stay inside the fire ring until dawn!';
@@ -1541,6 +1603,8 @@ $('go').onclick = () => {
       const r = resNodes[m.i]; if (r) { r.k = m.k; r.mhp = RHP[m.k] || 3; r.s.texture = m.k === 'g' ? T_GOLDV : T_ROCK; }
     } else if (m.t === 'trapSet') {
       const me = ents2['p' + myId]; if (me) floatText(me.x, me.y - 10, 'Trap set!', 0xffe082);   // (the trap appearing already plays the build sound)
+    } else if (m.t === 'fishgame') { openFish(m.id, m.kind);
+    } else if (m.t === 'fishCaught') { const F = FISH[m.kind] || FISH[1]; SFX.levelup(); const me = ents2['p' + myId]; if (me) floatText(me.x, me.y - 24, F.e + ' ' + F.n + '!', 0xffe082); notice('You caught a ' + F.n.toLowerCase() + '! Cook it in a pot.');
     } else if (m.t === 'ate') {
       if (m.b) { for (const k in BUFF) BUFF[k] = m.b[k] || 0; buffAt = performance.now(); }
       SFX.cook(); const me = ents2['p' + myId]; if (me) floatText(me.x, me.y - 10, m.msg, 0xffe082);

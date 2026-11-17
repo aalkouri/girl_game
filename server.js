@@ -352,6 +352,25 @@ class Room {
     let best = null, bd = 1e9; for (const st of list) { const [qx, qy, qr] = solidPt(st, x, y), d = Math.hypot(qx - x, qy - y); if (d < bd) { bd = d; best = { st, qx, qy, qr }; } } return best;
   }
   hitWall(st, dmg) { st.hp -= dmg; if (st.hp <= 0) st.dead = 1; }
+  // fishing pools: shimmering spots near the shore of any island; walk up and press ACT to fish (the minigame runs on the client, the server checks it)
+  stepPools(dt) {
+    if (!this.pools) { this.pools = []; this.poolT = 3; }
+    this.pools = this.pools.filter(q => (q.ttl -= dt) > 0);
+    if ((this.poolT -= dt) > 0) return; this.poolT = 6 + Math.random() * 6;
+    const i = Math.floor(Math.random() * this.islands.length), is = this.islands[i]; if (this.pools.filter(q => q.isl === i).length >= 3) return;
+    const a = Math.random() * 6.283, d = is.r - 95, x = is.x + Math.cos(a) * d, y = is.y + Math.sin(a) * d;
+    if (this.landAt(x, y) !== i || this.pools.some(q => Math.hypot(q.x - x, q.y - y) < 300)) return;
+    const r = Math.random(); this.pools.push({ id: this.nid++, isl: i, x: Math.round(x), y: Math.round(y), kind: r < 0.05 ? 3 : r < 0.30 ? 2 : 1, ttl: 150 + Math.random() * 150 });
+  }
+  poolNear(p) { let best = null, bd = 80; for (const q of this.pools || []) { const d = Math.hypot(p.x - q.x, p.y - q.y); if (d < bd) { bd = d; best = q; } } return best; }
+  fishDone(p, id, ok) {
+    const f = p.fishing; p.fishing = null; if (!f || f.id !== id) return;
+    const q = (this.pools || []).find(x => x.id === id), toast = msg => send(p.ws, { t: 'toast', msg });
+    if (!q) return toast('The fish swam away.');
+    if (!ok || Date.now() - f.t < 2500 || Math.hypot(p.x - q.x, p.y - q.y) > 180) return toast('It got away!');
+    this.pools = this.pools.filter(x => x !== q); p['fish' + q.kind] = (p['fish' + q.kind] || 0) + 1;
+    send(p.ws, { t: 'fishCaught', kind: q.kind });
+  }
   gateNear(p) { let best = null, bd = 70; for (const st of this.struct) if (st.k === 'gate') { const [qx, qy] = solidPt(st, p.x, p.y), d = Math.hypot(p.x - qx, p.y - qy); if (d < bd) { bd = d; best = st; } } return best; }
   boatNear(p) { let best = null, bd = 125; for (const b of this.boats) { const d = Math.hypot(p.x - b.x, p.y - b.y); if (d < bd) { bd = d; best = b; } } return best; }
   enterBoat(p, b) {
@@ -430,7 +449,7 @@ class Room {
     return { ok: true, msg: 'Deal!' };
   }
   hurt(p, d) {   // every hit on a player goes through here (armor, Bulwark, Blood Rage)
-    const B = p.buff; d *= 1 - Math.min(0.6, RC.ARMOR[p.gear.armor || 0] + RC.armorOf(p.gear)); if (B.shield > 0) d *= 0.3; if (B.rage > 0) d *= 1.5;
+    const B = p.buff; if (B.invuln > 0) return; d *= 1 - Math.min(0.6, RC.ARMOR[p.gear.armor || 0] + RC.armorOf(p.gear)); if (B.shield > 0) d *= 0.3; if (B.rage > 0) d *= 1.5;
     p.hp -= d; if (p.hp <= 0) { p.hp = 0; p.down = 1; p.rev = 0; }
   }
   killCredit(p, a) { if (a.hp <= 0 && !a.cred) { a.cred = 1; if (p.prof) { p.prof.k++; dirty = true; if (p.prof.k % 10 === 0) award(p, 1, 'kills'); } } }
@@ -579,7 +598,7 @@ class Room {
     const f = RC.FOOD_BY[id], fail = msg => ({ ok: false, msg });
     if (!f) return fail('Unknown recipe.'); if (p.down) return fail('You are down.');
     if (!this.struct.some(s => s.k === 'pot' && this.near(p, s))) return fail('Stand next to a cooking pot.');
-    for (const k in f.cost) if (this.pool(p, k) < f.cost[k]) return fail('Not enough ' + (k === 'meat' ? 'meat' : 'berries') + ' (your bag plus the chests).');
+    for (const k in f.cost) if (this.pool(p, k) < f.cost[k]) return fail('Not enough ' + (k === 'meat' ? 'meat' : k.startsWith('fish') ? 'fish' : 'berries') + ' (your bag plus the chests).');
     this.pay(p, f.cost);
     const pot = this.struct.find(s => s.k === 'pot' && this.near(p, s)), a = Math.PI * (0.15 + Math.random() * 0.7), dd = pot.r + 24 + Math.random() * 18;
     this.pend.push({ k: 'q', food: id, x: pot.x + Math.cos(a) * dd, y: pot.y + Math.sin(a) * dd, t: 0.45 });   // the dish pops out of the pot and lands on the floor to be picked up
@@ -603,6 +622,9 @@ class Room {
     if (id === 'steak') p.hp = Math.min(p.mhp, p.hp + 80);
     else if (id === 'juice') p.hp = Math.min(p.mhp, p.hp + 40);
     else if (id === 'tea') p.buff.speed = 60;
+    else if (id === 'fishc') { p.hp = Math.min(p.mhp, p.hp + 50); p.buff.regen = Math.max(p.buff.regen || 0, 15); }
+    else if (id === 'fishr') { p.hp = p.mhp; p.buff.regen2 = Math.max(p.buff.regen2 || 0, 30); }
+    else if (id === 'fishl') p.buff.invuln = 10;
     send(p.ws, { t: 'ate', id, msg: RC.FOOD_BY[id].n, b: p.buff });
   }
   // rabbits: live in the forest (all of home, the forest quarter of the other islands), run slowly from people, slide along the coast
@@ -727,7 +749,7 @@ class Room {
     for (const q of drops) { const a = Math.random() * 6.283, d = 8 + Math.random() * 18; q.x = b.x + Math.cos(a) * d; q.y = b.y + Math.sin(a) * d; q.t = 0.15; this.pend.push(q); }
   }
   ph() { return this.c < DAY ? 0 : this.c < DAY + DUSK ? 1 : 2; }
-  awayEntry(p) { return { t: Date.now(), s: { wood: p.wood, stone: p.stone, food: p.food, scrap: p.scrap, meat: p.meat, gold: p.gold, pelt: p.pelt, apelt: p.apelt, gear: p.gear, buff: p.buff, slots: p.slots, cls: p.cls, down: p.down, hp: p.hp, x: p.x, y: p.y } }; }
+  awayEntry(p) { return { t: Date.now(), s: { wood: p.wood, stone: p.stone, food: p.food, scrap: p.scrap, meat: p.meat, gold: p.gold, pelt: p.pelt, apelt: p.apelt, fish1: p.fish1, fish2: p.fish2, fish3: p.fish3, gear: p.gear, buff: p.buff, slots: p.slots, cls: p.cls, down: p.down, hp: p.hp, x: p.x, y: p.y } }; }
   stash(p) {   // remember a leaving player's character so they can come back (dropped connection) within the room window
     if (!p.email) return; const now = Date.now(); for (const [k, v] of this.away) if (now - v.t > ROOM_IDLE_SEC * 1000) this.away.delete(k);
     this.away.set(p.email, this.awayEntry(p));
@@ -776,12 +798,12 @@ class Room {
   }
   add(ws, name, cls, pf, email) {
     this.rForce = 1;   // the next snapshot carries the full resource state for the newcomer
-    const p = { id: this.nid++, ws, name, cls, prof: pf, gear: {}, buff: { speed: 0, regen: 0, dmg: 0 }, actPrev: 0, fa: 0, sw: 0, swk: 0, swa: 0, wood: parseInt(process.env.START_WOOD) || 0, stone: parseInt(process.env.START_STONE) || 0, food: parseInt(process.env.START_FOOD) || 0, scrap: parseInt(process.env.START_SCRAP) || 0, meat: parseInt(process.env.START_MEAT) || 0, gold: 0, pelt: 0, apelt: 0, slots: [], abilCd: 0, sta: STA.max, staCd: 0, tired: 0, actcd: 0, hitcd: 0, eat: 0, inp: { dx: 0, dy: 0, act: 0, hit: 0 } };
+    const p = { id: this.nid++, ws, name, cls, prof: pf, gear: {}, buff: { speed: 0, regen: 0, dmg: 0 }, actPrev: 0, fa: 0, sw: 0, swk: 0, swa: 0, wood: parseInt(process.env.START_WOOD) || 0, stone: parseInt(process.env.START_STONE) || 0, food: parseInt(process.env.START_FOOD) || 0, scrap: parseInt(process.env.START_SCRAP) || 0, meat: parseInt(process.env.START_MEAT) || 0, gold: 0, pelt: 0, apelt: 0, fish1: 0, fish2: 0, fish3: 0, slots: [], abilCd: 0, sta: STA.max, staCd: 0, tired: 0, actcd: 0, hitcd: 0, eat: 0, inp: { dx: 0, dy: 0, act: 0, hit: 0 } };
     p.email = email; p.inf = INFINITE.has(email); this.respawn(p);
     if (process.env.START_ABIL && pf) { pf.abil = {}; for (const c of GC.LIST) pf.abil[c.id] = 1; }   // (test hook: every ability unlocked)
     const a = email && this.away.get(email); this.away.delete(email);
     if (a && Date.now() - a.t <= ROOM_IDLE_SEC * 1000) {   // welcome back: same stuff, same spot (a downed player just respawns)
-      const o = a.s; p.wood = o.wood; p.stone = o.stone; p.food = o.food; p.scrap = o.scrap; p.meat = o.meat || 0; p.gold = o.gold || 0; p.pelt = o.pelt || 0; p.apelt = o.apelt || 0; p.gear = o.gear; p.buff = o.buff; p.slots = (o.slots || []).filter(id => RC.ITEM_BY[id]).slice(0, 7);
+      const o = a.s; p.wood = o.wood; p.stone = o.stone; p.food = o.food; p.scrap = o.scrap; p.meat = o.meat || 0; p.gold = o.gold || 0; p.pelt = o.pelt || 0; p.apelt = o.apelt || 0; p.fish1 = o.fish1 || 0; p.fish2 = o.fish2 || 0; p.fish3 = o.fish3 || 0; p.gear = o.gear; p.buff = o.buff; p.slots = (o.slots || []).filter(id => RC.ITEM_BY[id]).slice(0, 7);
       if (o.cls === cls && !o.down) { p.hp = Math.min(p.mhp, o.hp); p.x = o.x; p.y = o.y; if (this.landAt(p.x, p.y) < 0) { const q = this.landPoint(p.x, p.y); p.x = q[0]; p.y = q[1]; } }   // (someone who left while sailing comes back on the nearest shore)
     }
     this.players.set(p.id, p); return p;
@@ -836,6 +858,7 @@ class Room {
         continue;
       }
       if (B.regen > 0 && p.hp < p.mhp) p.hp = Math.min(p.mhp, p.hp + 2 * dt);
+      if (B.regen2 > 0 && p.hp < p.mhp) p.hp = Math.min(p.mhp, p.hp + 5 * dt);
       let dx = i.dx, dy = i.dy; const m = Math.hypot(dx, dy); if (m > 1) { dx /= m; dy /= m; }
       let spd = c.spd * (B.speed > 0 ? 1.25 : 1) * (B.haste > 0 ? 2 : 1) * (B.rage > 0 || B.power > 0 ? 1.4 : 1);
       // running: the further the stick is pushed past the walk ring, the faster (up to 1.7x); it costs stamina, and a winded player can only walk
@@ -859,6 +882,7 @@ class Room {
         if (mate) { if (m <= 0.1) { mate.rev += dt * c.rev; mate.rv = 1; } }   // you have to stand still while reviving
         else if (actEdge && this.boatNear(p)) this.enterBoat(p, this.boatNear(p));
         else if (actEdge && this.lootNear(p, 'chest')) this.openChest(p, this.lootNear(p, 'chest'));
+        else if (actEdge && (!p.fishing || Date.now() - p.fishing.t > 40000) && this.poolNear(p) && !p.boat) { const q = this.poolNear(p); p.fishing = { id: q.id, t: Date.now() }; p.actcd = 0.5; send(p.ws, { t: 'fishgame', id: q.id, kind: q.kind }); }
         else if (actEdge && this.gateNear(p)) { const g = this.gateNear(p); g.open = g.open ? 0 : 1; p.actcd = 0.3; }
         else if (actEdge && this.lootNear(p, 'trader')) { const l = this.lootNear(p, 'trader'); send(p.ws, { t: 'open', what: 'trader', id: l.id, ty: l.trader }); }
         else if (p.actcd <= 0) {
@@ -952,7 +976,7 @@ class Room {
         e.spk = (e.spk || 0) - dt; if (e.spk > 0) continue; e.spk = 0.5; e.hp -= 10; if (e.wolf) { e.st = 1; } this.hitWall(st, 3); if (st.dead) break;
       }
     }
-    this.stepRabbits(P, dt); this.stepWolves(P, dt);
+    this.stepRabbits(P, dt); this.stepWolves(P, dt); this.stepPools(dt);
     // aliens
     if (ph === 2) for (let i = 0; i < this.islands.length; i++) this.nightSpawns(i, P, dt);
     for (const a of this.aliens) {
@@ -1028,7 +1052,8 @@ class Room {
     return JSON.stringify({
       t: 's', c: Math.round(this.c * 10) / 10, n: this.night, ph: this.ph(), o: this.over > 0 ? 1 : 0,
       f: [Math.round(f.fuel), RC.fuelMax(f.lvl), f.lvl, f.fuel > 0 ? RC.camp(f.lvl) : 0],
-      p: [...this.players.values()].map(p => [p.id, p.name, p.cls, Math.round(p.x), Math.round(p.y), Math.round(p.hp), p.mhp, p.wood, p.stone, p.food, p.down, Math.round(p.rev * 10) / 10, p.sw, p.swk, Math.round(p.swa * 100), p.scrap, Math.round(p.fa * 100), Math.round(p.sta), p.tired, p.slots, p.boat || 0, p.meat || 0, p.gold || 0, p.pelt || 0, slotCap(p, this), !(p.prof && p.prof.abil && p.prof.abil[p.cls]) ? 0 : p.abilCd > 0 ? Math.ceil(p.abilCd) + 1 : 1, p.apelt || 0]),
+      p: [...this.players.values()].map(p => [p.id, p.name, p.cls, Math.round(p.x), Math.round(p.y), Math.round(p.hp), p.mhp, p.wood, p.stone, p.food, p.down, Math.round(p.rev * 10) / 10, p.sw, p.swk, Math.round(p.swa * 100), p.scrap, Math.round(p.fa * 100), Math.round(p.sta), p.tired, p.slots, p.boat || 0, p.meat || 0, p.gold || 0, p.pelt || 0, slotCap(p, this), !(p.prof && p.prof.abil && p.prof.abil[p.cls]) ? 0 : p.abilCd > 0 ? Math.ceil(p.abilCd) + 1 : 1, p.apelt || 0, p.fish1 || 0, p.fish2 || 0, p.fish3 || 0]),
+      fp: (this.pools || []).map(q => [q.id, q.x, q.y, q.kind]),
       bt: this.boats.map(b => [b.id, Math.round(b.x), Math.round(b.y), Math.round(b.ang * 100), b.riders.length, b.drv, b.type || 'boat', Math.round(100 * (b.life == null ? 1 : b.life / RC.BOATS[b.type || 'boat'].life)), b.storm || 0]), sf: this.scrapFound ? 1 : 0,
       a: this.aliens.map(a => [a.id, Math.round(a.x), Math.round(a.y), Math.round(a.hp), a.mhp, a.k, a.fa === undefined ? null : Math.round(a.fa * 100), Math.ceil(a.trapT > 0 ? a.trapT : 0), a.aim > 0 ? Math.round(Math.min(1, a.aim / 1.5) * 100) : 0]),
       wf: (this.wolves || []).map(w => [w.id, Math.round(w.x), Math.round(w.y), Math.round(w.fa * 100), Math.round(w.hp), w.mhp, w.st, w.bite > 0 ? 1 : 0, w.alpha || 0, w.big || 0]),
@@ -1085,6 +1110,8 @@ wss.on('connection', ws => {
       const now = Date.now(); if (now - (me.lastCraft || 0) < 200) { send(ws, { t: 'crafted', id: String(m.id || ''), ok: false, msg: 'Slow down a little.', gear: me.gear }); return; } me.lastCraft = now;
       let res; try { res = room.craft(me, String(m.id || ''), m.rot); } catch (e) { console.error('craft error:', e && e.stack || e); res = { ok: false, msg: 'Could not craft that.' }; }
       send(ws, { t: 'crafted', id: String(m.id || ''), ok: res.ok, msg: res.msg, gear: me.gear });
+    } else if (m.t === 'fishdone' && me) {
+      try { room.fishDone(me, +m.id, !!m.ok); } catch (e) { console.error('fish error:', e && e.stack || e); }
     } else if (m.t === 'chest' && me) {
       try { room.chestOp(me, +m.id, String(m.res || ''), m.n); } catch (e) { console.error('chest error:', e && e.stack || e); }
     } else if (m.t === 'smelt' && me) {

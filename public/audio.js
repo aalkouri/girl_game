@@ -1,7 +1,7 @@
 'use strict';
 // Procedural audio (Web Audio) - no asset files. SFX.init() must be called from a user gesture.
 const SFX = (() => {
-  let ctx = null, master = null, nbuf = null, muted = false, vol = .8, amb = null;
+  let SFX_vis = 0, ctx = null, master = null, nbuf = null, muted = false, vol = .8, amb = null;
   try { muted = localStorage.getItem('mute') === '1'; } catch (e) { }
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v)), rnd = (a, b) => a + Math.random() * (b - a);
 
@@ -12,8 +12,8 @@ const SFX = (() => {
     master = ctx.createGain(); master.gain.value = muted ? 0 : vol;
     const comp = ctx.createDynamicsCompressor(); master.connect(comp); comp.connect(ctx.destination);
     nbuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate); const d = nbuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-    buildAmbient(); resume();
-    document.addEventListener('visibilitychange', () => { if (!ctx) return; if (document.hidden) ctx.suspend(); else resume(); });
+    buildAmbient(); resume(); ctx.onstatechange = () => { if (ctx && ctx.state !== 'running' && !document.hidden) ctx.resume().catch(() => { }); };
+    if (!SFX_vis) { SFX_vis = 1; document.addEventListener('visibilitychange', () => { if (!ctx) return; if (document.hidden) ctx.suspend(); else resume(); }); }
   }
   function resume() { if (ctx && ctx.state !== 'running') ctx.resume().catch(() => { }); }
   function setMuted(m) { muted = m; try { localStorage.setItem('mute', m ? '1' : '0'); } catch (e) { } if (master) master.gain.setTargetAtTime(m ? 0 : vol, ctx.currentTime, .05); }
@@ -25,11 +25,16 @@ const SFX = (() => {
     if (ctx.createStereoPanner && pan) { const p = ctx.createStereoPanner(); p.pan.value = clamp(pan, -1, 1); G.connect(p); last = p; }
     last.connect(master); return G;
   }
+  // Too many sounds at once (dawn: every alien dies together) can overload the browser's audio and silence everything. So: a cap on live voices, and the busy
+  // effects are rate-limited; a watchdog also revives (or rebuilds) the audio context if the browser suspends or stalls it.
+  let voices = [];
+  const MAXV = 34;
+  function claim(t, dur) { const now = ctx.currentTime; if (voices.length) voices = voices.filter(v => v > now); if (voices.length >= MAXV) return false; voices.push(t + dur + .06); return true; }
   const att = (dist) => 1 / (1 + (dist || 0) / 220);
   const pan = (dx) => clamp((dx || 0) / 450, -.8, .8);
 
   function noise(o) {
-    if (!ctx || muted) return; const t = ctx.currentTime + (o.when || 0), dur = o.dur || .1;
+    if (!ctx || muted) return; const t = ctx.currentTime + (o.when || 0), dur = o.dur || .1; if (!claim(t, dur)) return;
     const s = ctx.createBufferSource(); s.buffer = nbuf; s.loop = true; s.playbackRate.value = o.rate || 1;
     const f = ctx.createBiquadFilter(); f.type = o.type || 'bandpass'; f.frequency.setValueAtTime(o.f || 1000, t); if (o.f2) f.frequency.exponentialRampToValueAtTime(o.f2, t + dur); f.Q.value = o.q || 1;
     const e = ctx.createGain(), pk = (o.gain || .3) * att(o.dist);
@@ -37,7 +42,7 @@ const SFX = (() => {
     s.connect(f); f.connect(e); e.connect(out(1, pan(o.dx))); s.start(t, Math.random()); s.stop(t + dur + .05);
   }
   function tone(o) {
-    if (!ctx || muted) return; const t = ctx.currentTime + (o.when || 0), dur = o.dur || .2;
+    if (!ctx || muted) return; const t = ctx.currentTime + (o.when || 0), dur = o.dur || .2; if (!claim(t, dur)) return;
     const os = ctx.createOscillator(); os.type = o.type || 'sine'; os.frequency.setValueAtTime(o.f, t); if (o.f2) os.frequency.exponentialRampToValueAtTime(o.f2, t + dur);
     let node = os; if (o.lp) { const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = o.lp; os.connect(f); node = f; }
     const e = ctx.createGain(), pk = (o.gain || .2) * att(o.dist);
@@ -104,5 +109,20 @@ const SFX = (() => {
     amb.day.gain.setTargetAtTime(.04 * (1 - st.night), t, 1.2);
     amb.night.gain.setTargetAtTime(.05 * st.night, t, 1.2);
   }
+  // rate limits (ms between plays of the same effect; alienDie also allows only 3 per 400 ms)
+  const GAP = { alienDie: 40, hit: 45, chop: 40, mine: 40, pick: 50, growl: 250, step: 90, whoosh: 40, build: 60, rockbreak: 60 }, lastAt = {}, burst = [];
+  for (const k of Object.keys(fx)) {
+    const f = fx[k], gap = GAP[k] || 25;
+    fx[k] = (...a) => { const n = performance.now(); if (n - (lastAt[k] || 0) < gap) return; if (k === 'alienDie') { while (burst.length && n - burst[0] > 400) burst.shift(); if (burst.length >= 3) return; burst.push(n); } lastAt[k] = n; return f(...a); };
+  }
+  // watchdog: bring the audio back if the browser suspended it, or rebuild it if its clock stopped
+  let lastT = -1, stall = 0;
+  function rebuild() { try { if (ctx) ctx.close(); } catch (e) { } ctx = null; master = null; amb = null; voices = []; init(); }
+  setInterval(() => {
+    if (!ctx || document.hidden) return;
+    if (ctx.state === 'closed') { rebuild(); return; }
+    if (ctx.state !== 'running') { ctx.resume().catch(() => { }); lastT = -1; return; }
+    if (ctx.currentTime === lastT) { if (++stall >= 3) { stall = 0; rebuild(); } } else stall = 0; lastT = ctx.currentTime;
+  }, 1500);
   return { init, resume, setMuted, isMuted, update, ...fx, ready: () => !!ctx };
 })();

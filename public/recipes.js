@@ -26,6 +26,9 @@
   const FOOD = [
     { id: 'juice', n: 'Berry Juice', e: '🧃', type: 'Drink', cost: { food: 2 }, d: 'Heals 40 HP right away.' },
     { id: 'steak', n: 'Steak Dinner', e: '🥩', type: 'Meal', cost: { food: 2, meat: 2 }, d: 'Heals 80 HP right away. Made from 2 chunks of meat (dropped by rabbits and wolves) and 2 berries.' },
+    { id: 'fishc', n: 'Grilled Fish', e: '🍤', type: 'Meal', cost: { fish1: 1 }, d: 'Heals 50 HP and gives a slight health regen for 15 seconds. Made from 1 common fish.' },
+    { id: 'fishr', n: 'Fish Stew', e: '🍲', type: 'Meal', cost: { fish2: 1 }, d: 'Heals you to full and gives a strong health regen for 30 seconds. Made from 1 rare fish.' },
+    { id: 'fishl', n: 'Golden Sashimi', e: '🍣', type: 'Meal', cost: { fish3: 1 }, d: 'You take no damage at all for 10 seconds. Made from 1 legendary fish.' },
     { id: 'tea', n: 'Berry Tea', e: '🍵', type: 'Drink', cost: { food: 3 }, d: '+25% movement speed for 60 seconds.' },
   ];
   const BY = {}; LIST.forEach(r => BY[r.id] = r);
