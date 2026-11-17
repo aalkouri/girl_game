@@ -905,7 +905,7 @@ class Room {
     if (this.wolves.some(w => w.hp <= 0)) this.wolves = this.wolves.filter(w => w.hp > 0);
   }
   killRabbit(b) {   // one hit: 1-2 meat scraps, and a 10% chance of a lucky rabbit's foot
-    b.hp = 0; const n = 1 + (Math.random() < 0.5 ? 1 : 0), drops = [];
+    b.hp = 0; const n = 1, drops = [];   // passive creatures drop exactly one meat
     for (let i = 0; i < n; i++) drops.push({ k: 'n' });
     if ((b.crit || 'rabbit') === 'rabbit' && Math.random() < RAB.foot) drops.push({ k: 'q', food: 'foot' });
     if (b.crit === 'sal' && Math.random() < 0.25) drops.push({ k: 'o' });   // a salamander sometimes leaves a bit of gold ore
