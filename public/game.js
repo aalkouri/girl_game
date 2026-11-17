@@ -1197,6 +1197,7 @@ app.ticker.add(() => {
     else if (!me.d[10]) {
       const dist = (x, y) => Math.hypot(x - me.x, y - me.y); let st = null, sd = 1e9;   // the nearest station in reach (same rule as the server)
       for (const t of S.st || []) { if (t[1] !== 'bench' && t[1] !== 'chest' && t[1] !== 'pot' && t[1] !== 'smelter') continue; const dd = dist(t[2], t[3]); if (dd < RC.RADIUS[t[1]] + 62 && dd < sd) { sd = dd; st = t; } }
+      if (st && Math.hypot(me.x, me.y) < 80 && Math.hypot(me.x, me.y) < sd) st = null;   // the fire is closer than the station
       const nb = (S.bt || []).find(b => dist(b[1], b[2]) < 125);
       if (S.p.some(q => q[10] && q[0] !== myId && dist(q[3], q[4]) < 60)) lab = 'REVIVE';
       else if (nb) lab = nb[4] >= 2 ? 'FULL' : 'ENTER';

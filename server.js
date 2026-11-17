@@ -801,6 +801,7 @@ class Room {
         else if (p.actcd <= 0) {
           const FF = this.fireNear(p, 80);
           let stn = null, sd = 1e9; for (const st of this.struct) { if (st.k !== 'bench' && st.k !== 'chest' && st.k !== 'pot' && st.k !== 'smelter') continue; const dd = Math.hypot(p.x - st.x, p.y - st.y); if (dd < st.r + REACH && dd < sd) { sd = dd; stn = st; } }   // the nearest station in reach
+          if (stn && FF && Math.hypot(p.x - FF.x, p.y - FF.y) < sd) stn = null;   // the fire is closer than the station: ACT feeds the fire
           if (stn) { if (actEdge) { p.actcd = 0.4; send(p.ws, { t: 'open', what: stn.k, id: stn.id }); } }   // every station opens its menu; the smelter only starts when you put rocks in
           else if (FF) {   // the main fire or any campfire: wood refuels it, stone levels it up
             const ff = FF.f, mxF = RC.fuelMax(ff.lvl), per = 15 * c.feed, need = mxF - ff.fuel;
