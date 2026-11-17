@@ -1822,6 +1822,6 @@ function readInput() {
   if (keys.a || keys.arrowleft) dx -= 1; if (keys.d || keys.arrowright) dx += 1; if (keys.w || keys.arrowup) dy -= 1; if (keys.s || keys.arrowdown) dy += 1;
   if (keys.shift && (dx || dy)) rn = 1;
   const aim = currentAim(), nowT = performance.now();
-  return { dx, dy, am: aim === null ? 0 : 1, aim: aim === null ? 0 : Math.round(aim * 100) / 100, rn: Math.round(rn * 100) / 100, act: !placingId && !actBlock && (act || keys[' '] || keys.e) ? 1 : 0, hit: !placingId && (hit || keys.q || keys.f || keys.j || mouse.down || nowT < hitPulse) ? 1 : 0 };   // no attacking while placing something
+  return { dx, dy, am: aim === null ? 0 : 1, aim: aim === null ? 0 : Math.round(aim * 100) / 100, rn: Math.round(rn * 100) / 100, act: !placingId && !actBlock && (act || keys[' '] || keys.e) ? 1 : 0, hit: !placingId && !fishOpen && (hit || keys.q || keys.f || keys.j || mouse.down || nowT < hitPulse) ? 1 : 0 };   // no attacking while placing something
 }
 setInterval(() => { if (ws && ws.readyState === 1 && myId) ws.send(JSON.stringify(Object.assign({ t: 'in' }, readInput()))); }, 50);

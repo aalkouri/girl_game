@@ -1015,7 +1015,7 @@ class Room {
         { const mate = P.find(q => q.down && q !== p && Math.hypot(q.x - p.x, q.y - p.y) < 110);   // revive someone floating in the water from the boat
           if (mate && i.act && Math.hypot(i.dx, i.dy) <= 0.1) { mate.rev += dt * c.rev; mate.rv = 1; } }
         const bt = this.boats.find(x => x.id === p.boat);
-        if (bt && bt.drv !== p.id && i.hit && p.hitcd <= 0) {
+        if (bt && bt.drv !== p.id && i.hit && p.hitcd <= 0 && !(p.fishing && Date.now() - p.fishing.t < 40000)) {
           if (!this.spendSta(p, STA.attack)) { p.hitcd = 0.3; this.winded(p); }
           else {
             const g = p.gear.rifle ? RC.GUNS.rifle : p.gear.pistol ? RC.GUNS.pistol : { dmg: c.dmg + (p.gear.sword ? 8 : 0), cd: Math.max(0.5, c.cd), speed: 800, ttl: 0.6 };   // no gun: a plain thrown shot
@@ -1090,7 +1090,9 @@ class Room {
           }
         }
       }
-      if (i.hit && p.hitcd <= 0 && !this.spendSta(p, STA.attack)) { p.hitcd = 0.3; this.winded(p); }
+      const fishingNow = p.fishing && Date.now() - p.fishing.t < 40000;   // no swinging while the fishing minigame is up
+      if (i.hit && fishingNow) { }
+      else if (i.hit && p.hitcd <= 0 && !this.spendSta(p, STA.attack)) { p.hitcd = 0.3; this.winded(p); }
       else if (i.hit && p.hitcd <= 0 && !p.boat && (p.gear.rifle || p.gear.pistol)) {   // guns: ATTACK fires a bullet (auto-aimed at the nearest target in front)
         const g = p.gear.rifle ? RC.GUNS.rifle : RC.GUNS.pistol; p.hitcd = g.cd; let ang = p.fa, bd = 700;
         if (!i.am) for (const t of [...this.aliens, ...(this.wolves || [])]) if (t.hp > 0 && t.k !== 2 && !t.air) { const dd = dist(p, t); let da = Math.atan2(t.y - p.y, t.x - p.x) - p.fa; da = Math.atan2(Math.sin(da), Math.cos(da)); if (dd < bd && Math.abs(da) < 1.0) { bd = dd; ang = Math.atan2(t.y - p.y, t.x - p.x); } }
