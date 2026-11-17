@@ -416,6 +416,7 @@ class Room {
     const is = this.islands[ii]; if (Math.hypot(p.x - is.x, p.y - is.y) > is.r - 250) return no('Too close to the shore.');
     if (this.camps.some(c => c.isl === ii)) return no('This island already has a campfire - only one per island.');
     if (this.camps.some(c => Math.hypot(c.x - p.x, c.y - p.y) < 260)) return no('Too close to another campfire.');
+    if (this.res.some(r => r.isl === ii && Math.hypot(r.x - p.x, r.y - p.y) < 140)) return no('Too close to a tree, rock, bush or ore - find a clearer spot.');   // (resources are checked even while they are chopped and regrowing)
     p.slots.splice(i, 1); this.camps.push({ id: this.nid++, isl: ii, x: p.x, y: p.y, fuel: 120, lvl: 1 }); send(p.ws, { t: 'camped' });
   }
   lootNear(p, kind) {
