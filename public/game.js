@@ -776,12 +776,12 @@ function stepStructs(dt) {
 let placingId = null, ghost = null, ghostRot = null, ghostF = null, placeRot = 0, lastPlaceAt = 0;
 const PLACE_AHEAD = 58;   // must match the server
 function placeCheck(r, x, y) {   // mirrors the server's rules so the silhouette can show green/red; the server stays in charge
-  const d = Math.hypot(x, y), campR = RC.camp(S.f[2]), sr = RC.RADIUS[r.kind], station = r.kind !== 'wall' && r.kind !== 'trap';
+  const CF = curCamp({ x, y }) || curCamp(ents2['p' + myId]) || { x: 0, y: 0, r: RC.camp(S.f[2]), isl: 0 }, d = Math.hypot(x - CF.x, y - CF.y), campR = CF.r, sr = RC.RADIUS[r.kind], station = r.kind !== 'wall' && r.kind !== 'trap';
   if (d < RC.fireClear(r.kind)) return 'Too close to the fire';
   if (station && d > campR) return 'Must be inside the camp (the fire ring)';
   if (!station && d > campR + 200) return 'Too far from camp';
-  if (d > RR - 50) return 'Too close to the water';
-  if ((S.st || []).filter(t => t[1] === r.kind).length >= (r.max || 99)) return 'You built the maximum of these';
+  { const is = CF.isl === 0 ? [0, 0, RR] : ISL.find(q => Math.hypot(CF.x - q[0], CF.y - q[1]) < q[2]) || [0, 0, RR]; if (Math.hypot(x - is[0], y - is[1]) > is[2] - 50) return 'Too close to the water'; }
+  if ((S.st || []).filter(t => t[1] === r.kind && Math.hypot(t[2] - CF.x, t[3] - CF.y) < CF.r).length >= (r.max || 99)) return 'You built the maximum of these';
   for (const t of S.st || []) {
     const stWall = t[1] === 'wall', dd = Math.hypot(t[2] - x, t[3] - y), need = station && !stWall ? RC.STATION_GAP : (station || !stWall) ? RC.WALL_GAP : RC.RADIUS[t[1]] + sr - 4;
     if (dd < need) return need > 60 ? 'Too close to another structure' : 'Something is already there';
@@ -849,14 +849,18 @@ const pooled = () => {   // what you can spend on crafting: your bag plus everyt
   return o;
 };
 const inv = pooled;
-const hasBench = () => !!(S && S.st && S.st.some(t => t[1] === 'bench'));
+const curCamp = me => {   // the campfire ring you stand in: home, or a camp you set up on another island
+  if (!me || !S) return null; if (Math.hypot(me.x, me.y) < RC.camp(S.f[2])) return { x: 0, y: 0, r: RC.camp(S.f[2]), isl: 0 };
+  for (const c of S.cf || []) { const r = RC.camp(c[5]); if (Math.hypot(me.x - c[1], me.y - c[2]) < r) return { x: c[1], y: c[2], r, isl: -1 }; } return null;
+};
+const hasBench = () => { const C = curCamp(ents2['p' + myId]); return !!(C && S && S.st && S.st.some(t => t[1] === 'bench' && Math.hypot(t[2] - C.x, t[3] - C.y) < C.r)); };
 function buildCraft() {
   const iv = inv(), bench = hasBench(), list = $('craftList'); $('craftInv').textContent = '🪵' + iv.wood + '  🪨' + iv.stone + '  (chests incl.)';
   list.innerHTML = '';
   if (!bench) list.insertAdjacentHTML('beforeend', '<div class="lockhint">🔒 Place a Crafting Bench in your camp to unlock more recipes.</div>');
   for (const r of RC.LIST) {
     if (r.id === 'bench' ? bench : !bench) continue;   // bench recipe hides once one exists; other recipes appear once it does
-    if (r.max && (S.st || []).filter(t => t[1] === r.kind).length >= r.max) continue;   // one chest / pot / smelter per camp: the recipe disappears once it is built (and comes back if you dismantle it)
+    if (r.max && (S.st || []).filter(t => t[1] === r.kind && (() => { const C = curCamp(ents2['p' + myId]); return C && Math.hypot(t[2] - C.x, t[3] - C.y) < C.r; })()).length >= r.max) continue;   // one chest / pot / smelter per camp: the recipe disappears once it is built (and comes back if you dismantle it)
     if (r.scrap && !(S && S.sf)) continue;   // scrap recipes (the boat) appear once anyone has found scrap
     if (r.kind === 'gear' && GEAR[r.gear]) continue;   // tools you already made disappear from your menu (per player)
     const ok = iv.wood >= r.cost.wood && iv.stone >= r.cost.stone && iv.scrap >= (r.cost.scrap || 0);
@@ -1057,7 +1061,7 @@ function onSnap(m) {
   if (chestId !== null) { if (!nearStruct(chestId)) closeChest(); else buildChest(); }
   if (potOpen) { if (!anyPotNear()) closePot(); else buildPot(); }
   if (smeltId !== null) { if (!nearStruct(smeltId)) closeSmelt(); else buildSmelt(); }
-  if (craftOpen) { const bid = nearestOf('bench'), me2 = ents2['p' + myId], benchNear = bid != null ? nearStruct(bid) : !!(me2 && Math.hypot(me2.x, me2.y) < RC.camp(m.f[2])); if (!benchNear) setCraft(false); else if (refreshSig() !== craftSig) buildCraft(); }
+  if (craftOpen) { const bid = nearestOf('bench'), me2 = ents2['p' + myId], benchNear = bid != null && nearStruct(bid) ? true : !!curCamp(me2); if (!benchNear) setCraft(false); else if (refreshSig() !== craftSig) buildCraft(); }
   const mp = m.p.find(p => p[0] === myId);
   if (mp) {
     if (lastInv) { const dw = mp[7] - lastInv[0], ds = mp[8] - lastInv[1], df = mp[9] - lastInv[2], e = ents2['p' + myId];
@@ -1204,7 +1208,7 @@ app.ticker.add(() => {
       } else {
         let bd = 55, near = null; for (const r of resNodes) if (r.hp > 0) { const dd = dist(r.x, r.y); if (dd < bd) { bd = dd; near = r; } }
         if (near) lab = WOODY(near.k) ? 'CHOP' : ROCKY(near.k) ? 'MINE' : 'PICK';
-        else if (!(S.st || []).some(t => t[1] === 'bench') && Math.hypot(me.x, me.y) < RC.camp(S.f[2])) lab = 'BUILD';   // no bench yet: ACT in camp opens the build menu
+        else if (curCamp(me) && !hasBench()) lab = 'BUILD';   // no bench yet: ACT in camp opens the build menu
       }
     }
     if (S.dr && !me.d[10] && (me.d[19] || []).length >= 3 && performance.now() - slotFullAt > 2500 && S.dr.some(q => q[1] === 'q' && Math.hypot(q[2] - me.x, q[3] - me.y) < 34)) { slotFullAt = performance.now(); floatText(me.x, me.y - 14, 'Slots full', 0xff8a80); }

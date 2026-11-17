@@ -17,7 +17,7 @@
     { id: 'smelter', n: 'Smelter', e: '⚒️', kind: 'smelter', norot: true, cost: { wood: 10, stone: 25 }, max: 1, d: 'Press ACT next to it and put rocks in: every 5 rocks smelt into 1 metal scrap, which pops out for pickup.' },
     { id: 'boat', n: 'Boat', e: '⛵', kind: 'boat', scrap: true, cost: { wood: 20, stone: 0, scrap: 4 }, d: 'Carries two players across the sea to other islands. It goes into one of your slots - use it, then put it in the water at the shore.' },
     { id: 'trap', n: 'Trap', e: '🪤', kind: 'item', item: 'trap', scrap: true, cost: { wood: 0, stone: 0, scrap: 2 }, d: 'Goes into one of your slots. Tap it there to set it down where you stand. When the big monster runs over it he is stuck for 20 seconds. One use.' },
-    { id: 'campfire', n: 'Campfire', e: '🔥', kind: 'item', item: 'campfire', cost: { wood: 25, stone: 10 }, d: 'Goes into one of your slots. Tap it to light a campfire where you stand on an outer island (not near the shore). It burns, protects and can be upgraded just like the main fire.' },
+    { id: 'campfire', n: 'Campfire', e: '🔥', kind: 'item', item: 'campfire', cost: { wood: 25, stone: 10 }, d: 'Goes into one of your slots. Tap it to light a campfire where you stand on an outer island (not near the shore). Only one campfire per island. It burns, protects and can be upgraded just like the main fire.' },
     { id: 'wall', n: 'Spike Wall', e: '🚧', kind: 'wall', cost: { wood: 6, stone: 0 }, max: 24, d: 'A solid, indestructible barricade that blocks aliens. Placed in front of you, near camp.' },
   ];
   // things you can cook at a cooking pot (cost is in berries)

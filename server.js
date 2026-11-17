@@ -323,12 +323,15 @@ class Room {
   // ===== campfires, loot, traders, abilities =====
   fires() { return [{ f: this.fire, x: 0, y: 0, home: true }, ...this.camps.map(c => ({ f: c, x: c.x, y: c.y }))]; }
   litAt(x, y, margin = 0) { for (const F of this.fires()) if (F.f.fuel > 0 && Math.hypot(x - F.x, y - F.y) < RC.camp(F.f.lvl) + margin) return F; return null; }
+  campOf(p) { for (const F of this.fires()) if (Math.hypot(p.x - F.x, p.y - F.y) < RC.camp(F.f.lvl)) return F; return null; }   // the campfire whose ring you stand in (home or a camp on another island)
+  inCamp(F, st) { return Math.hypot(st.x - F.x, st.y - F.y) < RC.camp(F.f.lvl); }
   fireNear(p, r = 80) { let best = null, bd = r; for (const F of this.fires()) { const d = Math.hypot(p.x - F.x, p.y - F.y); if (d < bd) { bd = d; best = F; } } return best; }
   placeCampfire(p, i) {   // tap the Campfire in a slot: it is lit where you stand (outer islands only, away from the shore)
     const no = msg => send(p.ws, { t: 'toast', msg });
     if (p.boat) return no('Not from a boat.');
     const ii = this.landAt(p.x, p.y); if (ii <= 0) return no('Campfires go on the outer islands - home already has its fire.');
     const is = this.islands[ii]; if (Math.hypot(p.x - is.x, p.y - is.y) > is.r - 250) return no('Too close to the shore.');
+    if (this.camps.some(c => c.isl === ii)) return no('This island already has a campfire - only one per island.');
     if (this.camps.some(c => Math.hypot(c.x - p.x, c.y - p.y) < 260)) return no('Too close to another campfire.');
     p.slots.splice(i, 1); this.camps.push({ id: this.nid++, isl: ii, x: p.x, y: p.y, fuel: 120, lvl: 1 }); send(p.ws, { t: 'camped' });
   }
@@ -445,9 +448,9 @@ class Room {
     const r = RC.BY[id], fail = msg => ({ ok: false, msg });
     if (!r) return fail('Unknown recipe.');
     if (p.down) return fail('You are down.');
-    const hasBench = this.struct.some(st => st.k === 'bench');
-    if (r.kind === 'bench' && hasBench) return fail('Your camp already has a crafting bench.');
-    if (r.kind !== 'bench' && !hasBench) return fail('Build a crafting bench first.');
+    const CF = this.campOf(p), hasBench = !!CF && this.struct.some(st => st.k === 'bench' && this.inCamp(CF, st));
+    if (r.kind === 'bench' && hasBench) return fail('This camp already has a crafting bench.');
+    if (r.kind !== 'bench' && !hasBench) return fail(CF ? 'Build a crafting bench in this camp first.' : 'Stand inside a camp to craft.');
     if (r.kind === 'gear' && p.gear[r.gear]) return fail('You already have that.');
     if (!this.canPay(p, r.cost)) return fail('Not enough materials (your bag plus the chests).');
     if (r.kind === 'boat' || r.kind === 'item') {   // items (boat, trap) go into a free slot, or onto the floor next to you when all 3 are full
@@ -458,13 +461,14 @@ class Room {
       return { ok: true, msg: r.n + ' crafted - your slots are full, so it dropped on the floor.' };
     }
     if (r.kind !== 'gear') {
-      const x = p.x + Math.cos(p.fa) * 58, y = p.y + Math.sin(p.fa) * 58, d = Math.hypot(x, y), campR = RC.camp(this.fire.lvl);
+      if (!CF) return fail('Stand inside a camp to build.');
+      const x = p.x + Math.cos(p.fa) * 58, y = p.y + Math.sin(p.fa) * 58, d = Math.hypot(x - CF.x, y - CF.y), campR = RC.camp(CF.f.lvl), isl = this.islands[CF.f.isl | 0] || this.islands[0];
       const sr = STRUCT[r.kind].r, station = r.kind !== 'wall' && r.kind !== 'trap';
       if (d < RC.fireClear(r.kind)) return fail('Too close to the fire. Nothing can be built on or against it.');
       if (station && d > campR) return fail('Stand inside the camp (the fire ring), a little away from the fire, facing a free spot.');
       if (!station && d > campR + 200) return fail('Walls and traps go in or just outside the camp.');
-      if (d > R - 50) return fail('Too close to the water.');
-      if (this.struct.filter(st => st.k === r.kind).length >= (r.max || 99)) return fail('You have built the maximum number of those.');
+      if (Math.hypot(x - isl.x, y - isl.y) > isl.r - 50) return fail('Too close to the water.');
+      if (this.struct.filter(st => st.k === r.kind && this.inCamp(CF, st)).length >= (r.max || 99)) return fail('You have built the maximum number of those.');
       for (const st of this.struct) {   // nothing may be crafted too close to anything else
         const stWall = st.k === 'wall', dd = Math.hypot(st.x - x, st.y - y);
         const need = station && !stWall ? RC.STATION_GAP : (station || !stWall) ? RC.WALL_GAP : st.r + sr - 4;
@@ -815,7 +819,7 @@ class Room {
                 else if (best.k === 'b') this.spill(best, Math.max(1, Math.round(2 * c.food)));   // little strawberries pop out around the bush
                 else this.spill(best, Math.max(1, Math.round(SPILL[best.k] * (best.k === 'r' ? c.stone : c.wood))));
               }
-            } else if (!this.struct.some(st => st.k === 'bench') && d < RC.camp(this.fire.lvl)) { if (actEdge) { p.actcd = 0.4; send(p.ws, { t: 'open', what: 'bench', id: 0 }); } }   // no bench yet: ACT in camp opens the build menu so you can place the first one
+            } else if (this.campOf(p) && !this.struct.some(st => st.k === 'bench' && this.inCamp(this.campOf(p), st))) { if (actEdge) { p.actcd = 0.4; send(p.ws, { t: 'open', what: 'bench', id: 0 }); } }   // no bench yet: ACT in camp opens the build menu so you can place the first one
             else if (p.gear.rod && !p.boat && this.isWater(p.x + Math.cos(p.fa) * 80, p.y + Math.sin(p.fa) * 80)) {   // fishing rod at the shore: ACT casts
               if (!this.spendSta(p, STA.bush)) { p.actcd = 0.3; this.winded(p); }
               else { p.actcd = 1.1; p.sw = (p.sw + 1) & 255; p.swk = 1; p.swa = p.fa; if (Math.random() < 0.5) { const n = Math.max(1, Math.round(2 * c.food)); p.food += n; send(p.ws, { t: 'fish', n }); } else send(p.ws, { t: 'fish', n: 0 }); }
