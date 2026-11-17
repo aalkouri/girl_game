@@ -1659,8 +1659,8 @@ const jend = e => { if (joy && joy.id === e.pointerId) { joy = null; jb.style.di
 app.view.addEventListener('pointerup', jend); app.view.addEventListener('pointercancel', jend);
 function jpos() { const dx = joy.x - joy.ox, dy = joy.y - joy.oy, m = Math.min(100, Math.hypot(dx, dy)), a = Math.atan2(dy, dx); jk.style.background = m > 63 ? '#ffb74dd0' : ''; jb.style.left = joy.ox + 'px'; jb.style.top = joy.oy + 'px'; jk.style.left = (joy.ox + Math.cos(a) * m) + 'px'; jk.style.top = (joy.oy + Math.sin(a) * m) + 'px'; }
 function bind(id, set) { const b = $(id); b.addEventListener('pointerdown', e => { e.preventDefault(); set(1); b.setPointerCapture(e.pointerId); b.style.transform = 'scale(.92)'; }); ['pointerup', 'pointercancel'].forEach(t => b.addEventListener(t, () => { set(0); b.style.transform = ''; })); }
-bind('act', v => { act = v; if (v) actPress(); }); bind('hit', v => hit = v);
-addEventListener('keydown', e => { const k = e.key.toLowerCase(); if (placingId && k === 'r') rotatePlace(); else if (k === 'r' && !keys[k] && window.useAbility && $('btns').style.display !== 'none' && !/INPUT|TEXTAREA/.test((e.target || {}).tagName || '')) useAbility(); if (!keys[k] && (k === ' ' || k === 'e') && !/INPUT|TEXTAREA/.test((e.target || {}).tagName || '')) {
+bind('act', v => { act = v; if (v) actPress(); }); bind('hit', v => { hit = v; if (v && placingId) actPress(); });   // while a silhouette is out, ATTACK places it (and attacking is off)
+addEventListener('keydown', e => { const k = e.key.toLowerCase(); if (placingId && !keys[k] && (k === 'q' || k === 'f' || k === 'j') && !/INPUT|TEXTAREA/.test((e.target || {}).tagName || '')) actPress(); if (placingId && k === 'r') rotatePlace(); else if (k === 'r' && !keys[k] && window.useAbility && $('btns').style.display !== 'none' && !/INPUT|TEXTAREA/.test((e.target || {}).tagName || '')) useAbility(); if (!keys[k] && (k === ' ' || k === 'e') && !/INPUT|TEXTAREA/.test((e.target || {}).tagName || '')) {
     if (craftOpen || chestId !== null || potOpen || smeltId !== null || (typeof trOpen !== 'undefined' && trOpen)) { setCraft(false); closeChest(); closePot(); closeSmelt(); window.closeTrader && closeTrader(); menuClosedAt = performance.now(); }   // E / Space closes whatever menu is open
     else actPress();
   }
@@ -1690,7 +1690,7 @@ function aimPadDraw() {
   document.body.appendChild(crossEl);
   const mv = e => { if (e.pointerType !== 'mouse') return; mouse.on = true; mouse.x = e.clientX; mouse.y = e.clientY; crossEl.style.display = document.body.classList.contains('ingame') ? 'block' : 'none'; crossEl.style.left = e.clientX + 'px'; crossEl.style.top = e.clientY + 'px'; };
   addEventListener('pointermove', mv, true); document.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') crossEl.style.display = 'none'; }, true); document.documentElement.addEventListener('mouseleave', () => { crossEl.style.display = 'none'; });
-  app.view.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse' && e.button === 0) { mouse.down = true; mv(e); } });
+  app.view.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse' && e.button === 0) { mouse.down = true; mv(e); if (placingId) actPress(); } });
   addEventListener('pointerup', e => { if (e.pointerType === 'mouse' && e.button === 0) mouse.down = false; });
   if (matchMedia('(pointer: coarse)').matches) {   // touch screens: the aim stick
     aimPad = document.createElement('div'); aimPad.id = 'aimPad';
@@ -1700,7 +1700,7 @@ function aimPadDraw() {
     const ctr = () => { const r = aimPad.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };
     aimPad.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); const [cx, cy] = ctr(); aimStick = { id: e.pointerId, ox: cx, oy: cy, x: e.clientX, y: e.clientY }; aimPad.setPointerCapture(e.pointerId); aimPadDraw(); });
     aimPad.addEventListener('pointermove', e => { if (aimStick && aimStick.id === e.pointerId) { aimStick.x = e.clientX; aimStick.y = e.clientY; aimPadDraw(); } });
-    const end = e => { if (!aimStick || aimStick.id !== e.pointerId) return; const dx = aimStick.x - aimStick.ox, dy = aimStick.y - aimStick.oy; if (Math.hypot(dx, dy) > 16 && e.type !== 'pointercancel') aimHold = { until: performance.now() + 400, ang: Math.atan2(dy, dx) }; if (e.type !== 'pointercancel') hitPulse = performance.now() + 170; aimStick = null; aimPadDraw(); };
+    const end = e => { if (!aimStick || aimStick.id !== e.pointerId) return; const dx = aimStick.x - aimStick.ox, dy = aimStick.y - aimStick.oy; if (Math.hypot(dx, dy) > 16 && e.type !== 'pointercancel') aimHold = { until: performance.now() + 400, ang: Math.atan2(dy, dx) }; if (e.type !== 'pointercancel') { hitPulse = performance.now() + 170; if (placingId) actPress(); } aimStick = null; aimPadDraw(); };
     aimPad.addEventListener('pointerup', end); aimPad.addEventListener('pointercancel', end);
     setInterval(() => { aimPad.style.display = $('btns').style.display === 'none' || !myId ? 'none' : 'block'; }, 500);
   }
@@ -1717,6 +1717,6 @@ function readInput() {
   if (keys.a || keys.arrowleft) dx -= 1; if (keys.d || keys.arrowright) dx += 1; if (keys.w || keys.arrowup) dy -= 1; if (keys.s || keys.arrowdown) dy += 1;
   if (keys.shift && (dx || dy)) rn = 1;
   const aim = currentAim(), nowT = performance.now();
-  return { dx, dy, am: aim === null ? 0 : 1, aim: aim === null ? 0 : Math.round(aim * 100) / 100, rn: Math.round(rn * 100) / 100, act: !placingId && !actBlock && (act || keys[' '] || keys.e) ? 1 : 0, hit: hit || keys.q || keys.f || keys.j || mouse.down || nowT < hitPulse ? 1 : 0 };
+  return { dx, dy, am: aim === null ? 0 : 1, aim: aim === null ? 0 : Math.round(aim * 100) / 100, rn: Math.round(rn * 100) / 100, act: !placingId && !actBlock && (act || keys[' '] || keys.e) ? 1 : 0, hit: !placingId && (hit || keys.q || keys.f || keys.j || mouse.down || nowT < hitPulse) ? 1 : 0 };   // no attacking while placing something
 }
 setInterval(() => { if (ws && ws.readyState === 1 && myId) ws.send(JSON.stringify(Object.assign({ t: 'in' }, readInput()))); }, 50);
