@@ -135,23 +135,25 @@ const HP = { t: 4, r: 3, b: 1, c: 4 };            // hits to break: tree 4, rock
 const STRUCT = { bench: { r: RC.RADIUS.bench }, chest: { r: RC.RADIUS.chest }, pot: { r: RC.RADIUS.pot }, smelter: { r: RC.RADIUS.smelter }, wall: { r: RC.RADIUS.wall, hp: 60 }, trap: { r: RC.RADIUS.trap } };
 const CHEST_CAP = 500, REACH = 62;   // collision radius / hit points of placed structures
 const SPILL = { t: 5, r: 3, c: 8 };   // a cactus gives more wood than a tree
-// ---------- the archipelago: island 0 is home; the others are random sizes. The nearest quarter of the distance range is forest, the rest desert ----------
-const WORLD_R = 8600, ISL_NEAR = 2800, ISL_FAR = 7800, FOREST_CUT = ISL_NEAR + 0.25 * (ISL_FAR - ISL_NEAR), BOAT_SPEED = 190, BOAT_AHEAD = 100;
+// ---------- the archipelago: island 0 is home (all forest); the others are random sizes, each 25% forest on the side facing home and 75% its own biome (b) ----------
+const WORLD_R = 8600, BOAT_SPEED = 190, BOAT_AHEAD = 100, ISL_VER = 2;   // ISL_VER: bump when island generation changes so saved rooms regenerate their outer islands
 function seeded(code) { let h = 2166136261; for (const ch of String(code)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); let a = h >>> 0; return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 function genIslands(code) {
   const rnd = seeded(code), out = [{ x: 0, y: 0, r: R, b: 'f' }]; let tries = 0;
   while (out.length < 11 && tries++ < 6000) {
     const near = out.length <= 2, r = 260 + rnd() * 460, dist = near ? 2900 + rnd() * 700 : 3900 + rnd() * 3900, a = rnd() * 6.283, x = Math.cos(a) * dist, y = Math.sin(a) * dist;
     if (dist < R + r + 400 || out.some(i => Math.hypot(x - i.x, y - i.y) < r + i.r + 320)) continue;   // keep water between islands
-    out.push({ x: Math.round(x), y: Math.round(y), r: Math.round(r), b: dist < FOREST_CUT ? 'f' : 'd' });
+    out.push({ x: Math.round(x), y: Math.round(y), r: Math.round(r), b: 'd' });   // only desert for now; later biomes plug in here
   }
   return out;
 }
 function islandRes(is, idx, code) {
   const rnd = seeded(code + '#' + idx), A = Math.PI * is.r * is.r, out = [];
-  const add = (k, n) => { for (let i = 0; i < n; i++) { const a = rnd() * 6.283, d = 30 + Math.sqrt(rnd()) * (is.r - 110); out.push({ k, x: is.x + Math.cos(a) * d, y: is.y + Math.sin(a) * d, hp: HP[k], mhp: HP[k], rt: 0, isl: idx }); } };
-  if (is.b === 'f') { add('t', Math.max(3, Math.round(A * 1.3e-5))); add('b', Math.max(1, Math.round(A * 3.2e-6))); } else add('c', Math.max(3, Math.round(A * 1.1e-5)));   // forest: trees + bushes; desert: cacti
-  add('r', Math.max(2, Math.round(A * 8e-6)));
+  // part: true = only in the forest quarter, false = only in the biome's three quarters, null = anywhere
+  const add = (k, n, part) => { for (let i = 0, tries = 0; i < n && tries < n * 40; tries++) { const a = rnd() * 6.283, d = 30 + Math.sqrt(rnd()) * (is.r - 110), x = is.x + Math.cos(a) * d, y = is.y + Math.sin(a) * d; if (part !== null && RC.inForestPart(is.x, is.y, is.r, x, y) !== part) continue; out.push({ k, x, y, hp: HP[k], mhp: HP[k], rt: 0, isl: idx }); i++; } };
+  add('t', Math.max(2, Math.round(A * 0.25 * 1.3e-5)), true); add('b', Math.max(1, Math.round(A * 0.25 * 3.2e-6)), true);   // forest quarter: trees + berry bushes
+  if (is.b === 'd') add('c', Math.max(3, Math.round(A * 0.75 * 1.1e-5)), false);   // desert: cacti
+  add('r', Math.max(2, Math.round(A * 8e-6)), null);
   return out;
 }
 // end-of-run payout: 1 diamond per day survived up to day 20, 2 per day for days 21-60, 3 per day after that
@@ -183,7 +185,7 @@ class Room {
   reset() {
     this.c = +process.env.START_C || 0; this.night = +process.env.START_N || 1; this.fire = { fuel: 150, lvl: 1 }; this.aliens = []; this.over = 0;
     for (const r of this.res) r.hp = r.mhp;
-    this.drops = []; this.pend = []; this.struct = []; this.chargerNight = 0; this.boats = []; this.arrows = []; this.raidNight = 0; this.scrapFound = !!process.env.START_SCRAPFOUND;
+    this.drops = []; this.pend = []; this.struct = []; this.chargerNight = 0; this.islNight = {}; this.boats = []; this.arrows = []; this.raidNight = 0; this.scrapFound = !!process.env.START_SCRAPFOUND;
     if (process.env.START_BENCH) this.struct.push({ id: this.nid++, k: 'bench', x: 110, y: 0, r: RC.RADIUS.bench, hp: 0, mhp: 0, rot: 0 });   // (test hook)
     for (const p of this.players.values()) { this.respawn(p); p.gear = {}; p.buff = { speed: 0, regen: 0, dmg: 0 }; p.kb = null; p.slots = []; }
   }
@@ -198,6 +200,34 @@ class Room {
     return true;
   }
   winded(p) { const now = Date.now(); if (now - (p.windedAt || 0) > 1500) { p.windedAt = now; send(p.ws, { t: 'toast', msg: 'Out of breath!' }); } }
+  onIsland(p, i) { return i === 0 ? Math.hypot(p.x, p.y) < R + 40 : this.landAt(p.x, p.y, 0) === i; }
+  // night enemies for one island. Home always gets them (they gather around the fire); any other island only while someone
+  // is standing on it: the same mix (aliens, brutes, the Charger, villager raids), coming ashore, scaled to the island's size
+  nightSpawns(i, P, dt) {
+    const is = this.islands[i], home = i === 0, here = P.filter(p => !p.boat && this.onIsland(p, i));
+    if (!home && !here.some(p => !p.down)) return;
+    const st = home ? this : (this.islNight[i] = this.islNight[i] || { chargerNight: 0, raidNight: 0 });
+    const size = home ? 1 : Math.max(0.15, is.r / R);
+    const at = (ang, out = 0) => home ? [Math.cos(ang) * (ALIEN_R + out), Math.sin(ang) * (ALIEN_R + out)] : [is.x + Math.cos(ang) * (is.r - 40), is.y + Math.sin(ang) * (is.r - 40)];
+    let want = Math.min(40, 2 + this.night * 2); if (this.night % 5 === 0) want = Math.floor(want * 1.5);
+    if (!home) want = Math.max(2, Math.round(want * size));
+    if (this.night >= CHARGER.firstNight && st.chargerNight !== this.night) {
+      st.chargerNight = this.night; const [x, y] = at(Math.random() * 6.283), hp = 1;   // it cannot be hurt; hp only exists so dawn can remove it
+      this.aliens.push({ id: this.nid++, isl: i, x, y, hp, mhp: hp, sp: Math.min(CHARGER.spMax, CHARGER.sp0 + CHARGER.spPerNight * (this.night - CHARGER.firstNight)), dmg: CHARGER.dmg, k: 2, cd: 0, rad: CHARGER.rad, reach: CHARGER.reach, stop: CHARGER.stop });
+    }
+    if (this.night % 5 === 0 && st.raidNight !== this.night) {   // every 5th night villagers raid: 3 the first time, one more each time, stronger every night
+      st.raidNight = this.night; const n = 3 + (this.night / 5 - 1), s = 1 + 0.08 * (this.night - 1), a0 = Math.random() * 6.283, arch = Math.floor(n / 2);
+      for (let k = 0; k < n; k++) {
+        const [x, y] = at(a0 + (k - (n - 1) / 2) * (home ? 0.22 : 0.5), 40), archer = k < arch, hp = Math.round((archer ? 45 : 60) * s);
+        this.aliens.push({ id: this.nid++, isl: i, x, y, hp, mhp: hp, sp: archer ? 80 : 95, dmg: (archer ? 10 : 12) * s, k: archer ? 4 : 3, cd: 0, reach: archer ? 0 : 30, stop: archer ? 250 : 22, range: 290, aim: 0, shotCd: 0 });
+      }
+      for (const q of home ? P : here) send(q.ws, { t: 'raid', n });
+    }
+    if (this.aliens.filter(a => (a.isl | 0) === i && a.k < 2).length < want && Math.random() < dt * 2) {
+      const [x, y] = at(Math.random() * 6.283), brute = this.night % 5 === 0 && Math.random() < 0.2;
+      this.aliens.push({ id: this.nid++, isl: i, x, y, hp: brute ? 120 : 30, mhp: brute ? 120 : 30, sp: brute ? 55 : 70 + Math.min(30, this.night * 2), dmg: brute ? 20 : 10, k: brute ? 1 : 0, cd: 0 });
+    }
+  }
   landAt(x, y, m = 30) { for (let i = 0; i < this.islands.length; i++) { const s = this.islands[i]; if (Math.hypot(x - s.x, y - s.y) < s.r - m) return i; } return -1; }
   isWater(x, y) { if (Math.hypot(x, y) > WORLD_R) return false; for (const s of this.islands) if (Math.hypot(x - s.x, y - s.y) < s.r + 40) return false; return true; }
   landPoint(x, y, m = 30) { let best = null, bd = 1e9; for (const s of this.islands) { const d = Math.hypot(x - s.x, y - s.y) - s.r; if (d < bd) { bd = d; best = s; } } const dx = x - best.x, dy = y - best.y, L = Math.hypot(dx, dy) || 1, k = Math.min(L, best.r - m) / L; return [best.x + dx * k, best.y + dy * k]; }
@@ -344,13 +374,14 @@ class Room {
   }
   snapshot() {   // everything needed to rebuild this room after a server restart; connected players are saved as 'away' so they get their character back when they reconnect
     const away = [...this.away]; for (const p of this.players.values()) if (p.email) away.push([p.email, this.awayEntry(p)]);
-    return { code: this.code, c: this.c, night: this.night, fire: this.fire, aliens: this.aliens, res: this.res, islands: this.islands, boats: this.boats.map(b => ({ id: b.id, x: b.x, y: b.y, ang: b.ang })), scrapFound: this.scrapFound, drops: this.drops, pend: this.pend, struct: this.struct, chargerNight: this.chargerNight, raidNight: this.raidNight, nid: this.nid, away };
+    return { code: this.code, c: this.c, night: this.night, fire: this.fire, aliens: this.aliens, res: this.res, islands: this.islands, isv: ISL_VER, boats: this.boats.map(b => ({ id: b.id, x: b.x, y: b.y, ang: b.ang })), scrapFound: this.scrapFound, drops: this.drops, pend: this.pend, struct: this.struct, chargerNight: this.chargerNight, raidNight: this.raidNight, nid: this.nid, away };
   }
   static restore(o) {
     const r = new Room(o.code), genIsl = r.islands, genExtra = r.res.filter(x => x.isl > 0);
     Object.assign(r, { c: o.c, night: o.night, fire: o.fire, aliens: o.aliens || [], res: o.res, drops: (o.drops || []).filter(d => d.k !== 'q' || RC.ITEM_BY[d.food]), pend: o.pend || [], struct: o.struct || [], chargerNight: o.chargerNight || 0, raidNight: o.raidNight || 0, nid: o.nid || 1, over: 0, emptyFor: 0 });
     if (o.islands) { r.islands = o.islands; r.boats = (o.boats || []).map(b => ({ id: b.id, x: b.x, y: b.y, ang: b.ang, riders: [], drv: 0 })); r.scrapFound = !!o.scrapFound; }
     else { r.islands = genIsl; r.res = o.res.concat(genExtra); }   // rooms saved before the islands existed get the archipelago added
+    if (o.islands && o.isv !== ISL_VER) { r.islands = genIsl; r.res = o.res.filter(x => !(x.isl > 0)).concat(genExtra); }   // older island layouts: same islands (seeded by room code), new biomes and resources
     { let nb = 0; r.res = r.res.filter(x => x.k !== 'b' || x.isl > 0 || ++nb <= BUSHES); }   // rooms saved before the bush cut lose their extra bushes (done before anyone joins, so client indexes stay aligned)
     const now = Date.now(); r.away = new Map((o.away || []).map(([e, v]) => [e, { t: now, s: v.s }]));   // the reconnect window starts from the restart
     return r;
@@ -481,42 +512,24 @@ class Room {
       if (taken || d.ttl <= 0) this.drops.splice(i, 1);
     }
     // aliens
-    if (ph === 2) {
-      let want = Math.min(40, 2 + this.night * 2); if (this.night % 5 === 0) want = Math.floor(want * 1.5);
-      if (this.night >= CHARGER.firstNight && this.chargerNight !== this.night) {
-        this.chargerNight = this.night; const a = Math.random() * 6.283, hp = 1;   // it cannot be hurt; hp only exists so dawn can remove it
-        this.aliens.push({ id: this.nid++, x: Math.cos(a) * ALIEN_R, y: Math.sin(a) * ALIEN_R, hp, mhp: hp, sp: Math.min(CHARGER.spMax, CHARGER.sp0 + CHARGER.spPerNight * (this.night - CHARGER.firstNight)), dmg: CHARGER.dmg, k: 2, cd: 0, rad: CHARGER.rad, reach: CHARGER.reach, stop: CHARGER.stop });
-      }
-      if (this.night % 5 === 0 && this.raidNight !== this.night) {   // every 5th night villagers raid the camp: 3 the first time, one more each time, stronger every night
-        this.raidNight = this.night; const n = 3 + (this.night / 5 - 1), s = 1 + 0.08 * (this.night - 1), a0 = Math.random() * 6.283, arch = Math.floor(n / 2);
-        for (let i = 0; i < n; i++) {
-          const ang = a0 + (i - (n - 1) / 2) * 0.22, archer = i < arch, hp = Math.round((archer ? 45 : 60) * s);
-          this.aliens.push({ id: this.nid++, x: Math.cos(ang) * (ALIEN_R + 40), y: Math.sin(ang) * (ALIEN_R + 40), hp, mhp: hp, sp: archer ? 80 : 95, dmg: (archer ? 10 : 12) * s, k: archer ? 4 : 3, cd: 0, reach: archer ? 0 : 30, stop: archer ? 250 : 22, range: 290, aim: 0, shotCd: 0 });
-        }
-        for (const q of P) send(q.ws, { t: 'raid', n });
-      }
-      if (this.aliens.filter(a => a.k < 2).length < want && Math.random() < dt * 2) {
-        const a = Math.random() * 6.283, brute = this.night % 5 === 0 && Math.random() < 0.2;
-        this.aliens.push({ id: this.nid++, x: Math.cos(a) * ALIEN_R, y: Math.sin(a) * ALIEN_R, hp: brute ? 120 : 30, mhp: brute ? 120 : 30, sp: brute ? 55 : 70 + Math.min(30, this.night * 2), dmg: brute ? 20 : 10, k: brute ? 1 : 0, cd: 0 });
-      }
-    }
+    if (ph === 2) for (let i = 0; i < this.islands.length; i++) this.nightSpawns(i, P, dt);
     for (const a of this.aliens) {
       if (ph !== 2) { if (a.k === 2) a.hp = 0; else a.hp -= 25 * dt; }       // sunlight burns them; the Charger vanishes the moment night ends
       a.cd -= dt;
       if (a.k === 2 && !(a.trapT > 0)) { const tr = this.struct.find(st => st.k === 'trap' && Math.hypot(a.x - st.x, a.y - st.y) < 34); if (tr) { a.trapT = TRAP_SEC; this.struct = this.struct.filter(s => s !== tr); for (const q of P) send(q.ws, { t: 'trapped' }); } }   // the big monster ran over a trap: stuck for 20 s
       if (a.trapT > 0) { a.trapT -= dt; a.cd = Math.max(a.cd, 0.3); continue; }   // stuck: no moving, no attacking
-      let tgt = null, bd = 1e9, slow = 0;
-      for (const p of P) if (!p.down && !p.boat && Math.hypot(p.x, p.y) < R + 40) {   // aliens only hunt players on the home island
+      let tgt = null, bd = 1e9, slow = 0; const ai = a.isl | 0, home = ai === 0, own = this.islands[ai] || this.islands[0];
+      for (const p of P) if (!p.down && !p.boat && this.onIsland(p, ai)) {   // aliens only hunt players on their own island
         const dd = dist(a, p); if (dd < bd) { bd = dd; tgt = p; }
         const sl = GC.BY[p.cls].slow; if (sl > slow && dd < 110) slow = sl;
       }
       const sp = a.sp * (1 - slow);
-      const tx = tgt ? tgt.x : 0, ty = tgt ? tgt.y : 0, d = Math.max(1, Math.hypot(tx - a.x, ty - a.y));
+      const tx = tgt ? tgt.x : own.x, ty = tgt ? tgt.y : own.y, d = Math.max(1, Math.hypot(tx - a.x, ty - a.y));   // with nobody to chase they drift to the fire (home) or the island's middle
       if (tgt) a.fa = Math.atan2(ty - a.y, tx - a.x);   // always face the nearest living player, even when standing still against the fire ring
       let mx = (tx - a.x) / d, my = (ty - a.y) / d;
       { // the firelight ring is a wall for aliens: when the straight line to the player would run into it, slide around it (the short way) instead of getting stuck on the near side
         const ad0 = Math.max(1, Math.hypot(a.x, a.y));
-        if (fr > 0 && a.k < 3 && ad0 < fr + 70) {
+        if (home && fr > 0 && a.k < 3 && ad0 < fr + 70) {
           const ux = a.x / ad0, uy = a.y / ad0;
           if (mx * ux + my * uy < 0.15) {
             const cr = ux * my - uy * mx; if (Math.abs(cr) > 0.25) a.side = cr >= 0 ? 1 : -1; else if (!a.side) a.side = Math.random() < 0.5 ? 1 : -1;
@@ -539,7 +552,8 @@ class Room {
         const sd = Math.hypot(a.x - st.x, a.y - st.y), mn = st.r + (a.rad || 12);
         if (sd < mn) { const k = sd > 0.01 ? mn / sd : 1; a.x = st.x + (a.x - st.x) * k; a.y = st.y + (a.y - st.y) * k; }   // solid: aliens slide around it, but cannot damage it, and it does not damage them
       }
-      if (fr > 0 && a.k < 3 && ad < fr) { const k = fr / Math.max(1, ad); a.x = ad < 1 ? fr : a.x * k; a.y *= ad < 1 ? 1 : k; }   // repelled by firelight
+      if (home && fr > 0 && a.k < 3 && ad < fr) { const k = fr / Math.max(1, ad); a.x = ad < 1 ? fr : a.x * k; a.y *= ad < 1 ? 1 : k; }   // repelled by firelight
+      if (!home) { const ox = a.x - own.x, oy = a.y - own.y, od = Math.hypot(ox, oy), lim = own.r - 30; if (od > lim) { a.x = own.x + ox * lim / od; a.y = own.y + oy * lim / od; } }   // outer-island enemies stay ashore
       if (tgt && d < (a.reach === undefined ? 28 : a.reach) && a.cd <= 0 && (a.k >= 3 || fr === 0 || Math.hypot(tgt.x, tgt.y) >= fr)) {
         tgt.hp -= a.dmg; a.cd = 1;
         if (a.k === 2) {   // the Charger sends you flying (about 10 steps) and then needs a moment before it can hit again

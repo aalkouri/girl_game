@@ -35,5 +35,16 @@
   const FIRE_R = 46;   // footprint of the fire pit (flames + stone ring)
   const fireClear = kind => FIRE_R + (({ bench: 30, chest: 26, pot: 24, smelter: 30, wall: 24, trap: 18 })[kind] || 24) + 10;   // closest an item's centre may be to the fire: its whole body stays off the pit
   const RADIUS = { bench: 30, chest: 26, pot: 24, smelter: 30, wall: 24, trap: 18 };   // collision radius of each placeable (shared by server and the placement ghost)
-  return { FIRE_MAX, fuelMax, LIST, BY, FOOD, FOOD_BY, ITEM_BY, camp, SMELT, RADIUS, FIRE_R, fireClear, STATION_GAP: 120, WALL_GAP: 80 };
+  // Every island except home is split by biome: the quarter facing the home island (at 0,0) is forest, the other three
+  // quarters are that island's own biome (island.b, e.g. 'd' desert). A chord at 0.404 r from the centre cuts off 25% of
+  // a circle's area; the edge wobbles a little so it doesn't look ruled. Shared so the server's trees and the client's grass line up.
+  const FOREST_CUT = 0.404;
+  const homeDir = (ix, iy) => { const L = Math.hypot(ix, iy) || 1; return [-ix / L, -iy / L]; };   // unit vector from the island towards home
+  // where the forest edge sits along the home direction (in island radii), at sideways position w (also in radii)
+  const forestEdge = (ix, iy, w) => FOREST_CUT + 0.05 * Math.sin(w * 7 + ix * 0.001) + 0.025 * Math.sin(w * 17 + iy * 0.001);
+  function inForestPart(ix, iy, r, x, y) {
+    const [ux, uy] = homeDir(ix, iy), dx = x - ix, dy = y - iy, t = (dx * ux + dy * uy) / r, w = (dx * -uy + dy * ux) / r;
+    return t > forestEdge(ix, iy, w);
+  }
+  return { FIRE_MAX, fuelMax, LIST, BY, FOOD, FOOD_BY, ITEM_BY, camp, SMELT, RADIUS, FIRE_R, fireClear, STATION_GAP: 120, WALL_GAP: 80, FOREST_CUT, homeDir, forestEdge, inForestPart };
 });

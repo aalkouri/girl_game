@@ -289,10 +289,14 @@ stage.addChild(lightSpr);
 const fogC = new PIXI.Container(); stage.addChild(fogC);
 const fogs = []; for (let i = 0; i < 6; i++) { const s = new PIXI.Sprite(T_GLOW); s.anchor.set(.5); s.tint = 0x9db4dc; s.alpha = 0; s.ph = rnd(0, TAU); s.sp = rnd(.05, .12); s.sc = rnd(.9, 1.5); fogC.addChild(s); fogs.push(s); }
 stage.addChild(overL);
-const flies = []; for (let i = 0; i < 22; i++) { const s = new PIXI.Sprite(T_GLOW); s.anchor.set(.5); s.tint = 0xd8ff6a; s.blendMode = BM.ADD; s.scale.set(.14); s.fx = rnd(-380, 380); s.fy = rnd(-380, 380); s.ph = rnd(0, TAU); overL.addChild(s); flies.push(s); }
+// fireflies: fx/fy are fractions of the visible half-width/height, so they always span the screen at any zoom;
+// the pool covers the widest view and only as many are shown as keep the density of ~22 per 760x760 world units
+const FLY_MAX = 140, FLY_DENS = 22 / (760 * 760);
+const flies = []; for (let i = 0; i < FLY_MAX; i++) { const s = new PIXI.Sprite(T_GLOW); s.anchor.set(.5); s.tint = 0xd8ff6a; s.blendMode = BM.ADD; s.scale.set(.14); s.fx = rnd(-1.08, 1.08); s.fy = rnd(-1.08, 1.08); s.ph = rnd(0, TAU); overL.addChild(s); flies.push(s); }
 
-let UZ = 0.85; try { const s = parseFloat(localStorage.getItem('in_zoom')); if (s >= .4 && s <= 1.8) UZ = s; } catch (e) {}
-function setZoom(v) { UZ = Math.max(.4, Math.min(1.8, v)); try { localStorage.setItem('in_zoom', UZ); } catch (e) {} resize(); }
+const UZ_MIN = .4 / .75, UZ_MAX = 1.8;   // furthest zoom-out shows 25% less than it used to (was .4)
+let UZ = 0.85; try { const s = parseFloat(localStorage.getItem('in_zoom')); if (s > 0) UZ = Math.max(UZ_MIN, Math.min(UZ_MAX, s)); } catch (e) {}
+function setZoom(v) { UZ = Math.max(UZ_MIN, Math.min(UZ_MAX, v)); try { localStorage.setItem('in_zoom', UZ); } catch (e) {} resize(); }
 function resize() {
   W = innerWidth; H = innerHeight; Z = Math.min(W, H) / 620 * UZ;
   water.width = W; water.height = H; waterF.uniforms.uRes = [W, H]; waterF.uniforms.uZoom = Z;
@@ -307,28 +311,39 @@ $('zoomIn').addEventListener('click', () => setZoom(UZ * 1.15)); $('zoomOut').ad
 let resNodes = [], built = false, fireStones = null;
 function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 const polyOf = fn => { const p = []; for (let i = 0; i < 200; i++) { const a = i / 200 * TAU, r = fn(a); p.push(Math.cos(a) * r, Math.sin(a) * r); } return p; };
-function buildIsland(is, idx) {   // is = [x, y, radius, 'f' | 'd']
+function buildIsland(is, idx) {   // is = [x, y, radius, biome]: the quarter facing home is forest, the rest is the biome ('d' desert)
   const [ix, iy, R, biome] = is, s = idx * 1.7, ef = a => edgeJ(a, R, s), c = new PIXI.Container(); c.position.set(ix, iy); ground.addChild(c);
+  const inF = (x, y) => RC.inForestPart(ix, iy, R, ix + x, iy + y);   // local coords
   const shore = new PIXI.Graphics(); shore.beginFill(0x9d8c58, .5); shore.drawPolygon(polyOf(a => ef(a) + 10)); shore.endFill(); c.addChild(shore);
   const sand = new PIXI.TilingSprite(T_SAND, R * 2 + 120, R * 2 + 120); sand.position.set(-R - 60, -R - 60); if (biome === 'd') sand.tint = 0xf2c076;
   const sm = new PIXI.Graphics(); sm.beginFill(0xffffff); sm.drawPolygon(polyOf(ef)); sm.endFill(); sand.mask = sm; c.addChild(sm, sand);
   const rng = mulberry(idx * 977 + 13);
-  if (biome === 'f') {
-    const grassR = a => ef(a) - 55 + 10 * Math.sin(5 * a + .7 + s) + 6 * Math.sin(11 * a);
-    const gr = new PIXI.TilingSprite(T_GRASS, R * 2, R * 2); gr.position.set(-R, -R);
-    const gm = new PIXI.Graphics(); gm.beginFill(0xffffff); gm.drawPolygon(polyOf(grassR)); gm.endFill(); gr.mask = gm;
-    const rim = new PIXI.Graphics(); rim.lineStyle(10, 0x25552a, .35); rim.drawPolygon(polyOf(a => grassR(a) - 4)); c.addChild(gm, gr, rim);
-  } else {   // desert: a few darker dunes
+  if (biome === 'd') {   // desert: a few darker dunes, kept off the forest
     const dn = new PIXI.Graphics(); dn.beginFill(0xc99a4e, .25);
-    for (let i = 0; i < Math.round(R / 40); i++) { const a = rng() * TAU, d = Math.sqrt(rng()) * (R - 120); dn.drawEllipse(Math.cos(a) * d, Math.sin(a) * d, 40 + rng() * 70, 14 + rng() * 22); }
+    for (let i = 0; i < Math.round(R / 40); i++) { const a = rng() * TAU, d = Math.sqrt(rng()) * (R - 120), x = Math.cos(a) * d, y = Math.sin(a) * d; if (!inF(x, y)) dn.drawEllipse(x, y, 40 + rng() * 70, 14 + rng() * 22); }
     dn.endFill(); dn.mask = sm; c.addChild(dn);
+  }
+  { // forest quarter: grass along the coast facing home, closed off by the (wavy) forest edge across the island
+    const grassR = a => ef(a) - 55 + 10 * Math.sin(5 * a + .7 + s) + 6 * Math.sin(11 * a);
+    const [ux, uy] = RC.homeDir(ix, iy), vx = -uy, vy = ux, h = Math.atan2(uy, ux), pts = [];
+    let wA = null, wB = null;
+    for (let i = 0; i <= 400; i++) {   // sweep the coast from one side of the home direction to the other, keeping the forest stretch
+      const a = h - Math.PI + i / 400 * TAU, r = grassR(a), x = Math.cos(a) * r, y = Math.sin(a) * r;
+      if (!inF(x, y)) continue; const w = (x * vx + y * vy) / R; if (wA === null) wA = w; wB = w; pts.push(x, y);
+    }
+    if (pts.length > 4) {
+      for (let i = 0; i <= 60; i++) { const w = wB + (wA - wB) * i / 60, t = RC.forestEdge(ix, iy, w); pts.push((ux * t + vx * w) * R, (uy * t + vy * w) * R); }
+      const gr = new PIXI.TilingSprite(T_GRASS, R * 2, R * 2); gr.position.set(-R, -R);
+      const gm = new PIXI.Graphics(); gm.beginFill(0xffffff); gm.drawPolygon(pts); gm.endFill(); gr.mask = gm;
+      const rim = new PIXI.Graphics(); rim.lineStyle(10, 0x25552a, .35); rim.drawPolygon(pts); rim.mask = sm; c.addChild(gm, gr, rim);
+    }
   }
   const N = Math.round(Math.PI * R * R * 8e-5 / 1.5);
   for (let i = 0; i < N; i++) {
-    const a = rng() * TAU, d = Math.sqrt(rng()) * (R - 90), k = rng();
-    const tx = biome === 'f' ? (k < .6 ? T_TUFT : k < .85 ? T_FLOWER : T_PEBBLE) : (k < .55 ? T_PEBBLE : T_TUFT);
-    const sp = new PIXI.Sprite(tx); sp.anchor.set(.5, .9); sp.position.set(Math.cos(a) * d, Math.sin(a) * d); sp.scale.set(.8 + rng() * .6); sp.rotation = (rng() - .5) * .4;
-    if (biome === 'd' && tx === T_TUFT) sp.tint = 0xb59a58; else if (tx === T_FLOWER) sp.tint = [0xffffff, 0xff8aa0, 0xffe066, 0xa0c4ff][i % 4];
+    const a = rng() * TAU, d = Math.sqrt(rng()) * (R - 90), k = rng(), x = Math.cos(a) * d, y = Math.sin(a) * d, f = inF(x, y);
+    const tx = f ? (k < .6 ? T_TUFT : k < .85 ? T_FLOWER : T_PEBBLE) : (k < .55 ? T_PEBBLE : T_TUFT);
+    const sp = new PIXI.Sprite(tx); sp.anchor.set(.5, .9); sp.position.set(x, y); sp.scale.set(.8 + rng() * .6); sp.rotation = (rng() - .5) * .4;
+    if (!f && biome === 'd' && tx === T_TUFT) sp.tint = 0xb59a58; else if (tx === T_FLOWER) sp.tint = [0xffffff, 0xff8aa0, 0xffe066, 0xa0c4ff][i % 4];
     c.addChild(sp);
   }
 }
@@ -1026,7 +1041,8 @@ app.ticker.add(() => {
   // fog + fireflies react to darkness
   const nk = d / .74;
   fogs.forEach(s => { s.visible = nk > .05; s.alpha = .13 * nk; s.scale.set(Math.max(W, H) / 128 * s.sc * 1.2); s.position.set(W / 2 + Math.sin(T * s.sp + s.ph) * W * .35 - camX * .15 % 50, H / 2 + Math.cos(T * s.sp * .8 + s.ph) * H * .3); });
-  flies.forEach(s => { s.visible = nk > .1; if (!s.visible) return; s.position.set(camX + s.fx + Math.sin(T * .6 + s.ph) * 40, camY + s.fy + Math.cos(T * .5 + s.ph) * 30); s.alpha = nk * (.4 + .6 * Math.abs(Math.sin(T * 1.7 + s.ph))); });
+  { const hw = W / Z / 2, hh = H / Z / 2, nf = Math.min(FLY_MAX, Math.round(4 * hw * hh * FLY_DENS));
+    flies.forEach((s, i) => { s.visible = nk > .1 && i < nf; if (!s.visible) return; s.position.set(camX + s.fx * hw + Math.sin(T * .6 + s.ph) * 40, camY + s.fy * hh + Math.cos(T * .5 + s.ph) * 30); s.alpha = nk * (.4 + .6 * Math.abs(Math.sin(T * 1.7 + s.ph))); }); }
   const md = Math.hypot(me.x, me.y);
   // ocean sound: only when water is actually on screen. How far is the shore in the direction it lies, compared with how far the screen reaches that way?
   const sAng = Math.atan2(me.y, me.x), shoreDist = edge(sAng) - md, ux = Math.max(Math.abs(Math.cos(sAng)), 1e-3), uy = Math.max(Math.abs(Math.sin(sAng)), 1e-3);
