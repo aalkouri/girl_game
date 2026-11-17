@@ -675,7 +675,7 @@ function mkPlayer(p) {
   const c = new PIXI.Container(), sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5); sh.scale.set(.8, .5); sh.y = 8; sh.alpha = .9;
   const body = new PIXI.Sprite(T_PL[p[2]]); body.anchor.set(.5); body.scale.set(.85);
   const name = new PIXI.Text(p[1], { fontFamily: 'system-ui,sans-serif', fontSize: 13, fontWeight: '700', fill: 0xffffff, stroke: 0x000000, strokeThickness: 3 }); name.anchor.set(.5, 1); name.y = -30; name.resolution = 2;
-  const hp = new PIXI.Graphics(); hp.y = 28; const sta = new PIXI.Graphics(); sta.y = -27; sta.visible = false;
+  const hp = new PIXI.Graphics(); hp.y = -27; const sta = new PIXI.Graphics(); sta.y = 28; sta.visible = false;   // health bar above the head, stamina bar below the feet
   const tool = new PIXI.Sprite(T_AXE); tool.anchor.set(.08, .5); tool.scale.set(.62); tool.visible = false;
   c.addChild(sh, body, tool, name, hp, sta); ents.addChild(c);
   return { c, body, tool, name, hp, sta, stv: 100, ang: 0, lh: -1, ld: -1, dust: 0, kind: 'p', sw: p[12], swing: null };
