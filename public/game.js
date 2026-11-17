@@ -1114,6 +1114,7 @@ function updateCampPtr(wx, wy) {   // (wx, wy) = where world (0,0) is on screen 
   let fx = 0, fy = 0, fuelOn = S && S.f && S.f[0] > 0, bd = Math.hypot(camX, camY);
   for (const c of (S && S.cf) || []) { const d = Math.hypot(c[1] - camX, c[2] - camY); if (d < bd) { bd = d; fx = c[1]; fy = c[2]; fuelOn = c[3] > 0; } }
   const ox = wx + fx * Z, oy = wy + fy * Z;
+  if (!fuelOn) { $('campPtr').style.display = 'none'; return; }   // the marker disappears while that fire is out
   const ptr = $('campPtr'), cx = W / 2, cy = H / 2, dx = ox - cx, dy = oy - cy, margin = 26;
   if (ox > margin && ox < W - margin && oy > margin && oy < H - margin) { ptr.style.display = 'none'; return; }   // you can already see it
   const L = 34, Rr = W - 34, Tp = 124, Bt = H - 56;   // keep clear of the top HUD and the screen edges
