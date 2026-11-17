@@ -586,13 +586,13 @@ function startSwing(e, p, d, dx) {
   const kind = p[13], ang = p[14] / 100;
   e.swing = { t: 0, kind, ang, hit: false }; e.ang = ang;
   if (kind === 1) e.tool.texture = T_AXE; else if (kind === 2) e.tool.texture = T_PICK; else if (kind === 4) e.tool.texture = T_BLADE; else if (kind === 5) e.tool.texture = T_SPEARP;
-  e.tool.anchor.set(kind === 5 ? .16 : .08, .5); e.tool.scale.set(kind === 5 ? .4 : .62);
+  e.tool.anchor.set(kind === 5 ? .16 : .08, .5); e.tool.scale.set(kind === 5 ? .3 : .62);
   e.tool.visible = kind !== 3; SFX.whoosh(d, dx);
 }
 function pokeOff(t) {   // spear poke: pull back, shoot forward, slide back
-  if (t < .12) return -12 * ease(t / .12);
-  if (t < .2) { const u = (t - .12) / .08; return -12 + 70 * u; }
-  return 58 * (1 - ease(Math.min(1, (t - .2) / .22)));
+  if (t < .12) return -10 * ease(t / .12);
+  if (t < .2) { const u = (t - .12) / .08; return -10 + 38 * u; }
+  return 28 * (1 - ease(Math.min(1, (t - .2) / .22)));
 }
 function swingOff(t) {   // relative tool angle: wind-up back, fast strike, recover
   if (t < .14) return .3 - 1.8 * ease(t / .14);
@@ -1126,9 +1126,9 @@ app.ticker.add(() => {
           if (sw.kind === 5) { const po = 6 + pokeOff(sw.t); e.tool.rotation = sw.ang; e.tool.position.set(Math.cos(sw.ang) * po, Math.sin(sw.ang) * po); }
           else { e.tool.rotation = sw.ang + swingOff(sw.t); e.tool.position.set(Math.cos(sw.ang) * 6, Math.sin(sw.ang) * 6); }
           if (sw.kind === 5 && !sw.hit && sw.t >= .2) {   // a long white streak along the poke, and a spark at the tip
-            sw.hit = true; const th = new PIXI.Sprite(T_THRUST); th.anchor.set(0, .5); th.rotation = sw.ang; th.position.set(e.x + Math.cos(sw.ang) * 24, e.y + Math.sin(sw.ang) * 24); th.blendMode = BM.ADD; th.scale.set(.45); overL.addChild(th);
-            parts.push({ s: th, vx: 0, vy: 0, life: .2, max: .2, s0: .45, s1: .5, a0: .85, g: 0 });
-            const tip = 24 + 200 * .45; burst(e.x + Math.cos(sw.ang) * tip, e.y + Math.sin(sw.ang) * tip, 5, 0xffffff, 90, true, .08);
+            sw.hit = true; const th = new PIXI.Sprite(T_THRUST); th.anchor.set(0, .5); th.rotation = sw.ang; th.position.set(e.x + Math.cos(sw.ang) * 24, e.y + Math.sin(sw.ang) * 24); th.blendMode = BM.ADD; th.scale.set(.35); overL.addChild(th);
+            parts.push({ s: th, vx: 0, vy: 0, life: .2, max: .2, s0: .35, s1: .4, a0: .85, g: 0 });
+            const tip = 24 + 200 * .35; burst(e.x + Math.cos(sw.ang) * tip, e.y + Math.sin(sw.ang) * tip, 5, 0xffffff, 90, true, .08);
           }
           if (!sw.hit && sw.t >= .2) { sw.hit = true; const sl = new PIXI.Sprite(T_SLASH); sl.anchor.set(.1, .5); sl.rotation = sw.ang; sl.position.set(e.x + Math.cos(sw.ang) * 16, e.y + Math.sin(sw.ang) * 16); sl.blendMode = BM.ADD; sl.scale.set(.75); overL.addChild(sl); parts.push({ s: sl, vx: 0, vy: 0, life: .16, max: .16, s0: .75, s1: 1, a0: .75, g: 0 }); }
         }
