@@ -32,10 +32,15 @@ setInterval(() => { save(); auth.save(); }, 3000);
 for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => { save(); auth.save(); saveRooms(); process.exit(0); });
 // accounts are keyed by lower-case email. Old anonymous profiles (random 16-32 char ids) can be claimed once at sign-in.
 const LEGACY = /^[A-Za-z0-9]{16,32}$/;
+// test accounts with unlimited materials and diamonds: emails listed in the server's private config.json ("infiniteEmails")
+// or the INFINITE_EMAILS env var (comma separated). Kept out of the repo on purpose.
+const INFINITE = new Set([].concat(config.infiniteEmails || [], String(process.env.INFINITE_EMAILS || '').split(',')).map(e => String(e).trim().toLowerCase()).filter(Boolean));
+const INF_N = 999, INF_D = 99999;
 function acct(email, create) {
   if (!email) return null;
   let p = profiles[email];
   if (!p && create) { if (pcount > 200000) return null; p = profiles[email] = { d: 0, owned: [], k: 0, n: 0, last: 'forester', t: Date.now() }; pcount++; dirty = true; }
+  if (p && INFINITE.has(email) && p.d < INF_D) { p.d = INF_D; dirty = true; }   // diamonds refill whenever the account is looked up (login, buying, joining)
   return p || null;
 }
 function claimLegacy(email, pid) {
@@ -352,7 +357,7 @@ class Room {
   }
   add(ws, name, cls, pf, email) {
     const p = { id: this.nid++, ws, name, cls, prof: pf, gear: {}, buff: { speed: 0, regen: 0, dmg: 0 }, actPrev: 0, fa: 0, sw: 0, swk: 0, swa: 0, wood: parseInt(process.env.START_WOOD) || 0, stone: parseInt(process.env.START_STONE) || 0, food: parseInt(process.env.START_FOOD) || 0, scrap: parseInt(process.env.START_SCRAP) || 0, slots: [], sta: STA.max, staCd: 0, tired: 0, actcd: 0, hitcd: 0, eat: 0, inp: { dx: 0, dy: 0, act: 0, hit: 0 } };
-    p.email = email; this.respawn(p);
+    p.email = email; p.inf = INFINITE.has(email); this.respawn(p);
     const a = email && this.away.get(email); this.away.delete(email);
     if (a && Date.now() - a.t <= ROOM_IDLE_SEC * 1000) {   // welcome back: same stuff, same spot (a downed player just respawns)
       const o = a.s; p.wood = o.wood; p.stone = o.stone; p.food = o.food; p.scrap = o.scrap; p.gear = o.gear; p.buff = o.buff; p.slots = (o.slots || []).filter(id => RC.ITEM_BY[id]).slice(0, SLOTS);
@@ -363,6 +368,7 @@ class Room {
   tick(dt) {
     const P = [...this.players.values()];
     if (!P.length) { this.emptyFor += dt; return; } this.emptyFor = 0;
+    for (const p of P) if (p.inf) { p.wood = p.stone = p.food = p.scrap = INF_N; }   // test accounts: bag always full
     if (this.over > 0) { this.over -= dt; if (this.over <= 0) this.endRun(); return; }
     this.c += dt;
     if (this.c >= CYC) {
