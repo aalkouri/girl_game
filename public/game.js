@@ -1426,13 +1426,13 @@ app.ticker.add(() => {
   { // the ACT button names whatever ACT would do right now (same priority and ranges as the server)
     let lab = 'ACT';
     if (placingId) lab = 'PLACE';
-    else if (me.d[20]) lab = (S.fp || []).some(q => Math.hypot(q[1] - me.x, q[2] - me.y) < 150) && !fishOpen ? 'FISH' : 'EXIT';
+    else if (me.d[20]) lab = GEAR.rod && (S.fp || []).some(q => Math.hypot(q[1] - me.x, q[2] - me.y) < 150) && !fishOpen ? 'FISH' : 'EXIT';
     else if (!me.d[10]) {
       const dist = (x, y) => Math.hypot(x - me.x, y - me.y); let st = null, sd = 1e9;   // the nearest station in reach (same rule as the server)
       for (const t of S.st || []) { if (t[1] !== 'bench' && t[1] !== 'chest' && t[1] !== 'pot' && t[1] !== 'smelter') continue; const dd = dist(t[2], t[3]); if (dd < RC.RADIUS[t[1]] + 62 && dd < sd) { sd = dd; st = t; } }
       if (st && Math.hypot(me.x, me.y) < 80 && Math.hypot(me.x, me.y) < sd) st = null;   // the fire is closer than the station
       let gt = null, gd = 70; for (const t of S.st || []) if (t[1] === 'gate') { const a = (t[7] || 0) * Math.PI / 4, ux = Math.cos(a), uy = Math.sin(a), u = Math.max(-52, Math.min(52, (me.x - t[2]) * ux + (me.y - t[3]) * uy)), d = Math.hypot(me.x - (t[2] + ux * u), me.y - (t[3] + uy * u)); if (d < gd) { gd = d; gt = t; } }   // a gate in reach: ACT swings it open / shut
-      const pool = (S.fp || []).find(q => dist(q[1], q[2]) < 150);
+      const pool = GEAR.rod && (S.fp || []).find(q => dist(q[1], q[2]) < 150);
       const nb = (S.bt || []).find(b => dist(b[1], b[2]) < 125);
       if (S.p.some(q => q[10] && q[0] !== myId && dist(q[3], q[4]) < 60)) lab = 'REVIVE';
       else if (nb) lab = nb[4] >= 2 ? 'FULL' : 'ENTER';

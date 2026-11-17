@@ -1011,7 +1011,7 @@ class Room {
       const B = p.buff; for (const k in B) if (B[k] > 0) B[k] = Math.max(0, B[k] - dt);
       const actEdge = i.act && !p.actPrev; p.actPrev = i.act;
       if (p.boat) {   // aboard a boat: the boat carries you; ACT gets you out near land. Passengers (not the captain) can shoot projectiles with ATTACK
-        if (actEdge) { const q = (!p.fishing || Date.now() - p.fishing.t > 40000) && this.poolNear(p); if (q) { p.fishing = { id: q.id, t: Date.now() }; send(p.ws, { t: 'fishgame', id: q.id, kind: q.kind }); } else this.exitBoat(p); }   // ACT next to a fish pool fishes from the boat; otherwise it gets you out
+        if (actEdge) { const q = p.gear.rod && (!p.fishing || Date.now() - p.fishing.t > 40000) && this.poolNear(p); if (q) { p.fishing = { id: q.id, t: Date.now() }; send(p.ws, { t: 'fishgame', id: q.id, kind: q.kind }); } else this.exitBoat(p); }   // ACT next to a fish pool fishes from the boat; otherwise it gets you out
         { const mate = P.find(q => q.down && q !== p && Math.hypot(q.x - p.x, q.y - p.y) < 110);   // revive someone floating in the water from the boat
           if (mate && i.act && Math.hypot(i.dx, i.dy) <= 0.1) { mate.rev += dt * c.rev; mate.rv = 1; } }
         const bt = this.boats.find(x => x.id === p.boat);
@@ -1056,6 +1056,7 @@ class Room {
         if (mate) { if (m <= 0.1) { mate.rev += dt * c.rev; mate.rv = 1; } }   // you have to stand still while reviving
         else if (actEdge && this.boatNear(p)) this.enterBoat(p, this.boatNear(p));
         else if (actEdge && this.lootNear(p, 'chest')) this.openChest(p, this.lootNear(p, 'chest'));
+        else if (actEdge && !p.gear.rod && this.poolNear(p)) { send(p.ws, { t: 'toast', msg: 'You need a fishing rod to fish - the Fisherman trader sells one.' }); p.actcd = 0.6; }
         else if (actEdge && (!p.fishing || Date.now() - p.fishing.t > 40000) && this.poolNear(p)) { const q = this.poolNear(p); p.fishing = { id: q.id, t: Date.now() }; p.actcd = 0.5; send(p.ws, { t: 'fishgame', id: q.id, kind: q.kind }); }
         else if (actEdge && this.gateNear(p)) { const g = this.gateNear(p); g.open = g.open ? 0 : 1; p.actcd = 0.3; }
         else if (actEdge && this.lootNear(p, 'trader')) { const l = this.lootNear(p, 'trader'); send(p.ws, { t: 'open', what: 'trader', id: l.id, ty: l.trader }); }
