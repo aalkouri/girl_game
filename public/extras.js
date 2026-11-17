@@ -173,7 +173,7 @@ function buildTrader() {
   if (!trOpen) return; const T = RC.TRADERS[trOpen.ty], mp = S.p.find(p => p[0] === myId) || [], list = $('trList'); list.innerHTML = '';
   $('trTitle').textContent = T.e + ' ' + T.n; $('trInv').textContent = Object.keys(COSTI).filter(k => (mp[COSTX[k]] || 0) > 0).map(k => COSTI[k] + (mp[COSTX[k]] || 0)).join(' ');
   const rows = [];
-  if (trOpen.ty === 5) for (const c of GC.LIST) { if (!PF.owned.includes(c.id)) continue; const ab = GC.ABIL[c.id], has = (PF.abil || []).includes(c.id); rows.push({ id: 'abil:' + c.id, e: ab.e, n: ab.n + ' (' + c.n + ')', d: ab.d + ' Cooldown ' + ab.cd + 's.', cost: GC.abilCost(c), done: has, doneT: 'Unlocked' }); }
+  if (trOpen.ty === 5) { const c = GC.BY[mp[2]], ab = c && GC.ABIL[c.id]; if (ab) rows.push({ id: 'abil:' + c.id, e: ab.e, n: ab.n + ' (' + c.n + ')', d: ab.d + ' Cooldown ' + ab.cd + 's. Unlocks it for this game only.', cost: GC.abilCost(c), done: mp[25] > 0, doneT: 'Unlocked this game' }); }   // only the ability of the character you are playing, for this game only
   else for (const o of T.offers) rows.push({ id: o.id, e: o.e, n: o.n, d: o.d, cost: o.cost, done: o.armor ? (GEAR.armor || 0) >= o.armor : o.gear ? !!GEAR[o.gear] : false, doneT: o.armor ? 'Owned' : 'Owned' });
   for (const r of rows) {
     const ok = Object.entries(r.cost).every(([k, n]) => (mp[COSTX[k]] || 0) >= n), el = document.createElement('div'); el.className = 'rc' + (r.done ? ' dim' : ok ? ' pick' : ' pick dim');
@@ -211,7 +211,7 @@ function xHud(mp) {
 }
 // class select: the (locked/unlocked) hidden ability of each class
 function xCard(c, el) {
-  const ab = GC.ABIL[c.id]; if (!ab) return; const has = (PF.abil || []).includes(c.id);
+  const ab = GC.ABIL[c.id]; if (!ab) return; const has = false;   // abilities start locked every game (unlock yours with the Ability Unlocker trader)
   el.insertAdjacentHTML('beforeend', '<div class="ab" style="margin-top:4px;font-size:11px;line-height:1.25;text-align:left;color:' + (has ? '#b9f6ca' : '#cfd8dc') + '"><b>' + (has ? '✔' : '🔒') + ' ' + ab.e + ' ' + ab.n + '</b> · ' + ab.cd + 's<br>' + ab.d + '</div>');
 }
 
