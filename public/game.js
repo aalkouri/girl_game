@@ -1628,7 +1628,7 @@ addEventListener('pointerdown', () => SFX.resume());
 // ---------- input ----------
 let joy = null, act = 0, hit = 0; const keys = {};
 const jb = $('jbase'), jk = $('jknob');
-app.view.addEventListener('pointerdown', e => { if (joy || e.clientX > innerWidth * .6) return; joy = { id: e.pointerId, ox: e.clientX, oy: e.clientY, x: e.clientX, y: e.clientY }; app.view.setPointerCapture(e.pointerId); jb.style.display = jk.style.display = 'block'; jpos(); });
+app.view.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse' || joy || e.clientX > innerWidth * .6) return; joy = { id: e.pointerId, ox: e.clientX, oy: e.clientY, x: e.clientX, y: e.clientY }; app.view.setPointerCapture(e.pointerId); jb.style.display = jk.style.display = 'block'; jpos(); });
 app.view.addEventListener('pointermove', e => { if (joy && joy.id === e.pointerId) { joy.x = e.clientX; joy.y = e.clientY; jpos(); } });
 const jend = e => { if (joy && joy.id === e.pointerId) { joy = null; jb.style.display = jk.style.display = 'none'; } };
 app.view.addEventListener('pointerup', jend); app.view.addEventListener('pointercancel', jend);
@@ -1643,19 +1643,50 @@ addEventListener('keydown', e => { const k = e.key.toLowerCase(); if (placingId 
   if (k === 'escape') { if (craftOpen || chestId !== null || potOpen || smeltId !== null || (typeof trOpen !== 'undefined' && trOpen)) { setCraft(false); closeChest(); closePot(); closeSmelt(); window.closeTrader && closeTrader(); menuClosedAt = performance.now(); } else if (placingId) stopPlacing(); else if (typeof mapOpen !== 'undefined' && mapOpen) { /* the map closes itself */ } else if (window.xPause) xPause(); }   // Escape closes menus / cancels placing
   keys[k] = 1; }); addEventListener('keyup', e => { keys[e.key.toLowerCase()] = 0; });
 // never let a lost touch/key leave the character walking: drop all held input whenever the page loses focus or no finger is down
-function clearInput() { joy = null; jb.style.display = jk.style.display = 'none'; act = hit = 0; for (const k in keys) keys[k] = 0; ['act', 'hit'].forEach(i => { $(i).style.transform = ''; }); }
+function clearInput() { joy = null; mouse.down = false; if (aimStick) { aimStick = null; aimPadDraw(); } jb.style.display = jk.style.display = 'none'; act = hit = 0; for (const k in keys) keys[k] = 0; ['act', 'hit'].forEach(i => { $(i).style.transform = ''; }); }
 addEventListener('blur', clearInput); document.addEventListener('visibilitychange', () => { if (document.hidden) clearInput(); }); addEventListener('pagehide', clearInput);
 app.view.addEventListener('lostpointercapture', jend);
 addEventListener('touchend', e => { if (!e.touches.length) clearInput(); }, { passive: true }); addEventListener('touchcancel', clearInput, { passive: true });
 app.view.addEventListener('touchstart', e => { if (e.touches.length >= 2) { joy = null; jb.style.display = jk.style.display = 'none'; } }, { passive: true });
 app.view.addEventListener('contextmenu', e => e.preventDefault());
 let actBlock = false;   // set after placing something so a still-held ACT doesn't instantly act again (e.g. hop into the boat you just put down)
+// ---- aiming: you face where you aim and ATTACK goes that way. Mouse: the cursor. Touch: the aim stick next to ATTACK (drag, release to attack); without it, attacks auto-aim as before ----
+const mouse = { on: false, x: 0, y: 0, down: false }; let aimStick = null, aimHold = { until: 0, ang: 0 }, hitPulse = 0, crossEl = null, aimPad = null;
+function mouseAngle() { const me = ents2['p' + myId]; if (!me) return null; return Math.atan2(mouse.y - (H / 2 + (me.y - camY) * Z), mouse.x - (W / 2 + (me.x - camX) * Z)); }
+function aimPadDraw() {
+  if (!aimPad) return; const k = aimPad.firstElementChild;
+  if (aimStick) { let dx = aimStick.x - aimStick.ox, dy = aimStick.y - aimStick.oy; const m = Math.hypot(dx, dy), L = 34; if (m > L) { dx *= L / m; dy *= L / m; } k.style.transform = 'translate(' + dx + 'px,' + dy + 'px)'; k.style.background = '#ff8a80'; } else { k.style.transform = ''; k.style.background = '#ffffffaa'; }
+}
+(function () {
+  app.view.style.cursor = 'none';
+  crossEl = document.createElement('div'); crossEl.style.cssText = 'position:fixed;width:26px;height:26px;margin:-13px 0 0 -13px;pointer-events:none;z-index:7;display:none;border:2px solid #ff5252;border-radius:50%;box-shadow:0 0 6px #000a,inset 0 0 4px #000a;';
+  crossEl.innerHTML = '<div style="position:absolute;left:50%;top:-7px;width:2px;height:8px;margin-left:-1px;background:#ff5252"></div><div style="position:absolute;left:50%;bottom:-7px;width:2px;height:8px;margin-left:-1px;background:#ff5252"></div><div style="position:absolute;top:50%;left:-7px;height:2px;width:8px;margin-top:-1px;background:#ff5252"></div><div style="position:absolute;top:50%;right:-7px;height:2px;width:8px;margin-top:-1px;background:#ff5252"></div>';
+  document.body.appendChild(crossEl);
+  const mv = e => { if (e.pointerType !== 'mouse') return; mouse.on = true; mouse.x = e.clientX; mouse.y = e.clientY; crossEl.style.display = 'block'; crossEl.style.left = e.clientX + 'px'; crossEl.style.top = e.clientY + 'px'; };
+  app.view.addEventListener('pointermove', mv); app.view.addEventListener('pointerenter', mv); app.view.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') crossEl.style.display = 'none'; });
+  app.view.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse' && e.button === 0) { mouse.down = true; mv(e); } });
+  addEventListener('pointerup', e => { if (e.pointerType === 'mouse' && e.button === 0) mouse.down = false; });
+  if (matchMedia('(pointer: coarse)').matches) {   // touch screens: the aim stick
+    aimPad = document.createElement('div'); aimPad.id = 'aimPad';
+    aimPad.style.cssText = 'position:fixed;z-index:9;border-radius:50%;border:2px solid #ff8a80aa;background:#ef535022;touch-action:none;display:none;right:calc(max(16px,env(safe-area-inset-right)) + clamp(52px,15vmin,76px) + clamp(44px,12vmin,60px) + clamp(42px,11.5vmin,56px) + 40px);bottom:max(14px,env(safe-area-inset-bottom));width:clamp(72px,20vmin,100px);height:clamp(72px,20vmin,100px)';
+    aimPad.innerHTML = '<div style="position:absolute;left:50%;top:50%;width:30px;height:30px;margin:-15px;border-radius:50%;background:#ffffffaa;pointer-events:none"></div><div style="position:absolute;left:0;right:0;top:-16px;text-align:center;font-size:10px;font-weight:800;opacity:.8;pointer-events:none">AIM</div>';
+    document.body.appendChild(aimPad);
+    const ctr = () => { const r = aimPad.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };
+    aimPad.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); const [cx, cy] = ctr(); aimStick = { id: e.pointerId, ox: cx, oy: cy, x: e.clientX, y: e.clientY }; aimPad.setPointerCapture(e.pointerId); aimPadDraw(); });
+    aimPad.addEventListener('pointermove', e => { if (aimStick && aimStick.id === e.pointerId) { aimStick.x = e.clientX; aimStick.y = e.clientY; aimPadDraw(); } });
+    const end = e => { if (!aimStick || aimStick.id !== e.pointerId) return; const dx = aimStick.x - aimStick.ox, dy = aimStick.y - aimStick.oy; if (Math.hypot(dx, dy) > 16 && e.type !== 'pointercancel') aimHold = { until: performance.now() + 400, ang: Math.atan2(dy, dx) }; if (e.type !== 'pointercancel') hitPulse = performance.now() + 170; aimStick = null; aimPadDraw(); };
+    aimPad.addEventListener('pointerup', end); aimPad.addEventListener('pointercancel', end);
+    setInterval(() => { aimPad.style.display = $('btns').style.display === 'none' || !myId ? 'none' : 'block'; }, 500);
+  }
+})();
 function readInput() {
   let dx = 0, dy = 0;
   let rn = 0; if (actBlock && !(act || keys[' '] || keys.e)) actBlock = false;
   if (joy) { dx = (joy.x - joy.ox) / 55; dy = (joy.y - joy.oy) / 55; const m = Math.hypot(dx, dy); if (m > 1) { dx /= m; dy /= m; } if (m < .12) dx = dy = 0; else if (m > 1.15) rn = Math.min(1, (m - 1.15) / .75); }   // past the ring = run, faster the further you push
   if (keys.a || keys.arrowleft) dx -= 1; if (keys.d || keys.arrowright) dx += 1; if (keys.w || keys.arrowup) dy -= 1; if (keys.s || keys.arrowdown) dy += 1;
   if (keys.shift && (dx || dy)) rn = 1;
-  return { dx, dy, rn: Math.round(rn * 100) / 100, act: !placingId && !actBlock && (act || keys[' '] || keys.e) ? 1 : 0, hit: hit || keys.q || keys.f || keys.j ? 1 : 0 };
+  let aim = null; const nowT = performance.now();
+  if (aimStick && Math.hypot(aimStick.x - aimStick.ox, aimStick.y - aimStick.oy) > 16) aim = Math.atan2(aimStick.y - aimStick.oy, aimStick.x - aimStick.ox); else if (nowT < aimHold.until) aim = aimHold.ang; else if (mouse.on) aim = mouseAngle();
+  return { dx, dy, am: aim === null ? 0 : 1, aim: aim === null ? 0 : Math.round(aim * 100) / 100, rn: Math.round(rn * 100) / 100, act: !placingId && !actBlock && (act || keys[' '] || keys.e) ? 1 : 0, hit: hit || keys.q || keys.f || keys.j || mouse.down || nowT < hitPulse ? 1 : 0 };
 }
 setInterval(() => { if (ws && ws.readyState === 1 && myId) ws.send(JSON.stringify(Object.assign({ t: 'in' }, readInput()))); }, 50);

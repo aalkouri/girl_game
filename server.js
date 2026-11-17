@@ -851,7 +851,7 @@ class Room {
           else {
             const g = p.gear.rifle ? RC.GUNS.rifle : p.gear.pistol ? RC.GUNS.pistol : { dmg: c.dmg + (p.gear.sword ? 8 : 0), cd: Math.max(0.5, c.cd), speed: 800, ttl: 0.6 };   // no gun: a plain thrown shot
             p.hitcd = g.cd; let ang = p.fa, bd = 700;
-            for (const t of [...this.aliens, ...(this.wolves || [])]) if (t.hp > 0 && t.k !== 2) { const dd = dist(p, t); if (dd < bd) { bd = dd; ang = Math.atan2(t.y - p.y, t.x - p.x); } }   // aboard you can aim all around
+            if (i.am) ang = i.aim; else for (const t of [...this.aliens, ...(this.wolves || [])]) if (t.hp > 0 && t.k !== 2) { const dd = dist(p, t); if (dd < bd) { bd = dd; ang = Math.atan2(t.y - p.y, t.x - p.x); } }   // aboard you can aim all around
             p.sw = (p.sw + 1) & 255; p.swk = 4; p.swa = ang; this.shoot(p, ang, g.dmg * (B.rage > 0 || B.power > 0 ? 2 : 1), g.speed, g.ttl, 3);
           }
         }
@@ -873,6 +873,7 @@ class Room {
       let flying = false;
       if (p.kb) { p.kb.t += dt; const u = p.kb.t / CHARGER.stunSec; if (u >= 1) p.kb = null; else { const v = p.kb.v0 * (1 - u) * (1 - u); p.x += p.kb.dx * v * dt; p.y += p.kb.dy * v * dt; flying = true; } }   // knocked back: no steering until it wears off
       if (!flying) { p.x += dx * spd * dt; p.y += dy * spd * dt; } if (m > 0.1) p.fa = Math.atan2(dy, dx);
+      if (i.am) p.fa = i.aim;   // aiming (mouse cursor / aim stick): you face where you aim, whichever way you walk
       for (const st of this.struct) { if (st.k === 'trap' || st.k === 'spike' || (st.k === 'gate' && st.open)) continue; const [qx, qy, qr] = solidPt(st, p.x, p.y), sd = Math.hypot(p.x - qx, p.y - qy), mn = qr + 14; if (sd < mn && sd > 0.01) { p.x = qx + (p.x - qx) / sd * mn; p.y = qy + (p.y - qy) / sd * mn; } }
       if (this.landAt(p.x, p.y) < 0) { const q = this.landPoint(p.x, p.y); p.x = q[0]; p.y = q[1]; }   // stay on land (any island); only boats go on water
       const d = Math.hypot(p.x, p.y);
@@ -892,7 +893,7 @@ class Room {
           if (stn) { if (actEdge) { p.actcd = 0.4; send(p.ws, { t: 'open', what: stn.k, id: stn.id }); } }   // every station opens its menu; the smelter only starts when you put rocks in
           else if (FF) {   // the main fire or any campfire: wood refuels it, stone levels it up
             const ff = FF.f, mxF = RC.fuelMax(ff.lvl), per = 15 * c.feed, need = mxF - ff.fuel;
-            if (p.wood > 0 && need > per * 0.5) { const n = Math.min(p.wood, Math.ceil(need / per)); ff.fuel = Math.min(mxF, ff.fuel + n * per); p.wood -= n; p.actcd = 0.3; }   // only as much wood as the gauge needs
+            if (p.wood > 0 && need > per * 0.5) { const n = Math.min(p.wood, 5, Math.ceil(need / per)); ff.fuel = Math.min(mxF, ff.fuel + n * per); p.wood -= n; p.actcd = 0.3; }   // only as much wood as the gauge needs, and at most 5 per press
             else if (ff.lvl < RC.FIRE_MAX && p.stone >= 10 * ff.lvl) { p.stone -= 10 * ff.lvl; ff.lvl++; p.actcd = 0.5; }                                                          // gauge full: level the fire up with stone
           } else {
             let best = null, bd = 55;
@@ -919,14 +920,15 @@ class Room {
       if (i.hit && p.hitcd <= 0 && !this.spendSta(p, STA.attack)) { p.hitcd = 0.3; this.winded(p); }
       else if (i.hit && p.hitcd <= 0 && !p.boat && (p.gear.rifle || p.gear.pistol)) {   // guns: ATTACK fires a bullet (auto-aimed at the nearest target in front)
         const g = p.gear.rifle ? RC.GUNS.rifle : RC.GUNS.pistol; p.hitcd = g.cd; let ang = p.fa, bd = 700;
-        for (const t of [...this.aliens, ...(this.wolves || [])]) if (t.hp > 0 && t.k !== 2) { const dd = dist(p, t); let da = Math.atan2(t.y - p.y, t.x - p.x) - p.fa; da = Math.atan2(Math.sin(da), Math.cos(da)); if (dd < bd && Math.abs(da) < 1.0) { bd = dd; ang = Math.atan2(t.y - p.y, t.x - p.x); } }
+        if (!i.am) for (const t of [...this.aliens, ...(this.wolves || [])]) if (t.hp > 0 && t.k !== 2) { const dd = dist(p, t); let da = Math.atan2(t.y - p.y, t.x - p.x) - p.fa; da = Math.atan2(Math.sin(da), Math.cos(da)); if (dd < bd && Math.abs(da) < 1.0) { bd = dd; ang = Math.atan2(t.y - p.y, t.x - p.x); } }
         p.sw = (p.sw + 1) & 255; p.swk = 4; p.swa = ang; this.shoot(p, ang, g.dmg * (B.rage > 0 || B.power > 0 ? 2 : 1), g.speed, g.ttl, 3);
       }
       else if (i.hit && p.hitcd <= 0) {
         p.hitcd = c.cd * (B.flurry > 0 ? 0.5 : 1);
         // with the spear it is a poke: anything up close as usual, plus a long reach straight ahead (within ~35 degrees of where you face)
         const sp = !!p.gear.spear, far = c.range + SPEAR_REACH; let best = null, bd = 1e9;
-        const ok = t => { const dd = dist(p, t); if (dd < c.range) return dd; if (!sp || dd > far) return -1; let da = Math.atan2(t.y - p.y, t.x - p.x) - p.fa; da = Math.atan2(Math.sin(da), Math.cos(da)); return Math.abs(da) < 0.6 ? dd : -1; };
+        const AIM = !!i.am, inArc = (t, w) => { let da = Math.atan2(t.y - p.y, t.x - p.x) - p.fa; da = Math.atan2(Math.sin(da), Math.cos(da)); return Math.abs(da) < w; };   // aiming: melee only hits what is in front of the cursor direction
+        const ok = t => { const dd = dist(p, t); if (dd < c.range) return AIM && !inArc(t, 1.15) ? -1 : dd; if (!sp || dd > far) return -1; let da = Math.atan2(t.y - p.y, t.x - p.x) - p.fa; da = Math.atan2(Math.sin(da), Math.cos(da)); return Math.abs(da) < 0.6 ? dd : -1; };
         const consider = t => { const dd = ok(t); if (dd >= 0 && dd < bd) { bd = dd; best = t; } };
         for (const a of this.aliens) if (a.hp > 0 && a.k !== 2) consider(a);   // the Charger cannot be hit
         for (const b of this.rabbits) if (b.hp > 0) consider(b);   // rabbits too
@@ -1147,7 +1149,7 @@ wss.on('connection', ws => {
       send(ws, { t: 'cooked', id: String(m.id || ''), ok: res.ok, msg: res.msg, b: me.buff });
     } else if (m.t === 'in' && me) {
       const n = v => Math.max(-1, Math.min(1, +v || 0));
-      me.inp = { dx: n(m.dx), dy: n(m.dy), act: m.act ? 1 : 0, hit: m.hit ? 1 : 0, rn: Math.max(0, Math.min(1, +m.rn || 0)) }; me.inpAt = Date.now();
+      me.inp = { dx: n(m.dx), dy: n(m.dy), act: m.act ? 1 : 0, hit: m.hit ? 1 : 0, rn: Math.max(0, Math.min(1, +m.rn || 0)), am: m.am && isFinite(+m.aim) ? 1 : 0, aim: +m.aim || 0 }; me.inpAt = Date.now();
     }
   });
   ws.on('close', () => { if (room && me) { room.releaseBoat(me); if (!me.ended) room.stash(me); room.players.delete(me.id); } });
