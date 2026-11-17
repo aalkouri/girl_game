@@ -45,6 +45,13 @@
   // Every island except home is split by biome: the quarter facing the home island (at 0,0) is forest, the other three
   // quarters are that island's own biome (island.b, e.g. 'd' desert). A chord at 0.404 r from the centre cuts off 25% of
   // a circle's area; the edge wobbles a little so it doesn't look ruled. Shared so the server's trees and the client's grass line up.
+  // Island outlines: every outer island has a seed `s`; its land reaches radius r * shapeK(angle, s) in each direction (a lumpy blob, never a circle),
+  // shared by the server (where you can walk / sail) and the client (what is drawn). Home (s = 0) and old saved islands stay round.
+  const shapeK = (a, s) => s ? 1 + .17 * Math.sin(2 * a + s * 2.1) + .11 * Math.sin(3 * a + s * 3.7) + .06 * Math.sin(5 * a + s * 1.3) : 1;
+  const SHAPE_MAX = 1.34;   // the furthest an outline can reach, in island radii
+  const edgeR = (is, a) => is.r * shapeK(a, is.s || 0);
+  const edgeRat = (is, x, y) => edgeR(is, Math.atan2(y - is.y, x - is.x));
+  const inIsland = (is, x, y, m = 0) => Math.hypot(x - is.x, y - is.y) < edgeRat(is, x, y) - m;   // on the island's land (m = margin in from the shore; negative = out into the water)
   const FOREST_CUT = 0.404;
   const homeDir = (ix, iy) => { const L = Math.hypot(ix, iy) || 1; return [-ix / L, -iy / L]; };   // unit vector from the island towards home
   // where the forest edge sits along the home direction (in island radii), at sideways position w (also in radii)
@@ -90,5 +97,5 @@
       { id: 'galleon', n: 'Galleon', e: '🛳️', cost: { scrap: 20, gold: 6 }, item: 'galleon', d: 'Speed 320, 4 riders, +4 item slots while aboard. Goes into a slot; use it at the shore.' }] },
     5: { n: 'Ability Unlocker', e: '🔮', d: 'Unlocks the hidden ability of the character you are playing for this game, for the right resources.', offers: [] },
   };
-  return { BOATS, ARMOR, armorOf, GUNS, TRADERS, biomeAt, FIRE_MAX, fuelMax, LIST, BY, FOOD, FOOD_BY, ITEM_BY, camp, SMELT, RADIUS, FIRE_R, fireClear, STATION_GAP: 120, WALL_GAP: 80, FOREST_CUT, homeDir, forestEdge, inForestPart, SNOW_A, snowIn, snowHalf, inSnow };
+  return { shapeK, SHAPE_MAX, edgeR, edgeRat, inIsland, BOATS, ARMOR, armorOf, GUNS, TRADERS, biomeAt, FIRE_MAX, fuelMax, LIST, BY, FOOD, FOOD_BY, ITEM_BY, camp, SMELT, RADIUS, FIRE_R, fireClear, STATION_GAP: 120, WALL_GAP: 80, FOREST_CUT, homeDir, forestEdge, inForestPart, SNOW_A, snowIn, snowHalf, inSnow };
 });

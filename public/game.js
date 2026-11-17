@@ -4,10 +4,11 @@ const $ = id => document.getElementById(id);
 const TAU = Math.PI * 2, rnd = (a, b) => a + Math.random() * (b - a), clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const BM = PIXI.BLEND_MODES;
 let RR = 900;
-const edgeJ = (a, r, s) => r + 16 * Math.sin(3 * a + 1.3 + s) + 9 * Math.sin(7 * a + .4 + s * 2) + 5 * Math.sin(13 * a + 2.1 + s * 3);
+const edgeJ = (a, r, s, ss) => r * RC.shapeK(a, ss || 0) + 16 * Math.sin(3 * a + 1.3 + s) + 9 * Math.sin(7 * a + .4 + s * 2) + 5 * Math.sin(13 * a + 2.1 + s * 3);   // ss: the island's shape seed (0 = a round old island); s only phases the little ripples
+const inIsl = (q, x, y, m) => Math.hypot(x - q[0], y - q[1]) < q[2] * RC.shapeK(Math.atan2(y - q[1], x - q[0]), q[4] || 0) - m;   // am I on island q = [x, y, r, biome, shape seed] (m: margin in; negative = out into the water)
 const edge = a => edgeJ(a, RR, 0);
-let ISL = [];   // the other islands: [x, y, radius, 'f'orest | 'd'esert]
-const isWaterC = (x, y) => { if (Math.hypot(x, y) < RR + 40) return false; for (const s of ISL) if (Math.hypot(x - s[0], y - s[1]) < s[2] + 40) return false; return true; };
+let updWaterAt = 0, ISL = [];   // the other islands: [x, y, radius, 'f'orest | 'd'esert]
+const isWaterC = (x, y) => { if (Math.hypot(x, y) < RR + 40) return false; for (const s of ISL) if (Math.hypot(x - s[0], y - s[1]) < s[2] * RC.SHAPE_MAX + 40 && inIsl(s, x, y, -40)) return false; return true; };
 
 // ---------- procedural textures ----------
 const cv2 = (w, h, fn) => { const c = document.createElement('canvas'); c.width = w; c.height = h; fn(c.getContext('2d'), w, h); return c; };
@@ -452,13 +453,14 @@ precision highp float;
 precision mediump float;
 #endif
 varying vec2 vTextureCoord;
-uniform float uTime; uniform vec2 uCam; uniform vec2 uRes; uniform float uZoom; uniform vec4 uIs[12];
-float edgeI(float a,float r,float s){return r+16.*sin(3.*a+1.3+s)+9.*sin(7.*a+.4+s*2.)+5.*sin(13.*a+2.1+s*3.);}
+uniform float uTime; uniform vec2 uCam; uniform vec2 uRes; uniform float uZoom; uniform vec4 uIs[12]; uniform float uSh[12];
+float shapeK(float a,float s){return s==0.?1.:1.+.17*sin(2.*a+s*2.1)+.11*sin(3.*a+s*3.7)+.06*sin(5.*a+s*1.3);}
+float edgeI(float a,float r,float s,float ss){return r*shapeK(a,ss)+16.*sin(3.*a+1.3+s)+9.*sin(7.*a+.4+s*2.)+5.*sin(13.*a+2.1+s*3.);}
 void main(){
   vec2 px=(vTextureCoord-.5)*uRes;
   vec2 p=uCam+px/uZoom;
   float d=1e9;
-  for(int i=0;i<12;i++){vec2 q=p-uIs[i].xy;d=min(d,length(q)-edgeI(atan(q.y,q.x),uIs[i].z,uIs[i].w));}
+  for(int i=0;i<12;i++){vec2 q=p-uIs[i].xy;d=min(d,length(q)-edgeI(atan(q.y,q.x),uIs[i].z,uIs[i].w,uSh[i]));}
   float t=uTime;
   float w=(sin(p.x*.045+t*.9)+sin(p.y*.05-t*1.1)+sin((p.x*.7+p.y)*.03+t*.6)+sin(length(p)*.06-t*1.4))*.25;
   vec3 deep=vec3(.03,.13,.24),mid=vec3(.07,.33,.46),shallow=vec3(.22,.62,.62);
@@ -473,7 +475,7 @@ void main(){
   gl_FragColor=vec4(c,1.);
 }`;
 const water = new PIXI.Sprite(PIXI.Texture.WHITE);
-const waterF = new PIXI.Filter(undefined, WATER_FRAG, { uTime: 0, uCam: [0, 0], uRes: [W, H], uZoom: 1, uIs: new Float32Array(48) });
+const waterF = new PIXI.Filter(undefined, WATER_FRAG, { uTime: 0, uCam: [0, 0], uRes: [W, H], uZoom: 1, uIs: new Float32Array(48), uSh: new Float32Array(12) });
 water.filters = [waterF]; stage.addChild(water);
 
 const world = new PIXI.Container(), overL = new PIXI.Container();
@@ -512,24 +514,24 @@ function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Ma
 const polyOf = fn => { const p = []; for (let i = 0; i < 200; i++) { const a = i / 200 * TAU, r = fn(a); p.push(Math.cos(a) * r, Math.sin(a) * r); } return p; };
 const islandCs = [];   // outer island ground layers: big, so the ones off screen are skipped when drawing
 function buildIsland(is, idx) {   // is = [x, y, radius, biome]: the quarter facing home is forest, the rest is the biome ('d' desert)
-  const [ix, iy, R, biome] = is, s = idx * 1.7, ef = a => edgeJ(a, R, s), c = new PIXI.Container(); c.position.set(ix, iy); ground.addChild(c); islandCs.push({ c, x: ix, y: iy, r: R + 80 });
+  const [ix, iy, R, biome, ss] = is, s = ss || idx * 1.7, RS = R * (ss ? RC.SHAPE_MAX : 1), ef = a => edgeJ(a, R, s, ss), c = new PIXI.Container(); c.position.set(ix, iy); ground.addChild(c); islandCs.push({ c, x: ix, y: iy, r: RS + 80 });
   const inF = (x, y) => RC.inForestPart(ix, iy, R, ix + x, iy + y);   // local coords
   const shore = new PIXI.Graphics(); shore.beginFill(0x9d8c58, .5); shore.drawPolygon(polyOf(a => ef(a) + 10)); shore.endFill(); c.addChild(shore);
-  const sand = new PIXI.TilingSprite(biome === 's' ? T_SNOW : biome === 'l' ? T_BASALT : T_SAND, R * 2 + 120, R * 2 + 120); sand.position.set(-R - 60, -R - 60); if (biome === 'd') sand.tint = 0xf2c076;
+  const sand = new PIXI.TilingSprite(biome === 's' ? T_SNOW : biome === 'l' ? T_BASALT : T_SAND, RS * 2 + 120, RS * 2 + 120); sand.position.set(-RS - 60, -RS - 60); if (biome === 'd') sand.tint = 0xf2c076;
   const sm = new PIXI.Graphics(); sm.beginFill(0xffffff); sm.drawPolygon(polyOf(ef)); sm.endFill(); sand.mask = sm; c.addChild(sm, sand);
   if (biome === 'm') {   // a mixed island: the half away from the side facing home (w < 0 across the home direction) is snow, the other half desert
     const [hx, hy] = RC.homeDir(ix, iy), kx = -hy, ky = hx, B = R * 2.4, hp = new PIXI.Graphics(); hp.beginFill(0xffffff);
     hp.drawPolygon([[-B, -B], [B, -B], [B, 0], [-B, 0]].flatMap(([t, w]) => [hx * t + kx * w, hy * t + ky * w])); hp.endFill();
     const snowC = new PIXI.Container(), sm2 = new PIXI.Graphics(); sm2.beginFill(0xffffff); sm2.drawPolygon(polyOf(ef)); sm2.endFill();
-    const snow = new PIXI.TilingSprite(T_SNOW, R * 2 + 120, R * 2 + 120); snow.position.set(-R - 60, -R - 60); snow.mask = hp; snowC.addChild(snow, hp); snowC.mask = sm2; c.addChild(sm2, snowC);
+    const snow = new PIXI.TilingSprite(T_SNOW, RS * 2 + 120, RS * 2 + 120); snow.position.set(-RS - 60, -RS - 60); snow.mask = hp; snowC.addChild(snow, hp); snowC.mask = sm2; c.addChild(sm2, snowC);
     { const ro = new PIXI.Graphics(), r3 = mulberry(idx * 53 + 5);   // runoff along the snow/desert line: snow drifts onto the sand, sand blows onto the snow
-      for (let i = 0; i < 700; i++) { const t = (r3() * 2 - 1) * R * .95, w = (r3() * 2 - 1) * 150, k = 1 - Math.abs(w) / 150; if (r3() > k * k) continue; const x = hx * t + kx * w, y = hy * t + ky * w; if (Math.hypot(x, y) > R * .93 || inF(x, y)) continue; ro.beginFill(w > 0 ? 0xf4f8fc : 0xe3c78a, w > 0 ? .6 : .55); ro.drawEllipse(x, y, 8 + r3() * 18, 4 + r3() * 9); ro.endFill(); }
+      for (let i = 0; i < 700; i++) { const t = (r3() * 2 - 1) * R * .95, w = (r3() * 2 - 1) * 150, k = 1 - Math.abs(w) / 150; if (r3() > k * k) continue; const x = hx * t + kx * w, y = hy * t + ky * w; if (!(Math.hypot(x, y) < ef(Math.atan2(y, x)) - 60) || inF(x, y)) continue; ro.beginFill(w > 0 ? 0xf4f8fc : 0xe3c78a, w > 0 ? .6 : .55); ro.drawEllipse(x, y, 8 + r3() * 18, 4 + r3() * 9); ro.endFill(); }
       ro.mask = sm; c.addChild(ro); }
   }
   const rng = mulberry(idx * 977 + 13);
   if (biome === 'd') {   // desert: a few darker dunes, kept off the forest
     const dn = new PIXI.Graphics(); dn.beginFill(0xc99a4e, .25);
-    for (let i = 0; i < Math.round(R / 40); i++) { const a = rng() * TAU, d = Math.sqrt(rng()) * (R - 120), x = Math.cos(a) * d, y = Math.sin(a) * d; if (!inF(x, y)) dn.drawEllipse(x, y, 40 + rng() * 70, 14 + rng() * 22); }
+    for (let i = 0; i < Math.round(R / 40); i++) { const a = rng() * TAU, d = Math.sqrt(rng()) * (ef(a) - 120), x = Math.cos(a) * d, y = Math.sin(a) * d; if (!inF(x, y)) dn.drawEllipse(x, y, 40 + rng() * 70, 14 + rng() * 22); }
     dn.endFill(); dn.mask = sm; c.addChild(dn);
   }
   { // forest quarter: grass along the coast facing home, closed off by the (wavy) forest edge across the island
@@ -542,14 +544,14 @@ function buildIsland(is, idx) {   // is = [x, y, radius, biome]: the quarter fac
     }
     if (pts.length > 4) {
       for (let i = 0; i <= 60; i++) { const w = wB + (wA - wB) * i / 60, t = RC.forestEdge(ix, iy, w); pts.push((ux * t + vx * w) * R, (uy * t + vy * w) * R); }
-      const gr = new PIXI.TilingSprite(T_GRASS, R * 2, R * 2); gr.position.set(-R, -R);
+      const gr = new PIXI.TilingSprite(T_GRASS, RS * 2, RS * 2); gr.position.set(-RS, -RS);
       const gm = new PIXI.Graphics(); gm.beginFill(0xffffff); gm.drawPolygon(pts); gm.endFill(); gr.mask = gm;
       const rim = new PIXI.Graphics(); rim.lineStyle(10, 0x25552a, .35); rim.drawPolygon(pts); rim.mask = sm; c.addChild(gm, gr, rim);
     }
   }
   const N = Math.round(Math.PI * R * R * 4e-5 / 1.5);   // (half the home density: these islands are huge now)
   for (let i = 0; i < N; i++) {
-    const a = rng() * TAU, d = Math.sqrt(rng()) * (R - 90), k = rng(), x = Math.cos(a) * d, y = Math.sin(a) * d, f = inF(x, y);
+    const a = rng() * TAU, d = Math.sqrt(rng()) * (ef(a) - 90), k = rng(), x = Math.cos(a) * d, y = Math.sin(a) * d, f = inF(x, y);
     const tx = f ? (k < .6 ? T_TUFT : k < .85 ? T_FLOWER : T_PEBBLE) : (k < .55 ? T_PEBBLE : T_TUFT);
     const sp = new PIXI.Sprite(tx); sp.anchor.set(.5, .9); sp.position.set(x, y); sp.scale.set(.8 + rng() * .6); sp.rotation = (rng() - .5) * .4;
     if (!f && biome === 'l') sp.tint = tx === T_TUFT ? 0x4a3036 : 0x7a5a50; else if (!f && biome === 'd' && tx === T_TUFT) sp.tint = 0xb59a58; else if (!f && biome === 's') sp.tint = tx === T_TUFT ? 0xdfe9f2 : 0xaab6c2; else if (tx === T_FLOWER) sp.tint = [0xffffff, 0xff8aa0, 0xffe066, 0xa0c4ff][i % 4];
@@ -558,7 +560,7 @@ function buildIsland(is, idx) {   // is = [x, y, radius, biome]: the quarter fac
 }
 function biomeAtPt(x, y) {   // 'f' forest, 's' snow, 'd' desert (null at sea) - the same rules as the server
   if (Math.hypot(x, y) < RR + 120) return RC.inSnow(x, y) ? 's' : 'f';
-  for (const [ix, iy, r, b] of ISL) if (Math.hypot(x - ix, y - iy) < r + 120) return RC.biomeAt(ix, iy, r, b, x, y);
+  for (const q of ISL) if (Math.hypot(x - q[0], y - q[1]) < q[2] * RC.SHAPE_MAX + 120 && inIsl(q, x, y, -120)) return RC.biomeAt(q[0], q[1], q[2], q[3], x, y);
   return null;
 }
 function nearBiome(x, y, want, dist = 130) {   // is there another biome ('want') within `dist` of this spot? (decor near a border picks up a bit of the neighbour)
@@ -568,8 +570,15 @@ function nearBiome(x, y, want, dist = 130) {   // is there another biome ('want'
 function borderDist(x, y, want, max) {   // roughly how far to the nearest 'want' ground (max if none close)
   for (let d = 12; d <= max; d += 12) for (let k = 0; k < 12; k++) { const a = k * TAU / 12; if (biomeAtPt(x + Math.cos(a) * d, y + Math.sin(a) * d) === want) return d; } return max;
 }
+function updateWaterIslands(cx, cy) {   // the water shader can draw 12 islands: give it the ones nearest the camera (home + the closest outer ones)
+  const all = [[0, 0, RR, 0, 0, 0]].concat(ISL.map((s, i) => [s[0], s[1], s[2], (s[4] || (i + 1) * 1.7), s[4] || 0, 1]));
+  const near = all.map(q => ({ q, d: Math.hypot(cx - q[0], cy - q[1]) - q[2] * RC.SHAPE_MAX })).sort((a, b) => a.d - b.d).slice(0, 12);
+  const u = waterF.uniforms.uIs, sh = waterF.uniforms.uSh;
+  for (let i = 0; i < 12; i++) { const e = near[i]; if (e) { u[i * 4] = e.q[0]; u[i * 4 + 1] = e.q[1]; u[i * 4 + 2] = e.q[2]; u[i * 4 + 3] = e.q[3]; sh[i] = e.q[4]; } else { u[i * 4] = 1e7; u[i * 4 + 1] = 0; u[i * 4 + 2] = -1e5; u[i * 4 + 3] = 0; sh[i] = 0; } }
+  waterF.uniforms.uIs = u; waterF.uniforms.uSh = sh;
+}
 function buildWorld(list) {
-  { const u = new Float32Array(48).fill(0); for (let i = 0; i < 12; i++) { u[i * 4] = 1e7; u[i * 4 + 2] = -1e5; } u.set([0, 0, RR, 0], 0); ISL.slice(0, 11).forEach((s, i) => u.set([s[0], s[1], s[2], (i + 1) * 1.7], (i + 1) * 4)); waterF.uniforms.uIs = u; }
+  updateWaterIslands(0, 0);
   const poly = fn => { const p = []; for (let i = 0; i < 200; i++) { const a = i / 200 * TAU, r = fn(a); p.push(Math.cos(a) * r, Math.sin(a) * r); } return p; };
   const shore = new PIXI.Graphics(); shore.beginFill(0x9d8c58, .5); shore.drawPolygon(poly(a => edge(a) + 10)); shore.endFill(); ground.addChild(shore);
   const sand = new PIXI.TilingSprite(T_SAND, RR * 2 + 120, RR * 2 + 120); sand.position.set(-RR - 60, -RR - 60);
@@ -1018,7 +1027,7 @@ function placeCheck(r, x, y) {   // mirrors the server's rules so the silhouette
   if (d < RC.fireClear(r.kind)) return 'Too close to the fire';
   if (station && d > campR) return 'Must be inside the camp (the fire ring)';
   if (!station && d > campR + 200) return 'Too far from camp';
-  { const is = CF.isl === 0 ? [0, 0, RR] : ISL.find(q => Math.hypot(CF.x - q[0], CF.y - q[1]) < q[2]) || [0, 0, RR]; if (Math.hypot(x - is[0], y - is[1]) > is[2] - 50) return 'Too close to the water'; }
+  { const is = CF.isl === 0 ? [0, 0, RR] : ISL.find(q => inIsl(q, CF.x, CF.y, 0)) || [0, 0, RR]; if (!inIsl(is, x, y, 50)) return 'Too close to the water'; }
   if ((S.st || []).filter(t => t[1] === r.kind && Math.hypot(t[2] - CF.x, t[3] - CF.y) < CF.r).length >= (r.max || 99)) return 'You built the maximum of these';
   for (const t of S.st || []) {
     const stWall = t[1] === 'wall' || t[1] === 'gate' || t[1] === 'spike', dd = Math.hypot(t[2] - x, t[3] - y), need = station && !stWall ? RC.STATION_GAP : (station || !stWall) ? RC.WALL_GAP : RC.RADIUS[t[1]] + sr - 4;
@@ -1242,7 +1251,7 @@ function updateCampPtr(wx, wy) {   // (wx, wy) = where world (0,0) is on screen 
 
 let snapDur = .066, lastSnapAt = 0;
 function aim(e, x, y, now) { e.px = e.x; e.py = e.y; if (Math.hypot(x - e.x, y - e.y) > 250) { e.px = e.x = x; e.py = e.y = y; } e.tx = x; e.ty = y; e.t0 = now; }
-const islandIdx = (x, y) => { if (Math.hypot(x, y) < RR + 160) return 0; const i = ISL.findIndex(q => Math.hypot(x - q[0], y - q[1]) < q[2] + 160); return i < 0 ? -1 : i + 1; };
+const islandIdx = (x, y) => { if (Math.hypot(x, y) < RR + 160) return 0; const i = ISL.findIndex(q => inIsl(q, x, y, -160)); return i < 0 ? -1 : i + 1; };
 function fireSound(fx, fy, name) {   // a fire's sound comes from the fire: quieter the farther away, silent from another island (or at sea)
   const me = ents2['p' + myId]; if (!me) return; const a = islandIdx(fx, fy); if (a < 0 || a !== islandIdx(me.x, me.y)) return;
   SFX[name](Math.hypot(fx - me.x, fy - me.y), fx - me.x);
@@ -1483,6 +1492,7 @@ app.ticker.add(() => {
   const ox = W / 2 - camX * Z + sx, oy = H / 2 - camY * Z + sy2;
   world.position.set(ox, oy); world.scale.set(Z); overL.position.set(ox, oy); overL.scale.set(Z);
   updateCampPtr(ox, oy); updatePlayerPtrs(ox, oy);
+  if ((updWaterAt = (updWaterAt || 0) + dt) > .25) { updWaterAt = 0; updateWaterIslands(camX, camY); }
   waterF.uniforms.uTime = T; waterF.uniforms.uCam = [camX - sx / Z, camY - sy2 / Z];
   // campfire
   const f = S.f, fuelK = clamp(f[0] / f[1], 0, 1), alive = f[0] > 0, fl = 1 + Math.sin(T * 17) * .06 + Math.sin(T * 29) * .04;
@@ -1542,9 +1552,9 @@ function useSlotAt(i) {   // tap a slot (or press 1-3): the boat starts placemen
 document.querySelectorAll('#slots .slot').forEach((el, i) => el.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); useSlotAt(i); }));
 function myFire() {   // [fuel, max, level] of the campfire on the island you are standing on (home's, or that island's camp); nearest one if your island has none
   const me = ents2['p' + myId]; if (!me) return S.f;
-  const onHome = Math.hypot(me.x, me.y) < RR + 160, is = onHome ? null : ISL.find(q => Math.hypot(me.x - q[0], me.y - q[1]) < q[2] + 160);
+  const onHome = Math.hypot(me.x, me.y) < RR + 160, is = onHome ? null : ISL.find(q => inIsl(q, me.x, me.y, -160));
   if (onHome) return S.f;
-  if (is) for (const c of S.cf || []) if (Math.hypot(c[1] - is[0], c[2] - is[1]) < is[2]) return [c[3], c[4], c[5]];
+  if (is) for (const c of S.cf || []) if (inIsl(is, c[1], c[2], 0)) return [c[3], c[4], c[5]];
   let best = S.f, bd = Math.hypot(me.x, me.y); for (const c of S.cf || []) { const d = Math.hypot(c[1] - me.x, c[2] - me.y); if (d < bd) { bd = d; best = [c[3], c[4], c[5]]; } } return best;
 }
 function hud() {

@@ -9,7 +9,7 @@ function mapInit(m) {
   mapRoom = m.room; mapCells = new Set();
   try { const s = JSON.parse(localStorage.getItem('map_' + mapRoom) || '[]'); for (const k of s) mapCells.add(k); } catch (e) { }
   const isl = [[0, 0, m.R, 'f']].concat((m.isl || []).slice(1));
-  let ext = 1; for (const [x, y, r] of isl) ext = Math.max(ext, Math.abs(x) + r, Math.abs(y) + r);
+  let ext = 1; for (const [x, y, r, , ss] of isl) { const rr = r * (ss ? RC.SHAPE_MAX : 1); ext = Math.max(ext, Math.abs(x) + rr, Math.abs(y) + rr); }
   mapAll = { ext: ext * 1.06, isl };
   if (!$('mapBtn')) {
     const b = document.createElement('button'); b.id = 'mapBtn'; b.className = 'zb'; b.textContent = '🗺️'; b.setAttribute('aria-label', 'Map');
@@ -38,10 +38,10 @@ function drawMap() {
   // layer: the whole world drawn in colour
   const L = document.createElement('canvas'); L.width = L.height = size; const lg = L.getContext('2d');
   lg.fillStyle = '#1b5f86'; lg.fillRect(0, 0, size, size);
-  const wob = (a, r, sd) => edgeJ(a, r, sd);
+  let curSS = 0; const wob = (a, r, sd) => edgeJ(a, r, sd, curSS);
   const path = (ctx, ix, iy, r, sd) => { ctx.beginPath(); for (let i = 0; i <= 120; i++) { const a = i / 120 * TAU, rr = wob(a, r, sd); const x = X(ix + Math.cos(a) * rr), y = Y(iy + Math.sin(a) * rr); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); } ctx.closePath(); };
-  mapAll.isl.forEach(([ix, iy, r, b], idx) => {
-    const sd = idx === 0 ? 0 : idx * 1.7;
+  mapAll.isl.forEach(([ix, iy, r, b, ss], idx) => {
+    curSS = ss || 0; const sd = idx === 0 ? 0 : (ss || idx * 1.7);
     lg.save(); path(lg, ix, iy, r + 40, sd); lg.fillStyle = '#c9b77a'; lg.fill(); lg.restore();   // beach ring
     lg.save(); path(lg, ix, iy, r - 20, sd); lg.clip();
     const [ux, uy] = RC.homeDir(ix, iy), vx = -uy, vy = ux;

@@ -178,16 +178,24 @@ const DIST_F = (x, y) => Math.max(0, Math.min(1, (Math.hypot(x, y) - R) / (WORLD
 // ---------- the archipelago: island 0 is home (all forest); the others are random sizes, each 25% forest on the side facing home and 75% its own biome (b) ----------
 const WORLD_R = 30000, BOAT_SPEED = 190, BOAT_AHEAD = 100, ISL_VER = 5;   // ISL_VER: bump when island generation changes so saved rooms regenerate their outer islands
 function seeded(code) { let h = 2166136261; for (const ch of String(code)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); let a = h >>> 0; return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
-// every outer island is at least as big as home (radius R to 1.4 R). The two nearest sit 500-1100 of open sea from home's shore
-// (about the same sail as before); the rest spread out across the world with at least 450 of sea between any two shores
-const ISL_MIN = R, ISL_MAX = R * 1.4, ISL_GAP = 450;
+// outer islands come in all sizes (about 1/6 of home's radius up to 1.4x) and are lumpy blobs, never circles (see RC.shapeK). The two nearest sit 500-1100 of
+// open sea from home's shore; the rest spread over the world, as many as fit (up to 60), with at least 450 of sea between any two shores
+const ISL_GAP = 450;
+function islandsClash(A, B, gap) {   // do the real outlines of two islands come closer than `gap`?
+  if (Math.hypot(A.x - B.x, A.y - B.y) > (A.r + B.r) * RC.SHAPE_MAX + gap) return false;
+  for (const [P, Q] of [[A, B], [B, A]]) for (let k = 0; k < 64; k++) { const a = k / 64 * 6.2832, e = RC.edgeR(P, a); if (RC.inIsland(Q, P.x + Math.cos(a) * e, P.y + Math.sin(a) * e, -gap)) return true; }
+  return Math.hypot(A.x - B.x, A.y - B.y) < Math.min(A.r, B.r) * 0.6;   // (one inside the other)
+}
 function genIslands(code) {
   const rnd = seeded(code), out = [{ x: 0, y: 0, r: R, b: 'f' }]; let tries = 0;
-  while (out.length < 11 && tries++ < 20000) {
-    const near = out.length <= 2, r = ISL_MIN + rnd() * (ISL_MAX - ISL_MIN), lo = R + r + (near ? 500 : ISL_GAP), hi = near ? lo + 600 : WORLD_R - r - 300;
+  while (out.length < 61 && tries++ < 80000) {
+    const near = out.length <= 2, q = rnd();
+    const r = near ? R * (0.55 + rnd() * 0.8) : q < 0.22 ? R * (0.18 + rnd() * 0.27) : q < 0.6 ? R * (0.45 + rnd() * 0.45) : R * (0.9 + rnd() * 0.5);   // small / medium / large
+    const bound = r * RC.SHAPE_MAX, lo = R + bound + (near ? 500 : ISL_GAP), hi = near ? lo + 600 : WORLD_R - bound - 300;
     const dist = lo + rnd() * (hi - lo), a = rnd() * 6.283, x = Math.cos(a) * dist, y = Math.sin(a) * dist;
-    if (out.some(i => Math.hypot(x - i.x, y - i.y) < r + i.r + ISL_GAP)) continue;   // keep water between islands
-    out.push({ x: Math.round(x), y: Math.round(y), r: Math.round(r), b: (q => q < 0.28 ? 'm' : q < 0.6 ? 's' : q < 0.92 ? 'd' : 'l')(rnd()) });   // the 75% biome: snow, desert, a mix of both ('m'), or (rarely, 8%) lava ('l')
+    const cand = { x, y, r, s: +(out.length * 1.7).toFixed(1) };
+    if (out.some(i => islandsClash(cand, i, ISL_GAP))) continue;   // keep water between islands
+    out.push({ x: Math.round(x), y: Math.round(y), r: Math.round(r), s: +(out.length * 1.7).toFixed(1), b: (q => q < 0.28 ? 'm' : q < 0.6 ? 's' : q < 0.92 ? 'd' : 'l')(rnd()) });   // the 75% biome: snow, desert, a mix of both ('m'), or (rarely, 8%) lava ('l')
   }
   if (out.length > 2 && !out.some(i => i.b === 's' || i.b === 'm')) out[out.length - 1].b = 's';   // always at least one snow island
   if (out.length > 2 && !out.slice(1).some(i => i.b === 'd' || i.b === 'm')) out[out.length - 1].b = 'd';   // and at least one desert
@@ -196,7 +204,7 @@ function genIslands(code) {
 function islandRes(is, idx, code) {
   const rnd = seeded(code + '#' + idx), A = Math.PI * is.r * is.r, out = [];
   // part: true = only in the forest quarter, false = only in the biome's three quarters, null = anywhere
-  const add = (k, n, part, biome) => { for (let i = 0, tries = 0; i < n && tries < n * 40; tries++) { const a = rnd() * 6.283, d = 30 + Math.sqrt(rnd()) * (is.r - 110), x = is.x + Math.cos(a) * d, y = is.y + Math.sin(a) * d; if (part !== null && RC.inForestPart(is.x, is.y, is.r, x, y) !== part) continue; if (biome && RC.biomeAt(is.x, is.y, is.r, is.b, x, y) !== biome) continue; const kk = k === 'r' && rnd() < GOLD_P ? 'g' : k; out.push({ k: kk, x, y, hp: HP[kk], mhp: HP[kk], rt: 0, isl: idx }); i++; } };
+  const add = (k, n, part, biome) => { for (let i = 0, tries = 0; i < n && tries < n * 40; tries++) { const a = rnd() * 6.283, d = 30 + Math.sqrt(rnd()) * (RC.edgeR(is, a) - 110), x = is.x + Math.cos(a) * d, y = is.y + Math.sin(a) * d; if (part !== null && RC.inForestPart(is.x, is.y, is.r, x, y) !== part) continue; if (biome && RC.biomeAt(is.x, is.y, is.r, is.b, x, y) !== biome) continue; const kk = k === 'r' && rnd() < GOLD_P ? 'g' : k; out.push({ k: kk, x, y, hp: HP[kk], mhp: HP[kk], rt: 0, isl: idx }); i++; } };
   add('t', Math.max(2, Math.round(A * 0.25 * 1.3e-5)), true); add('b', Math.max(1, Math.round(A * 0.25 * 3.2e-6)), true);   // forest quarter: trees + berry bushes
   const half = is.b === 'm' ? 0.5 : 1;   // a mixed island has cacti on its desert half and pines on its snow half
   if (is.b === 'd' || is.b === 'm') add('c', Math.max(3, Math.round(A * 0.75 * half * 1.1e-5)), false, 'd');   // desert: cacti
@@ -211,9 +219,9 @@ const runPayout = days => { let t = 0; for (let d = 1; d <= days; d++) t += d <=
 function genLoot(islands, code) {
   const out = []; let id = 1;
   for (let i = 1; i < islands.length; i++) {
-    const is = islands[i], rnd = seeded(code + '@loot' + i), n = 5 + Math.floor(rnd() * 4);
+    const is = islands[i], rnd = seeded(code + '@loot' + i), n = Math.max(1, Math.round((5 + Math.floor(rnd() * 4)) * Math.min(1, (is.r / R) * (is.r / R) * 1.3)));   // small islands have fewer loot spots
     for (let k = 0, tries = 0; k < n && tries < 800; tries++) {
-      const a = rnd() * 6.283, d = 160 + Math.sqrt(rnd()) * Math.max(100, is.r - 520), x = is.x + Math.cos(a) * d, y = is.y + Math.sin(a) * d;
+      const a = rnd() * 6.283, d = 160 + Math.sqrt(rnd()) * Math.max(100, RC.edgeR(is, a) - 520), x = is.x + Math.cos(a) * d, y = is.y + Math.sin(a) * d;
       if (out.some(l => l.isl === i && Math.hypot(l.x - x, l.y - y) < 500)) continue;
       const q = rnd(), tier = q < 0.30 ? 1 : q < 0.50 ? 2 : q < 0.58 ? 3 : 0, trader = 0, seed = Math.floor(rnd() * 1e6), ca = (seed % 628) / 100;
       out.push({ id: id++, isl: i, x: Math.round(x), y: Math.round(y), b: RC.biomeAt(is.x, is.y, is.r, is.b, x, y), seed, tier, cx: Math.round(x + Math.cos(ca) * 90), cy: Math.round(y + Math.sin(ca) * 90), trader, tx: Math.round(x + Math.cos(ca + 3.14159) * 105), ty: Math.round(y + Math.sin(ca + 3.14159) * 105), open: 0 }); k++;
@@ -233,7 +241,7 @@ function genLava(islands, code, loot) {
   for (let i = 1; i < islands.length; i++) {
     const is = islands[i]; if (is.b !== 'l') continue; let n = 0;
     for (let t = 0; t < 400 && n < 12; t++) {
-      const a = rnd() * 6.283, d = 250 + Math.sqrt(rnd()) * Math.max(100, is.r - 750), x = is.x + Math.cos(a) * d, y = is.y + Math.sin(a) * d, r = 60 + rnd() * 80;
+      const a = rnd() * 6.283, d = 250 + Math.sqrt(rnd()) * Math.max(100, RC.edgeR(is, a) - 750), x = is.x + Math.cos(a) * d, y = is.y + Math.sin(a) * d, r = 60 + rnd() * 80;
       if (RC.biomeAt(is.x, is.y, is.r, is.b, x, y) !== 'l' || RC.biomeAt(is.x, is.y, is.r, is.b, x + Math.cos(a) * r, y + Math.sin(a) * r) !== 'l') continue;
       if (out.some(q => Math.hypot(q.x - x, q.y - y) < q.r + r + 160) || loot.some(l => Math.hypot(l.x - x, l.y - y) < r + 420 || Math.hypot(l.cx - x, l.cy - y) < r + 200 || Math.hypot(l.tx - x, l.ty - y) < r + 200)) continue;
       out.push({ id: out.length + 1, isl: i, x: Math.round(x), y: Math.round(y), r: Math.round(r) }); n++;
@@ -248,8 +256,8 @@ function genVillages(islands, code, loot) {
     const is = islands[i]; if (is.b !== 'd' && is.b !== 'm') continue;
     let made = 0;   // two camps on each desert island
     for (let t = 0; t < 200 && made < 2; t++) {
-      const a = rnd() * 6.283, d = 400 + Math.sqrt(rnd()) * Math.max(100, is.r - 1000), x = is.x + Math.cos(a) * d, y = is.y + Math.sin(a) * d;
-      if (RC.biomeAt(is.x, is.y, is.r, is.b, x, y) !== 'd' || Math.hypot(x - is.x, y - is.y) > is.r - 500 || out.some(v => v.isl === i && Math.hypot(v.x - x, v.y - y) < 1300)) continue;
+      const a = rnd() * 6.283, d = 400 + Math.sqrt(rnd()) * Math.max(100, RC.edgeR(is, a) - 1000), x = is.x + Math.cos(a) * d, y = is.y + Math.sin(a) * d;
+      if (RC.biomeAt(is.x, is.y, is.r, is.b, x, y) !== 'd' || !RC.inIsland(is, x, y, 500) || out.some(v => v.isl === i && Math.hypot(v.x - x, v.y - y) < 1300)) continue;
       if (loot.some(l => Math.hypot(l.x - x, l.y - y) < 500 || Math.hypot(l.cx - x, l.cy - y) < 400 || Math.hypot(l.tx - x, l.ty - y) < 400)) continue;
       out.push({ id: out.length + 1, isl: i, x: Math.round(x), y: Math.round(y), seed: Math.floor(rnd() * 1e6) }); made++;
     }
@@ -333,8 +341,8 @@ class Room {
     if (!home && !here.some(p => !p.down)) return;
     const st = home ? this : (this.islNight[i] = this.islNight[i] || { chargerNight: 0, raidNight: 0 });
     const size = home ? 1 : Math.min(1, Math.max(0.15, is.r / R));   // never more than home gets
-    const at0 = (ang, out = 0) => home ? [Math.cos(ang) * (ALIEN_R + out), Math.sin(ang) * (ALIEN_R + out)] : [is.x + Math.cos(ang) * (is.r - 40), is.y + Math.sin(ang) * (is.r - 40)];
-    const at = (ang, out = 0) => { let [x, y] = this.outOfFire(...at0(ang, out)); if (!home) { const dx = x - is.x, dy = y - is.y, d = Math.hypot(dx, dy); if (d > is.r - 40) { x = is.x + dx * (is.r - 40) / d; y = is.y + dy * (is.r - 40) / d; } } return [x, y]; };   // never inside a campfire's range
+    const at0 = (ang, out = 0) => home ? [Math.cos(ang) * (ALIEN_R + out), Math.sin(ang) * (ALIEN_R + out)] : [is.x + Math.cos(ang) * (RC.edgeR(is, ang) - 40), is.y + Math.sin(ang) * (RC.edgeR(is, ang) - 40)];
+    const at = (ang, out = 0) => { let [x, y] = this.outOfFire(...at0(ang, out)); if (!home) { const dx = x - is.x, dy = y - is.y, d = Math.hypot(dx, dy); const er = RC.edgeRat(is, x, y) - 40; if (d > er) { x = is.x + dx * er / d; y = is.y + dy * er / d; } } return [x, y]; };   // never inside a campfire's range
     let want = Math.min(40, 2 + this.night * 2); if (this.night % 5 === 0) want = Math.floor(want * 1.5);
     if (!home) want = Math.max(2, Math.round(want * size));
     if (this.night >= CHARGER.firstNight && st.chargerNight !== this.night) {
@@ -357,9 +365,9 @@ class Room {
       this.spawnA({ id: this.nid++, isl: i, x, y, hp: brute ? 120 : 30, mhp: brute ? 120 : 30, sp: brute ? 55 : 70 + Math.min(30, this.night * 2), dmg: brute ? 20 : 10, k: brute ? 1 : 0, cd: 0 });
     }
   }
-  landAt(x, y, m = 30) { for (let i = 0; i < this.islands.length; i++) { const s = this.islands[i]; if (Math.hypot(x - s.x, y - s.y) < s.r - m) return i; } return -1; }
-  isWater(x, y) { if (Math.hypot(x, y) > WORLD_R) return false; for (const s of this.islands) if (Math.hypot(x - s.x, y - s.y) < s.r + 40) return false; return true; }
-  landPoint(x, y, m = 30) { let best = null, bd = 1e9; for (const s of this.islands) { const d = Math.hypot(x - s.x, y - s.y) - s.r; if (d < bd) { bd = d; best = s; } } const dx = x - best.x, dy = y - best.y, L = Math.hypot(dx, dy) || 1, k = Math.min(L, best.r - m) / L; return [best.x + dx * k, best.y + dy * k]; }
+  landAt(x, y, m = 30) { for (let i = 0; i < this.islands.length; i++) { const s = this.islands[i]; if (RC.inIsland(s, x, y, m)) return i; } return -1; }
+  isWater(x, y) { if (Math.hypot(x, y) > WORLD_R) return false; for (const s of this.islands) if (RC.inIsland(s, x, y, -40)) return false; return true; }
+  landPoint(x, y, m = 30) { let best = null, bd = 1e9; for (const s of this.islands) { const d = Math.hypot(x - s.x, y - s.y) - RC.edgeRat(s, x, y); if (d < bd) { bd = d; best = s; } } const dx = x - best.x, dy = y - best.y, L = Math.hypot(dx, dy) || 1, k = Math.min(L, RC.edgeRat(best, x, y) - m) / L; return [best.x + dx * k, best.y + dy * k]; }
   // ----- boats: placed in the water near the shore; two riders, the first one steers -----
   tickBoats(dt) {
     for (const b of this.boats) {   // boats rot away over time; one that falls apart takes everyone aboard down with it
@@ -426,13 +434,13 @@ class Room {
     const kind = () => { const r = Math.random(); return r < 0.06 ? 3 : r < 0.32 ? 2 : 1; }, fish = k => k === 3 ? 1 + Math.floor(Math.random() * 2) : k === 2 ? 2 + Math.floor(Math.random() * 2) : 3 + Math.floor(Math.random() * 3);   // 3-5 common, 2-3 rare, 1-2 legendary fish per pool
     if (Math.random() < 0.6) {   // off a beach
       const i = Math.floor(Math.random() * this.islands.length), is = this.islands[i]; if (this.pools.filter(q => q.isl === i).length >= 4) return;
-      const a = Math.random() * 6.283, d = is.r + 40 + Math.random() * 60, x = is.x + Math.cos(a) * d, y = is.y + Math.sin(a) * d;
+      const a = Math.random() * 6.283, d = RC.edgeR(is, a) + 40 + Math.random() * 60, x = is.x + Math.cos(a) * d, y = is.y + Math.sin(a) * d;
       if (!this.isWater(x, y) || this.pools.some(q => Math.hypot(q.x - x, q.y - y) < 250)) return;
       const k = kind(); this.pools.push({ id: this.nid++, isl: i, x: Math.round(x), y: Math.round(y), kind: k, left: fish(k), ttl: 200 + Math.random() * 200 });
     } else {   // deep ocean, somewhere ahead of a player
       const P = [...this.players.values()].filter(p => !p.down); if (!P.length || this.pools.filter(q => q.isl < 0).length >= 8) return;
       const p = P[Math.floor(Math.random() * P.length)], a = Math.random() * 6.283, d = 700 + Math.random() * 2200, x = p.x + Math.cos(a) * d, y = p.y + Math.sin(a) * d;
-      if (!this.isWater(x, y) || this.islands.some(s => Math.hypot(x - s.x, y - s.y) < s.r + 250) || this.pools.some(q => Math.hypot(q.x - x, q.y - y) < 400)) return;
+      if (!this.isWater(x, y) || this.islands.some(s => RC.inIsland(s, x, y, -250)) || this.pools.some(q => Math.hypot(q.x - x, q.y - y) < 400)) return;
       const k = kind(); this.pools.push({ id: this.nid++, isl: -1, x: Math.round(x), y: Math.round(y), kind: k, left: fish(k), ttl: 300 + Math.random() * 200 });
     }
   }
@@ -452,7 +460,7 @@ class Room {
   // sharks: out on the open sea a fin now and then picks a boat with people aboard and chases it; each bite takes 25% of the boat's full life
   stepSharks(dt) {
     if (!this.sharks) this.sharks = [];
-    const shoreDist = (x, y) => Math.min(...this.islands.map(s => Math.hypot(x - s.x, y - s.y) - s.r));
+    const shoreDist = (x, y) => Math.min(...this.islands.map(s => Math.hypot(x - s.x, y - s.y) - RC.edgeRat(s, x, y)));
     for (const b of this.boats) {   // now and then a ridden boat far from land draws a shark
       if (!b.riders.length || this.sharks.some(s => s.tg === b.id)) continue; if (shoreDist(b.x, b.y) < 700 || Math.random() > dt / 45) continue;
       const a = Math.random() * 6.283, d = 650 + Math.random() * 250, x = b.x + Math.cos(a) * d, y = b.y + Math.sin(a) * d; if (!this.isWater(x, y)) continue;
@@ -480,9 +488,9 @@ class Room {
   releaseBoat(p) { if (!p.boat) return; const b = this.boats.find(x => x.id === p.boat); p.boat = 0; if (b) { b.riders = b.riders.filter(id => id !== p.id); if (b.drv === p.id) b.drv = b.riders[0] || 0; } }
   exitBoat(p) {   // step out onto the nearest shore (must be close to land)
     const b = this.boats.find(x => x.id === p.boat); if (!b) { p.boat = 0; return; }
-    let best = null, bd = 1e9; for (const s of this.islands) { const d = Math.hypot(b.x - s.x, b.y - s.y) - s.r; if (d < bd) { bd = d; best = s; } }
+    let best = null, bd = 1e9; for (const s of this.islands) { const d = Math.hypot(b.x - s.x, b.y - s.y) - RC.edgeRat(s, b.x, b.y); if (d < bd) { bd = d; best = s; } }
     if (!best || bd > 120) { send(p.ws, { t: 'toast', msg: 'Sail closer to land to get out.' }); return; }
-    const dx = b.x - best.x, dy = b.y - best.y, k = (best.r - 50) / (Math.hypot(dx, dy) || 1); this.releaseBoat(p); p.x = best.x + dx * k; p.y = best.y + dy * k;
+    const dx = b.x - best.x, dy = b.y - best.y, k = (RC.edgeRat(best, b.x, b.y) - 50) / (Math.hypot(dx, dy) || 1); this.releaseBoat(p); p.x = best.x + dx * k; p.y = best.y + dy * k;
   }
   placeBoat(p, i) {
     const fail = msg => ({ ok: false, msg });
@@ -503,7 +511,7 @@ class Room {
     const no = msg => send(p.ws, { t: 'toast', msg });
     if (p.boat) return no('Not from a boat.');
     const ii = this.landAt(p.x, p.y); if (ii <= 0) return no('Campfires go on the outer islands - home already has its fire.');
-    const is = this.islands[ii]; if (Math.hypot(p.x - is.x, p.y - is.y) > is.r - 250) return no('Too close to the shore.');
+    const is = this.islands[ii]; if (!RC.inIsland(is, p.x, p.y, 250)) return no('Too close to the shore.');
     if (this.camps.some(c => c.isl === ii)) return no('This island already has a campfire - only one per island.');
     if (this.camps.some(c => Math.hypot(c.x - p.x, c.y - p.y) < 260)) return no('Too close to another campfire.');
     if (this.res.some(r => r.isl === ii && Math.hypot(r.x - p.x, r.y - p.y) < 140)) return no('Too close to a tree, rock, bush or ore - find a clearer spot.');   // (resources are checked even while they are chopped and regrowing)
@@ -619,7 +627,7 @@ class Room {
     const wood = WOODY(r.k), delay = wood ? .95 : .5, kind = wood ? 'w' : r.k === 'b' ? 'f' : r.k === 'g' ? 'o' : 's';
     for (let i = 0; i < n; i++) {
       const a = Math.random() * 6.283, d = 24 + Math.random() * 28; let x = r.x + Math.cos(a) * d, y = r.y + Math.sin(a) * d;
-      { const s = this.islands[r.isl | 0] || this.islands[0], dx = x - s.x, dy = y - s.y, dd = Math.hypot(dx, dy); if (dd > s.r - 40) { x = s.x + dx * (s.r - 40) / dd; y = s.y + dy * (s.r - 40) / dd; } }
+      { const s = this.islands[r.isl | 0] || this.islands[0], dx = x - s.x, dy = y - s.y, dd = Math.hypot(dx, dy), er = RC.edgeRat(s, x, y) - 40; if (dd > er) { x = s.x + dx * er / dd; y = s.y + dy * er / dd; } }
       this.pend.push({ k: kind, x, y, t: delay });
     }
   }
@@ -646,7 +654,7 @@ class Room {
       if (d < RC.fireClear(r.kind)) return fail('Too close to the fire. Nothing can be built on or against it.');
       if (station && d > campR) return fail('Stand inside the camp (the fire ring), a little away from the fire, facing a free spot.');
       if (!station && d > campR + 200) return fail('Walls and traps go in or just outside the camp.');
-      if (Math.hypot(x - isl.x, y - isl.y) > isl.r - 50) return fail('Too close to the water.');
+      if (!RC.inIsland(isl, x, y, 50)) return fail('Too close to the water.');
       if (this.struct.filter(st => st.k === r.kind && this.inCamp(CF, st)).length >= (r.max || 99)) return fail('You have built the maximum number of those.');
       for (const st of this.struct) {   // nothing may be crafted too close to anything else
         const stWall = st.k === 'wall' || st.k === 'gate' || st.k === 'spike', dd = Math.hypot(st.x - x, st.y - y);
@@ -742,7 +750,7 @@ class Room {
   rabSpot(i, key = 'rabbit') {
     const is = this.islands[i], C = CRIT[key];
     for (let k = 0; k < 30; k++) {
-      const a = Math.random() * 6.283, d = Math.sqrt(Math.random()) * (is.r - RAB.edge - 20), x = is.x + Math.cos(a) * d, y = is.y + Math.sin(a) * d;
+      const a = Math.random() * 6.283, d = Math.sqrt(Math.random()) * (RC.edgeR(is, a) - RAB.edge - 20), x = is.x + Math.cos(a) * d, y = is.y + Math.sin(a) * d;
       if (i === 0 ? (C.b === 'f' ? Math.hypot(x, y) < RC.camp(3) + 60 : !RC.inSnow(x, y)) : RC.biomeAt(is.x, is.y, is.r, is.b, x, y) !== C.b) continue;   // not in camp / only in its own biome
       if ([...this.players.values()].some(p => Math.hypot(p.x - x, p.y - y) < 500)) continue;   // never pop in next to someone
       return [x, y];
@@ -777,7 +785,7 @@ class Room {
         dx = Math.cos(b.wa); dy = Math.sin(b.wa); spd = C.walk;
       }
       let nx = b.x + dx * spd * dt, ny = b.y + dy * spd * dt;
-      const lim = is.r - RAB.edge, cx = nx - is.x, cy = ny - is.y, cd = Math.hypot(cx, cy);
+      const lim = RC.edgeRat(is, nx, ny) - RAB.edge, cx = nx - is.x, cy = ny - is.y, cd = Math.hypot(cx, cy);
       if (cd > lim) {   // at the shore: run along the coast (whichever way leads away), never stand there stuck
         const ux = cx / cd, uy = cy / cd; let tx = -uy, ty = ux; const dot = tx * dx + ty * dy;
         if (dot < -0.05 || (Math.abs(dot) <= 0.05 && b.side < 0)) { tx = -tx; ty = -ty; }   // head-on: keep the way it was already going
@@ -820,7 +828,7 @@ class Room {
       if (tg) { const d = go(tg.x, tg.y, 115); if (d < 36 && w.cd <= 0) { w.cd = 1.4; w.bite = 0.25; this.hurt(tg, w.dmg); } }
       if (tg) w.lost = 0; if (w.t <= 0 || (!tg && (w.lost = (w.lost || 0) + dt) > 4)) { w.vs = 0; w.air = 1; w.hx = w.x; w.hy = w.y; w.lost = 0; }   // time is up (or nobody is left near): take off
     }
-    { const ex = w.x - is.x, ey = w.y - is.y, L = Math.hypot(ex, ey); if (L > is.r - 45) { w.x = is.x + ex * (is.r - 45) / L; w.y = is.y + ey * (is.r - 45) / L; } }
+    { const ex = w.x - is.x, ey = w.y - is.y, L = Math.hypot(ex, ey), er = RC.edgeRat(is, w.x, w.y) - 45; if (L > er) { w.x = is.x + ex * er / L; w.y = is.y + ey * er / L; } }
   }
   stepWolves(P, dt) {
     if (!this.wolves) this.wolves = [];
@@ -834,7 +842,7 @@ class Room {
           for (let t = 0; t < 40 && !q; t++) {
             let x, y;
             if (i === 0) { const a = RC.SNOW_A + (Math.random() - 0.5) * 1.3, d = 1300 + Math.random() * (R - 1500); x = Math.cos(a) * d; y = Math.sin(a) * d; if (!RC.inSnow(x, y)) continue; }
-            else { const a = Math.random() * 6.283, d = Math.sqrt(Math.random()) * (is.r - 200); x = is.x + Math.cos(a) * d; y = is.y + Math.sin(a) * d; if (RC.biomeAt(is.x, is.y, is.r, is.b, x, y) !== 's') continue; }
+            else { const a = Math.random() * 6.283, d = Math.sqrt(Math.random()) * (RC.edgeR(is, a) - 200); x = is.x + Math.cos(a) * d; y = is.y + Math.sin(a) * d; if (RC.biomeAt(is.x, is.y, is.r, is.b, x, y) !== 's') continue; }
             if (!P.some(p => Math.hypot(p.x - x, p.y - y) < 600) && !this.inFire(x, y, 60)) q = [x, y];
           }
           if (!q) continue; have++;
@@ -851,7 +859,7 @@ class Room {
         const is = this.islands[i]; if (is.b !== 'd' && is.b !== 'm') continue;
         let have = this.wolves.filter(w => w.vul && w.isl === i).length;
         for (let k = 0; k < 3 && have < 4; k++) for (let t = 0; t < 30; t++) {
-          const a = Math.random() * 6.283, d = Math.sqrt(Math.random()) * (is.r - 300), x = is.x + Math.cos(a) * d, y = is.y + Math.sin(a) * d;
+          const a = Math.random() * 6.283, d = Math.sqrt(Math.random()) * (RC.edgeR(is, a) - 300), x = is.x + Math.cos(a) * d, y = is.y + Math.sin(a) * d;
           if (RC.biomeAt(is.x, is.y, is.r, is.b, x, y) !== 'd' || P.some(p => Math.hypot(p.x - x, p.y - y) < 900)) continue;
           this.wolves.push({ id: this.nid++, wolf: 1, vul: 1, air: 1, vs: 0, isl: i, x, y, hx: x, hy: y, hp: 40, mhp: 40, dmg: 8, fa: Math.random() * 6.283, st: 0, tg: 0, cd: 0, wt: 0, wa: 0, bite: 0, oa: Math.random() * 6.283, t: 0 }); have++; break;
         }
@@ -869,7 +877,7 @@ class Room {
             for (let t = 0; t < 40 && !q; t++) {
               let x, y;
               if (i === 0) { const a = Math.random() * 6.283, d = RC.camp(3) + 700 + Math.random() * (R - RC.camp(3) - 1100); x = Math.cos(a) * d; y = Math.sin(a) * d; if (RC.inSnow(x, y)) continue; }
-              else { const a = Math.random() * 6.283, d = Math.sqrt(Math.random()) * (is.r - 220); x = is.x + Math.cos(a) * d; y = is.y + Math.sin(a) * d; if (RC.biomeAt(is.x, is.y, is.r, is.b, x, y) !== M.b) continue; }
+              else { const a = Math.random() * 6.283, d = Math.sqrt(Math.random()) * (RC.edgeR(is, a) - 220); x = is.x + Math.cos(a) * d; y = is.y + Math.sin(a) * d; if (RC.biomeAt(is.x, is.y, is.r, is.b, x, y) !== M.b) continue; }
               if (!P.some(p => Math.hypot(p.x - x, p.y - y) < 600) && !this.inFire(x, y, 80) && !(this.lava || []).some(l => l.isl === i && Math.hypot(l.x - x, l.y - y) < l.r + 40)) q = [x, y];
             }
             if (!q) continue; have++;
@@ -923,7 +931,7 @@ class Room {
       let nx = w.x + dx * spd * dt, ny = w.y + dy * spd * dt;
       if (w.st !== 2 && !this.mobBiomeOk(w, wi, is, nx, ny)) { if (w.st === 1) { w.st = 2; w.rt = 0; } else { w.sit = 1; } continue; }   // wolves, bears and mammoths never leave the snow: a chase ends at its edge and they head home
       if (w.st !== 2 && (nearFire(nx, ny) || Math.hypot(nx - w.hx, ny - w.hy) > WOLF.leash)) { w.st = 2; w.rt = 0; continue; }   // got near the fire / too far from home: back it goes
-      { const ex = nx - is.x, ey = ny - is.y, L = Math.hypot(ex, ey); if (L > is.r - 45) { nx = is.x + ex * (is.r - 45) / L; ny = is.y + ey * (is.r - 45) / L; } }   // stays on its island
+      { const ex = nx - is.x, ey = ny - is.y, L = Math.hypot(ex, ey), er = RC.edgeRat(is, nx, ny) - 45; if (L > er) { nx = is.x + ex * er / L; ny = is.y + ey * er / L; } }   // stays on its island
       for (const st of this.struct) { if (st.k === 'trap' || st.k === 'spike' || (st.k === 'gate' && st.open)) continue; const [qx, qy, qr] = solidPt(st, nx, ny), sd = Math.hypot(nx - qx, ny - qy), mn = qr + (w.big ? 26 : 12); if (sd < mn && sd > 0.01) { nx = qx + (nx - qx) / sd * mn; ny = qy + (ny - qy) / sd * mn; } }   // walls and gates are solid for wolves too
       w.x = nx; w.y = ny; w.fa = Math.atan2(dy, dx);
     }
@@ -984,8 +992,8 @@ class Room {
     if (o.islands && o.isv !== ISL_VER) {   // older island layouts: regenerate the outer islands (seeded by room code) and their resources
       r.islands = genIsl; r.res = fresh;   // the whole archipelago (home too) is regenerated
       for (const b of r.boats) if (!r.isWater(b.x, b.y)) {   // a boat that now sits on land is pushed out to the nearest shore
-        let best = r.islands[0], bd = 1e9; for (const s of r.islands) { const d = Math.hypot(b.x - s.x, b.y - s.y) - s.r; if (d < bd) { bd = d; best = s; } }
-        const dx = b.x - best.x, dy = b.y - best.y, L = Math.hypot(dx, dy) || 1; b.x = best.x + dx / L * (best.r + 90); b.y = best.y + dy / L * (best.r + 90);
+        let best = r.islands[0], bd = 1e9; for (const s of r.islands) { const d = Math.hypot(b.x - s.x, b.y - s.y) - RC.edgeRat(s, b.x, b.y); if (d < bd) { bd = d; best = s; } }
+        const dx = b.x - best.x, dy = b.y - best.y, L = Math.hypot(dx, dy) || 1; const er2 = RC.edgeRat(best, b.x, b.y) + 90; b.x = best.x + dx / L * er2; b.y = best.y + dy / L * er2;
       }
     }
     r.loot = genLoot(r.islands, o.code); r.villages = genVillages(r.islands, o.code, r.loot); r.lava = genLava(r.islands, o.code, r.loot);   // loot areas are derived from the islands; only which chests were opened and the campfires are saved
@@ -1238,7 +1246,7 @@ class Room {
         if (sd < mn) { const k = sd > 0.01 ? mn / sd : 1; a.x = qx + (a.x - qx) * k; a.y = qy + (a.y - qy) * k; }   // solid: aliens slide around it, but cannot damage it, and it does not damage them
       }
       { const LF = a.k < 3 ? this.litAt(a.x, a.y, 0) : null; if (LF) { const r0 = RC.camp(LF.f.lvl), dx = a.x - LF.x, dy = a.y - LF.y, dd = Math.max(1, Math.hypot(dx, dy)); a.x = LF.x + dx * r0 / dd; a.y = LF.y + dy * r0 / dd; } }   // repelled by firelight (the main fire or any campfire)
-      if (!home) { const ox = a.x - own.x, oy = a.y - own.y, od = Math.hypot(ox, oy), lim = own.r - 30; if (od > lim) { a.x = own.x + ox * lim / od; a.y = own.y + oy * lim / od; } }   // outer-island enemies stay ashore
+      if (!home) { const ox = a.x - own.x, oy = a.y - own.y, od = Math.hypot(ox, oy), lim = RC.edgeRat(own, a.x, a.y) - 30; if (od > lim) { a.x = own.x + ox * lim / od; a.y = own.y + oy * lim / od; } }   // outer-island enemies stay ashore
       if (tgt && tgt.wall) { if (a.k !== 4 && d - tgt.qr < (a.reach === undefined ? 28 : a.reach) + (a.rad || 12) && a.cd <= 0) { this.hitWall(tgt.wall, a.dmg); a.cd = a.atkCd || 1; } }   // walls take the hits (they do no damage back)
       else if (tgt && d < (a.reach === undefined ? 28 : a.reach) && a.cd <= 0 && (a.k >= 3 || !this.litAt(tgt.x, tgt.y))) {
         this.hurt(tgt, a.dmg); a.cd = a.atkCd || 1;
@@ -1320,7 +1328,7 @@ wss.on('connection', ws => {
       room = rooms.get(rc);
       if (room.players.size >= MAXP) { send(ws, { t: 'err', m: 'Room is full' }); return; }
       me = room.add(ws, name, cls, pf, email);
-      send(ws, { t: 'init', id: me.id, room: rc, R, cls, gear: me.gear, prof: view(pf), res: room.res.map(r => [r.k, Math.round(r.x), Math.round(r.y)]), isl: room.islands.map(i => [i.x, i.y, i.r, i.b]), loot: room.loot.map(l => [l.id, l.x, l.y, l.b, l.seed, l.tier, l.cx, l.cy, l.trader, l.tx, l.ty]), vg: (room.villages || []).map(v => [v.id, v.x, v.y, v.seed]), lv: (room.lava || []).map(l => [l.x, l.y, l.r]) });
+      send(ws, { t: 'init', id: me.id, room: rc, R, cls, gear: me.gear, prof: view(pf), res: room.res.map(r => [r.k, Math.round(r.x), Math.round(r.y)]), isl: room.islands.map(i => [i.x, i.y, i.r, i.b, i.s || 0]), loot: room.loot.map(l => [l.id, l.x, l.y, l.b, l.seed, l.tier, l.cx, l.cy, l.trader, l.tx, l.ty]), vg: (room.villages || []).map(v => [v.id, v.x, v.y, v.seed]), lv: (room.lava || []).map(l => [l.x, l.y, l.r]) });
     } else if (m.t === 'craft' && me) {
       const now = Date.now(); if (now - (me.lastCraft || 0) < 200) { send(ws, { t: 'crafted', id: String(m.id || ''), ok: false, msg: 'Slow down a little.', gear: me.gear }); return; } me.lastCraft = now;
       let res; try { res = room.craft(me, String(m.id || ''), m.rot); } catch (e) { console.error('craft error:', e && e.stack || e); res = { ok: false, msg: 'Could not craft that.' }; }
