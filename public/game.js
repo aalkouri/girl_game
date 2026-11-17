@@ -598,7 +598,7 @@ function buildCraft() {
   craftSig = refreshSig();
 }
 const refreshSig = () => { const iv = inv(); return iv.wood + ',' + iv.stone + ',' + hasBench() + ',' + JSON.stringify(GEAR); };
-function setCraft(open) { craftOpen = open; $('craft').style.display = open ? 'flex' : 'none'; if (open) { $('craftMsg').textContent = ''; buildCraft(); } }
+function setCraft(open) { if (open) { if ((S && S.st || []).some(t => t[1] === 'bench')) armDismantle($('craftDis'), () => nearestOf('bench')); else $('craftDis').style.display = 'none'; } craftOpen = open; $('craft').style.display = open ? 'flex' : 'none'; if (open) { $('craftMsg').textContent = ''; buildCraft(); } }
 $('craftBtn').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); SFX.init(); setCraft(!craftOpen); });
 $('craftClose').onclick = () => setCraft(false);
 
@@ -606,7 +606,7 @@ $('craftClose').onclick = () => setCraft(false);
 const BUFF = { speed: 0, regen: 0, dmg: 0 }; let buffAt = 0;
 const nearStruct = id => { const e = structE[id], me = ents2['p' + myId]; return !!(e && me && Math.hypot(me.x - e.x, me.y - e.y) < 125); };
 const anyPotNear = () => { for (const id in structE) if (structE[id].k === 'pot' && nearStruct(id)) return true; return false; };
-function openChest(id) { setCraft(false); closePot(); chestId = id; chestSig = ''; $('chest').style.display = 'flex'; buildChest(); }
+function openChest(id) { setCraft(false); closePot(); chestId = id; chestSig = ''; $('chest').style.display = 'flex'; armDismantle($('chestDis'), () => chestId); buildChest(); }
 function closeChest() { chestId = null; $('chest').style.display = 'none'; }
 function buildChest() {
   const e = structE[chestId]; if (!e) { closeChest(); return; }
@@ -624,7 +624,16 @@ function buildChest() {
     d.appendChild(bx); list.appendChild(d);
   });
 }
-function openPot() { setCraft(false); closeChest(); potOpen = true; potSig = ''; $('pot').style.display = 'flex'; $('potMsg').textContent = ''; buildPot(); }
+// dismantle buttons (bench / chest / pot panels): first tap asks "Sure?", second tap within 3 s does it
+function armDismantle(btn, getId) {
+  let t = null; btn.style.display = '';
+  btn.onclick = () => {
+    if (t) { clearTimeout(t); t = null; btn.textContent = 'Dismantle'; const id = getId(); if (id != null && ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'dismantle', id })); return; }
+    btn.textContent = 'Sure?'; t = setTimeout(() => { t = null; btn.textContent = 'Dismantle'; }, 3000);
+  };
+}
+const nearestOf = kind => { const me = ents2['p' + myId]; let best = null, bd = 1e9; for (const id in structE) { const e = structE[id]; if (e.k !== kind || !me) continue; const d = Math.hypot(me.x - e.x, me.y - e.y); if (d < bd) { bd = d; best = id; } } return best == null ? null : +best; };
+function openPot() { setCraft(false); closeChest(); armDismantle($('potDis'), () => nearestOf('pot')); potOpen = true; potSig = ''; $('pot').style.display = 'flex'; $('potMsg').textContent = ''; buildPot(); }
 function closePot() { potOpen = false; $('pot').style.display = 'none'; }
 function buildPot() {
   const food = pooled().food, sig = String(food); if (sig === potSig) return; potSig = sig;
@@ -1049,6 +1058,9 @@ $('go').onclick = () => {
       const msg = $('potMsg'); msg.textContent = m.msg || ''; msg.style.color = m.ok ? '#7fe9a0' : '#ff8a80';
       if (m.b) { for (const k in BUFF) BUFF[k] = m.b[k] || 0; buffAt = performance.now(); }
       if (m.ok) { SFX.cook(); const me = ents2['p' + myId]; if (me) floatText(me.x, me.y - 10, m.msg, 0xffe082); }
+    } else if (m.t === 'dism') {
+      const me = ents2['p' + myId]; if (me) floatText(me.x, me.y - 12, m.msg, m.ok ? 0xffe082 : 0xff8a80);
+      if (m.ok) { SFX.levelup(); closeChest(); closePot(); setCraft(false); }
     } else if (m.t === 'ate') {
       if (m.b) { for (const k in BUFF) BUFF[k] = m.b[k] || 0; buffAt = performance.now(); }
       SFX.cook(); const me = ents2['p' + myId]; if (me) floatText(me.x, me.y - 10, m.msg, 0xffe082);

@@ -202,6 +202,18 @@ class Room {
     this.pay(p, r.cost); p.gear[r.gear] = 1;
     return { ok: true, msg: r.n + ' crafted!' };
   }
+  dismantle(p, id) {   // take a bench / chest / pot / smelter apart: its building materials drop around it for anyone to pick up
+    const fail = msg => ({ ok: false, msg }), st = this.struct.find(s => s.id === id);
+    if (!st || !['bench', 'chest', 'pot', 'smelter'].includes(st.k)) return fail('Nothing to dismantle.');
+    if (p.down) return fail('You are down.'); if (!this.near(p, st)) return fail('Stand next to it to dismantle it.');
+    const r = RC.LIST.find(x => x.kind === st.k); let wood = r.cost.wood, stone = r.cost.stone, extra = '';
+    if (st.k === 'chest' && st.items) { p.wood += st.items.wood; p.stone += st.items.stone; p.food += st.items.food; p.scrap += st.items.scrap; extra = ' What was inside went into your bag.'; }
+    if (st.k === 'smelter' && st.smelt && st.smelt.q) stone += st.smelt.q * RC.SMELT.cost;   // rocks that were queued come back
+    this.struct = this.struct.filter(s => s !== st);
+    if (this.drops.length + this.pend.length + wood + stone > 150) { p.wood += wood; p.stone += stone; }   // too much already on the floor: straight into the bag
+    else for (const [k, n] of [['w', wood], ['s', stone]]) for (let i = 0; i < n; i++) { const a = Math.random() * 6.283, d = st.r + 16 + Math.random() * 30; this.pend.push({ k, x: st.x + Math.cos(a) * d, y: st.y + Math.sin(a) * d, t: 0.45 }); }
+    return { ok: true, msg: r.n + ' dismantled.' + extra };
+  }
   smelterStart(p, st) {   // ACT next to a smelter: automatically takes 5 rocks and queues one scrap
     if (st.smelt.q >= RC.SMELT.queue) return { ok: false, msg: 'The smelter is full.' };
     if (this.pool(p, 'stone') < RC.SMELT.cost) return { ok: false, msg: 'Need ' + RC.SMELT.cost + ' rocks to smelt (your bag plus the chests).' };
@@ -473,6 +485,10 @@ wss.on('connection', ws => {
       send(ws, { t: 'crafted', id: String(m.id || ''), ok: res.ok, msg: res.msg, gear: me.gear });
     } else if (m.t === 'chest' && me) {
       try { room.chestOp(me, +m.id, String(m.res || ''), m.n); } catch (e) { console.error('chest error:', e && e.stack || e); }
+    } else if (m.t === 'dismantle' && me) {
+      const now = Date.now(); if (now - (me.lastDis || 0) < 300) return; me.lastDis = now;
+      let res; try { res = room.dismantle(me, m.id | 0); } catch (e) { console.error('dismantle error:', e && e.stack || e); res = { ok: false, msg: 'Could not dismantle that.' }; }
+      send(ws, { t: 'dism', ok: res.ok, msg: res.msg });
     } else if (m.t === 'use' && me) {
       const now = Date.now(); if (now - (me.lastUse || 0) < 150) return; me.lastUse = now;
       try { room.useSlot(me, m.i | 0); } catch (e) { console.error('use error:', e && e.stack || e); }
