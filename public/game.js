@@ -850,6 +850,30 @@ function syncBoats(m) {
 // ---- fishing pools (shimmering spots near the shore) and the fishing minigame ----
 const poolE = {}, FISH = { 1: { n: 'Common fish', e: '🐟', col: 0x9fd8ff, zh: .34, fs: .55, chg: 1.6, fill: .30, drain: .10 }, 2: { n: 'Rare fish', e: '🐠', col: 0xc79bff, zh: .26, fs: .95, chg: 1.0, fill: .24, drain: .15 }, 3: { n: 'Legendary fish', e: '🐡', col: 0xffd54f, zh: .19, fs: 1.5, chg: .65, fill: .19, drain: .20 } };
 let fishOpen = false, fishG = null;
+const T_FIN = tex(46, 58, g => {   // a shark's dorsal fin sticking out of the water
+  const gr = g.createLinearGradient(0, 0, 0, 58); gr.addColorStop(0, '#6f7f8f'); gr.addColorStop(1, '#2f3b48');
+  g.fillStyle = gr; g.beginPath(); g.moveTo(8, 56); g.quadraticCurveTo(14, 20, 20, 2); g.quadraticCurveTo(26, 26, 42, 56); g.quadraticCurveTo(26, 48, 8, 56); g.fill();
+  g.strokeStyle = 'rgba(0,0,0,.45)'; g.lineWidth = 1.5; g.stroke(); g.fillStyle = 'rgba(255,255,255,.55)'; g.beginPath(); g.ellipse(25, 56, 22, 3.5, 0, 0, TAU); g.fill();   // foam at the base
+});
+const sharkE = {};
+function syncSharks(m) {
+  const seen = {};
+  for (const s of m.sk || []) {
+    seen[s[0]] = 1; let e = sharkE[s[0]];
+    if (!e) { const c = new PIXI.Container(), fin = new PIXI.Sprite(T_FIN); fin.anchor.set(.5, .95); fin.scale.set(1.1); const wake = new PIXI.Graphics(); c.addChild(wake, fin); ents.addChild(c); e = sharkE[s[0]] = { c, fin, wake, x: s[1], y: s[2], tx: s[1], ty: s[2], a: s[3] / 100, ph: rnd(0, TAU), age: 0, bite: 0 }; c.position.set(e.x, e.y); }
+    e.tx = s[1]; e.ty = s[2]; e.a = s[3] / 100; if (s[4] && !e.bite) { e.bite = .5; burst(e.x, e.y, 14, 0xffffff, 170, false, .16); burst(e.x, e.y, 6, 0xb71c1c, 90, false, .1); } if (!s[4]) e.bite = Math.max(0, e.bite - .1);
+  }
+  for (const id in sharkE) if (!seen[id]) { sharkE[id].c.destroy({ children: true }); delete sharkE[id]; }
+}
+function stepSharkFx(dt) {
+  for (const id in sharkE) {
+    const e = sharkE[id], k = Math.min(1, dt * 9); e.age += dt; const ox = e.x, oy = e.y; e.x += (e.tx - e.x) * k; e.y += (e.ty - e.y) * k;
+    e.c.position.set(e.x, e.y); e.c.zIndex = e.y + 200; e.c.alpha = Math.min(1, e.age * 2); e.fin.rotation = Math.sin(T * 5 + e.ph) * .07; e.fin.y = Math.sin(T * 3 + e.ph) * 1.5;
+    const bx = -Math.cos(e.a), by = -Math.sin(e.a), px = -by, py = bx;   // the wake: a V of white lines trailing behind the fin
+    e.wake.clear(); e.wake.lineStyle(3, 0xffffff, .5); for (const sg of [-1, 1]) { e.wake.moveTo(0, 0); e.wake.lineTo(bx * 70 + px * sg * 26, by * 70 + py * sg * 26); }
+    if (Math.hypot(e.x - ox, e.y - oy) > .5 && Math.random() < dt * 14) emit(pfx, T_GLOW, e.x + bx * 30, e.y + by * 30, rnd(-10, 10), rnd(-10, 10), .8, .12, .3, 0xffffff, .45, false, 0);
+  }
+}
 function syncPools(m) {
   const seen = {};
   for (const q of m.fp || []) {
@@ -1277,7 +1301,7 @@ function onSnap(m) {
     r.hp = hp;
   }
   syncDrops(m, _d, _dx);
-  syncStructs(m, !prevS); syncBoats(m); syncPools(m); syncArrows(m); window.xSnap && xSnap(m);
+  syncStructs(m, !prevS); syncBoats(m); syncSharks(m); syncPools(m); syncArrows(m); window.xSnap && xSnap(m);
   if (chestId !== null) { if (!nearStruct(chestId)) closeChest(); else buildChest(); }
   if (potOpen) { if (!anyPotNear()) closePot(); else buildPot(); }
   if (smeltId !== null) { if (!nearStruct(smeltId)) closeSmelt(); else buildSmelt(); }
@@ -1477,7 +1501,7 @@ app.ticker.add(() => {
   ring.visible = alive; ring.scale.set(ringR * 2 / 256 * 1.0); ring.alpha = .35 + Math.sin(T * 2) * .08;
   if (alive) { fireTick += dt * (20 + 40 * fuelK); while (fireTick > 1) { fireTick--; emit(overL, T_GLOW, rnd(-8, 8), -2, rnd(-14, 14), rnd(-70, -35), rnd(.6, 1.3), .08, .01, Math.random() < .5 ? 0xffb347 : 0xffe08a, 1, true, -10); } }
   smokeTick += dt * (alive ? 4 : 9); while (smokeTick > 1) { smokeTick--; emit(pfx, T_GLOW, rnd(-6, 6), -14, rnd(-6, 6), rnd(-26, -14), 2.2, .25, .9, alive ? 0x555555 : 0x444444, alive ? .22 : .35, false, 0); }
-  stepParts(dt); stepFallers(dt); stepDrops(dt); stepStructs(dt); stepBoats(dt); stepPoolFx(dt); stepArrows(); window.xStep && xStep(dt, me);
+  stepParts(dt); stepFallers(dt); stepDrops(dt); stepStructs(dt); stepBoats(dt); stepSharkFx(dt); stepPoolFx(dt); stepArrows(); window.xStep && xStep(dt, me);
   for (let i = ftexts.length - 1; i >= 0; i--) { const q = ftexts[i]; q.life -= dt; q.t.y -= dt * 34; q.t.alpha = clamp(q.life * 2, 0, 1); if (q.life <= 0) { q.t.destroy(); ftexts.splice(i, 1); } }
   // lighting
   const d = darkness(S.c);
@@ -1748,6 +1772,7 @@ $('go').onclick = () => {
       if (placingId && m.id === placingId) { if (m.ok) { const r = RC.BY[placingId], pl = pooled(); if ((r.kind !== 'wall' && r.kind !== 'trap' && r.kind !== 'gate' && r.kind !== 'spike') || pl.wood < r.cost.wood || pl.stone < r.cost.stone || pl.scrap < (r.cost.scrap || 0)) stopPlacing(); } else { const me0 = ents2['p' + myId]; if (me0) floatText(me0.x, me0.y - 6, m.msg || 'Cannot place here', 0xff8a80); } }
       if (m.ok) { SFX.levelup(); const me = ents2['p' + myId]; if (me) floatText(me.x, me.y - 10, m.msg, 0xffe082); }
       if (craftOpen) buildCraft();
+    } else if (m.t === 'bite') { shake = Math.max(shake, .6); SFX.hit(0, 0); SFX.build(0, 0); notice('🦈 The shark bit the boat!');
     } else if (m.t === 'toast') {
       const me = ents2['p' + myId]; if (me) floatText(me.x, me.y - 6, m.msg, 0xff8a80); SFX.pickup();
     } else if (m.t === 'open') {
