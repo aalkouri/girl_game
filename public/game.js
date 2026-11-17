@@ -745,7 +745,11 @@ const T_GATEO = tex(168, 72, g => {   // the same gate swung open: just the post
   g.fillStyle = '#8a5a2b'; g.fillRect(16, 8, 8, 56); g.strokeStyle = 'rgba(0,0,0,.5)'; g.strokeRect(16, 8, 8, 56); g.fillStyle = '#5a3a1c'; g.fillRect(14, 20, 12, 5); g.fillRect(14, 46, 12, 5);
   post(2); post(152);
 });
-const SDEF = { gate: { tex: T_GATE, ay: .85, base: .62, sh: 3.4, hy: 12 }, bench: { tex: T_BENCH, ay: .8, base: .72, sh: 2, hy: 14 }, wall: { tex: T_WALL, ay: .85, base: .62, sh: 1.6, hy: 12 }, chest: { tex: T_CHEST, ay: .8, base: .62, sh: 1.7, hy: 12 }, pot: { tex: T_POT, ay: .8, base: .62, sh: 1.5, hy: 12 }, smelter: { tex: T_SMELTER, ay: .84, base: .62, sh: 1.9, hy: 12 } , trap: { tex: T_TRAP, ay: .5, base: .8, sh: 1, hy: 10 }};
+const T_SPIKE = tex(84, 60, g => {   // a flat metal strip with a row of upward spikes
+  g.fillStyle = '#4a4f57'; g.fillRect(4, 38, 76, 10); g.strokeStyle = 'rgba(0,0,0,.55)'; g.lineWidth = 1.5; g.strokeRect(4, 38, 76, 10); g.fillStyle = '#6b727c'; g.fillRect(4, 38, 76, 3);
+  for (let i = 0; i < 6; i++) { const x = 8 + i * 12; poly(g, '#b8c0c8', [x, 38, x + 5, 12 + (i % 2) * 4, x + 10, 38]); poly(g, '#e7edf2', [x + 1, 37, x + 5, 14 + (i % 2) * 4, x + 5, 37]); g.strokeStyle = 'rgba(0,0,0,.5)'; g.lineWidth = 1; g.beginPath(); g.moveTo(x, 38); g.lineTo(x + 5, 12 + (i % 2) * 4); g.lineTo(x + 10, 38); g.stroke(); }
+});
+const SDEF = { spike: { tex: T_SPIKE, ay: .7, base: .62, sh: 1.6, hy: 10 }, gate: { tex: T_GATE, ay: .85, base: .62, sh: 3.4, hy: 12 }, bench: { tex: T_BENCH, ay: .8, base: .72, sh: 2, hy: 14 }, wall: { tex: T_WALL, ay: .85, base: .62, sh: 1.6, hy: 12 }, chest: { tex: T_CHEST, ay: .8, base: .62, sh: 1.7, hy: 12 }, pot: { tex: T_POT, ay: .8, base: .62, sh: 1.5, hy: 12 }, smelter: { tex: T_SMELTER, ay: .84, base: .62, sh: 1.9, hy: 12 } , trap: { tex: T_TRAP, ay: .5, base: .8, sh: 1, hy: 10 }};
 function syncStructs(m, first) {
   const seen = {}, me = ents2['p' + myId];
   for (const t of m.st || []) {
@@ -785,21 +789,21 @@ function stepStructs(dt) {
       if (working) { e.sm = (e.sm || 0) - dt; if (e.sm <= 0) { e.sm = .16; emit(pfx, T_GLOW, e.x - 16 + rnd(-3, 3), e.y - 52, rnd(-8, 8), rnd(-40, -22), 1.4, .14, .45, 0x888888, .35, false, 0); if (Math.random() < .5) emit(overL, T_GLOW, e.x - 16 + rnd(-4, 4), e.y - 52, rnd(-14, 14), rnd(-70, -40), .6, .06, .01, 0xffb347, 1, true, 60); } }
     }
     if (e.k === 'pot') { e.steam = (e.steam || 0) - dt; if (e.steam <= 0) { e.steam = .22; emit(pfx, T_GLOW, e.x + rnd(-8, 8), e.y - 34, rnd(-6, 6), rnd(-30, -16), 1.3, .12, .4, 0xffffff, .28, false, 0); } }
-    if (e.k === 'wall' || e.k === 'gate') { if (e.barT > 0) { e.barT -= dt; e.hp.alpha = Math.min(1, e.barT * 2); if (e.lbar !== e.hpv) { e.lbar = e.hpv; drawHp(e.hp, 34, e.hpv / e.mhp, 0xffb74d); } } else if (e.hp.alpha) e.hp.alpha = 0; }
+    if (e.k === 'wall' || e.k === 'gate' || e.k === 'spike') { if (e.barT > 0) { e.barT -= dt; e.hp.alpha = Math.min(1, e.barT * 2); if (e.lbar !== e.hpv) { e.lbar = e.hpv; drawHp(e.hp, 34, e.hpv / e.mhp, 0xffb74d); } } else if (e.hp.alpha) e.hp.alpha = 0; }
   }
 }
 // ---- placement ghost: craft a placeable item, walk to aim, press ACT to put it down ----
 let placingId = null, ghost = null, ghostRot = null, ghostF = null, placeRot = 0, lastPlaceAt = 0;
 const PLACE_AHEAD = 58;   // must match the server
 function placeCheck(r, x, y) {   // mirrors the server's rules so the silhouette can show green/red; the server stays in charge
-  const CF = curCamp({ x, y }) || curCamp(ents2['p' + myId]) || { x: 0, y: 0, r: RC.camp(S.f[2]), isl: 0 }, d = Math.hypot(x - CF.x, y - CF.y), campR = CF.r, sr = RC.RADIUS[r.kind], station = r.kind !== 'wall' && r.kind !== 'trap' && r.kind !== 'gate';
+  const CF = curCamp({ x, y }) || curCamp(ents2['p' + myId]) || { x: 0, y: 0, r: RC.camp(S.f[2]), isl: 0 }, d = Math.hypot(x - CF.x, y - CF.y), campR = CF.r, sr = RC.RADIUS[r.kind], station = r.kind !== 'wall' && r.kind !== 'trap' && r.kind !== 'gate' && r.kind !== 'spike';
   if (d < RC.fireClear(r.kind)) return 'Too close to the fire';
   if (station && d > campR) return 'Must be inside the camp (the fire ring)';
   if (!station && d > campR + 200) return 'Too far from camp';
   { const is = CF.isl === 0 ? [0, 0, RR] : ISL.find(q => Math.hypot(CF.x - q[0], CF.y - q[1]) < q[2]) || [0, 0, RR]; if (Math.hypot(x - is[0], y - is[1]) > is[2] - 50) return 'Too close to the water'; }
   if ((S.st || []).filter(t => t[1] === r.kind && Math.hypot(t[2] - CF.x, t[3] - CF.y) < CF.r).length >= (r.max || 99)) return 'You built the maximum of these';
   for (const t of S.st || []) {
-    const stWall = t[1] === 'wall' || t[1] === 'gate', dd = Math.hypot(t[2] - x, t[3] - y), need = station && !stWall ? RC.STATION_GAP : (station || !stWall) ? RC.WALL_GAP : RC.RADIUS[t[1]] + sr - 4;
+    const stWall = t[1] === 'wall' || t[1] === 'gate' || t[1] === 'spike', dd = Math.hypot(t[2] - x, t[3] - y), need = station && !stWall ? RC.STATION_GAP : (station || !stWall) ? RC.WALL_GAP : RC.RADIUS[t[1]] + sr - 4;
     if (dd < need) return need > 60 ? 'Too close to another structure' : 'Something is already there';
   }
   const pl = pooled(); if (pl.wood < r.cost.wood || pl.stone < r.cost.stone || pl.scrap < (r.cost.scrap || 0)) return 'Not enough materials';
@@ -1488,7 +1492,7 @@ $('go').onclick = () => {
       $('rm').textContent = 'Room ' + roomCode + ' (tap to copy link)'; tipUntil = performance.now() + 14000; history.replaceState(null, '', '?room=' + roomCode);
     } else if (m.t === 'crafted') {
       GEAR = m.gear || GEAR; const msg = $('craftMsg'); msg.textContent = m.msg || ''; msg.style.color = m.ok ? '#7fe9a0' : '#ff8a80';
-      if (placingId && m.id === placingId) { if (m.ok) { const r = RC.BY[placingId], pl = pooled(); if ((r.kind !== 'wall' && r.kind !== 'trap' && r.kind !== 'gate') || pl.wood < r.cost.wood || pl.stone < r.cost.stone || pl.scrap < (r.cost.scrap || 0)) stopPlacing(); } else { const me0 = ents2['p' + myId]; if (me0) floatText(me0.x, me0.y - 6, m.msg || 'Cannot place here', 0xff8a80); } }
+      if (placingId && m.id === placingId) { if (m.ok) { const r = RC.BY[placingId], pl = pooled(); if ((r.kind !== 'wall' && r.kind !== 'trap' && r.kind !== 'gate' && r.kind !== 'spike') || pl.wood < r.cost.wood || pl.stone < r.cost.stone || pl.scrap < (r.cost.scrap || 0)) stopPlacing(); } else { const me0 = ents2['p' + myId]; if (me0) floatText(me0.x, me0.y - 6, m.msg || 'Cannot place here', 0xff8a80); } }
       if (m.ok) { SFX.levelup(); const me = ents2['p' + myId]; if (me) floatText(me.x, me.y - 10, m.msg, 0xffe082); }
       if (craftOpen) buildCraft();
     } else if (m.t === 'toast') {

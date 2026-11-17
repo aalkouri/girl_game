@@ -140,7 +140,7 @@ function solidPt(st, x, y) {
   const a = (st.rot || 0) * Math.PI / 4, ux = Math.cos(a), uy = Math.sin(a), t = Math.max(-GATE_HALF, Math.min(GATE_HALF, (x - st.x) * ux + (y - st.y) * uy));
   return [st.x + ux * t, st.y + uy * t, 12];
 }
-const STRUCT = { bench: { r: RC.RADIUS.bench }, chest: { r: RC.RADIUS.chest }, pot: { r: RC.RADIUS.pot }, smelter: { r: RC.RADIUS.smelter }, wall: { r: RC.RADIUS.wall, hp: 150 }, gate: { r: RC.RADIUS.gate, hp: 50 },   // gates are much weaker than walls
+const STRUCT = { bench: { r: RC.RADIUS.bench }, chest: { r: RC.RADIUS.chest }, pot: { r: RC.RADIUS.pot }, smelter: { r: RC.RADIUS.smelter }, wall: { r: RC.RADIUS.wall, hp: 150 }, gate: { r: RC.RADIUS.gate, hp: 50 }, spike: { r: RC.RADIUS.spike, hp: 120 },   // gates are much weaker than walls
    trap: { r: RC.RADIUS.trap } };
 const CHEST_CAP = 500, REACH = 62;   // collision radius / hit points of placed structures
 const SPILL = { t: 5, r: 3, c: 8, p: 12 };   // a pine gives far more wood
@@ -506,14 +506,14 @@ class Room {
     if (r.kind !== 'gear') {
       if (!CF) return fail('Stand inside a camp to build.');
       const x = p.x + Math.cos(p.fa) * 58, y = p.y + Math.sin(p.fa) * 58, d = Math.hypot(x - CF.x, y - CF.y), campR = RC.camp(CF.f.lvl), isl = this.islands[CF.f.isl | 0] || this.islands[0];
-      const sr = STRUCT[r.kind].r, station = r.kind !== 'wall' && r.kind !== 'trap' && r.kind !== 'gate';
+      const sr = STRUCT[r.kind].r, station = r.kind !== 'wall' && r.kind !== 'trap' && r.kind !== 'gate' && r.kind !== 'spike';
       if (d < RC.fireClear(r.kind)) return fail('Too close to the fire. Nothing can be built on or against it.');
       if (station && d > campR) return fail('Stand inside the camp (the fire ring), a little away from the fire, facing a free spot.');
       if (!station && d > campR + 200) return fail('Walls and traps go in or just outside the camp.');
       if (Math.hypot(x - isl.x, y - isl.y) > isl.r - 50) return fail('Too close to the water.');
       if (this.struct.filter(st => st.k === r.kind && this.inCamp(CF, st)).length >= (r.max || 99)) return fail('You have built the maximum number of those.');
       for (const st of this.struct) {   // nothing may be crafted too close to anything else
-        const stWall = st.k === 'wall' || st.k === 'gate', dd = Math.hypot(st.x - x, st.y - y);
+        const stWall = st.k === 'wall' || st.k === 'gate' || st.k === 'spike', dd = Math.hypot(st.x - x, st.y - y);
         const need = station && !stWall ? RC.STATION_GAP : (station || !stWall) ? RC.WALL_GAP : st.r + sr - 4;
         if (dd < need) return fail(need > 60 ? 'Too close to another structure. Keep stations about ' + RC.STATION_GAP + ' apart (walls about ' + RC.WALL_GAP + ' from stations).' : 'Something is already there. Turn and try another spot.');
       }
@@ -700,7 +700,7 @@ class Room {
       let nx = w.x + dx * spd * dt, ny = w.y + dy * spd * dt;
       if (w.st !== 2 && (nearFire(nx, ny) || Math.hypot(nx - w.hx, ny - w.hy) > WOLF.leash)) { w.st = 2; w.rt = 0; continue; }   // got near the fire / too far from home: back it goes
       { const ex = nx - is.x, ey = ny - is.y, L = Math.hypot(ex, ey); if (L > is.r - 45) { nx = is.x + ex * (is.r - 45) / L; ny = is.y + ey * (is.r - 45) / L; } }   // stays on its island
-      for (const st of this.struct) { if (st.k === 'trap' || (st.k === 'gate' && st.open)) continue; const [qx, qy, qr] = solidPt(st, nx, ny), sd = Math.hypot(nx - qx, ny - qy), mn = qr + (w.big ? 26 : 12); if (sd < mn && sd > 0.01) { nx = qx + (nx - qx) / sd * mn; ny = qy + (ny - qy) / sd * mn; } }   // walls and gates are solid for wolves too
+      for (const st of this.struct) { if (st.k === 'trap' || st.k === 'spike' || (st.k === 'gate' && st.open)) continue; const [qx, qy, qr] = solidPt(st, nx, ny), sd = Math.hypot(nx - qx, ny - qy), mn = qr + (w.big ? 26 : 12); if (sd < mn && sd > 0.01) { nx = qx + (nx - qx) / sd * mn; ny = qy + (ny - qy) / sd * mn; } }   // walls and gates are solid for wolves too
       w.x = nx; w.y = ny; w.fa = Math.atan2(dy, dx);
     }
     for (const w of this.wolves) if (w.hp <= 0 && !w.dropped) { w.dropped = 1; const BG = BIG[w.big], AL = w.alpha || w.big === 2, n = BG ? BG.meat[0] + (Math.random() * (BG.meat[1] + 1) | 0) : 1 + (Math.random() < 0.5 ? 1 : 0); for (let i = 0; i < n; i++) { const a = Math.random() * 6.283, d = 8 + Math.random() * (BG ? 40 : 18); this.pend.push({ k: 'n', x: w.x + Math.cos(a) * d, y: w.y + Math.sin(a) * d, t: 0.15 }); }
@@ -838,7 +838,7 @@ class Room {
       let flying = false;
       if (p.kb) { p.kb.t += dt; const u = p.kb.t / CHARGER.stunSec; if (u >= 1) p.kb = null; else { const v = p.kb.v0 * (1 - u) * (1 - u); p.x += p.kb.dx * v * dt; p.y += p.kb.dy * v * dt; flying = true; } }   // knocked back: no steering until it wears off
       if (!flying) { p.x += dx * spd * dt; p.y += dy * spd * dt; } if (m > 0.1) p.fa = Math.atan2(dy, dx);
-      for (const st of this.struct) { if (st.k === 'trap' || (st.k === 'gate' && st.open)) continue; const [qx, qy, qr] = solidPt(st, p.x, p.y), sd = Math.hypot(p.x - qx, p.y - qy), mn = qr + 14; if (sd < mn && sd > 0.01) { p.x = qx + (p.x - qx) / sd * mn; p.y = qy + (p.y - qy) / sd * mn; } }
+      for (const st of this.struct) { if (st.k === 'trap' || st.k === 'spike' || (st.k === 'gate' && st.open)) continue; const [qx, qy, qr] = solidPt(st, p.x, p.y), sd = Math.hypot(p.x - qx, p.y - qy), mn = qr + 14; if (sd < mn && sd > 0.01) { p.x = qx + (p.x - qx) / sd * mn; p.y = qy + (p.y - qy) / sd * mn; } }
       if (this.landAt(p.x, p.y) < 0) { const q = this.landPoint(p.x, p.y); p.x = q[0]; p.y = q[1]; }   // stay on land (any island); only boats go on water
       const d = Math.hypot(p.x, p.y);
 
@@ -934,6 +934,12 @@ class Room {
         if (d.k === 'w') p.wood++; else if (d.k === 's') p.stone++; else if (d.k === 'f') p.food++; else if (d.k === 'd') award(p, 1, 'drop'); else if (d.k === 'n') p.meat++; else if (d.k === 'o') p.gold++; else if (d.k === 'h') p.pelt++; else if (d.k === 'H') p.apelt++; else { p.scrap++; this.scrapFound = true; } taken = true; break; }
       if (taken || d.ttl <= 0) this.drops.splice(i, 1);
     }
+    for (const st of this.struct) if (st.k === 'spike') {   // spike strips hurt every enemy on them (not the Charger), 10 damage a tick per enemy, and wear down as they do
+      for (const e of [...this.aliens, ...(this.wolves || [])]) {
+        if (e.hp <= 0 || e.k === 2 || Math.hypot(e.x - st.x, e.y - st.y) > 36) continue;
+        e.spk = (e.spk || 0) - dt; if (e.spk > 0) continue; e.spk = 0.5; e.hp -= 10; if (e.wolf) { e.st = 1; } this.hitWall(st, 3); if (st.dead) break;
+      }
+    }
     this.stepRabbits(P, dt); this.stepWolves(P, dt);
     // aliens
     if (ph === 2) for (let i = 0; i < this.islands.length; i++) this.nightSpawns(i, P, dt);
@@ -977,7 +983,7 @@ class Room {
       } else if (a.k === 4) a.aim = 0;
       if (!stay && d > (a.stop || 20)) { a.x += mx * sp * dt; a.y += my * sp * dt; }
       for (const st of this.struct) {   // every structure is solid and indestructible (except traps)
-        if (st.k === 'trap' || (st.k === 'gate' && st.open)) continue;
+        if (st.k === 'trap' || st.k === 'spike' || (st.k === 'gate' && st.open)) continue;
         const [qx, qy, qr] = solidPt(st, a.x, a.y), sd = Math.hypot(a.x - qx, a.y - qy), mn = qr + (a.rad || 12);
         if (sd < mn) { const k = sd > 0.01 ? mn / sd : 1; a.x = qx + (a.x - qx) * k; a.y = qy + (a.y - qy) * k; }   // solid: aliens slide around it, but cannot damage it, and it does not damage them
       }
@@ -995,7 +1001,7 @@ class Room {
     }
     for (let i = this.arrows.length - 1; i >= 0; i--) {   // arrows fly straight; spike walls / stations stop them, players take the damage
       const w = this.arrows[i]; w.x += w.vx * dt; w.y += w.vy * dt; w.ttl -= dt; let dead = w.ttl <= 0;
-      if (!dead) for (const st of this.struct) if (st.k !== 'trap' && !(st.k === 'gate' && st.open)) { const [qx, qy, qr] = solidPt(st, w.x, w.y); if (Math.hypot(w.x - qx, w.y - qy) < qr) { if (st.hp > 0) this.hitWall(st, w.dmg); dead = true; break; } }
+      if (!dead) for (const st of this.struct) if (st.k !== 'trap' && st.k !== 'spike' && !(st.k === 'gate' && st.open)) { const [qx, qy, qr] = solidPt(st, w.x, w.y); if (Math.hypot(w.x - qx, w.y - qy) < qr) { if (st.hp > 0) this.hitWall(st, w.dmg); dead = true; break; } }
       if (!dead) for (const p of P) if (!p.down && !p.boat && Math.hypot(p.x - w.x, p.y - w.y) < 18) { this.hurt(p, w.dmg); dead = true; break; }
       if (dead) this.arrows.splice(i, 1);
     }
