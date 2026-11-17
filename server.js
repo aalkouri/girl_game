@@ -297,7 +297,9 @@ class Room {
   // ----- boats: placed in the water near the shore; two riders, the first one steers -----
   tickBoats(dt) {
     for (const b of this.boats) {   // boats rot away over time; one that falls apart takes everyone aboard down with it
-      const bt = RC.BOATS[b.type || 'boat']; b.life = (b.life == null ? bt.life : b.life) - dt;
+      const bt = RC.BOATS[b.type || 'boat'], storm = this.ph() === 2 && b.riders.length > 0;   // sailing at night: a storm batters the boat
+      if (storm && b.stormNight !== this.night) { b.stormNight = this.night; for (const id of b.riders) { const q = this.players.get(id); if (q) send(q.ws, { t: 'toast', msg: 'A storm! The boat is taking a beating - get to shore!' }); } }
+      b.storm = storm ? 1 : 0; b.life = (b.life == null ? bt.life : b.life) - dt * (storm ? 8 : 1);
       if (b.life < bt.life * 0.2 && !b.warned) { b.warned = 1; for (const id of b.riders) { const q = this.players.get(id); if (q) send(q.ws, { t: 'toast', msg: 'The boat is falling apart! Get to shore!' }); } }
       if (b.life <= 0) {
         for (const id of b.riders) { const q = this.players.get(id); if (!q) continue; q.boat = 0; q.hp = 0; q.down = 1; q.rev = 0; q.sea = 1; send(q.ws, { t: 'toast', msg: 'The boat fell apart! Another boat has to reach you to revive you.' }); }
@@ -311,10 +313,15 @@ class Room {
       const d = b.drv && this.players.get(b.drv);
       if (d && !d.down) {
         const i = d.inpAt && Date.now() - d.inpAt > 400 ? { dx: 0, dy: 0 } : d.inp; let dx = i.dx, dy = i.dy; const m = Math.hypot(dx, dy); if (m > 1) { dx /= m; dy /= m; }
+        if (b.storm) {   // rough seas: the waves keep turning the bow, so your heading wanders, and the boat answers the helm slowly
+          b.yawT = (b.yawT || 0) - dt; if (b.yawT <= 0) { b.yawT = 1.2 + Math.random() * 2.5; b.yawTo = (Math.random() - 0.5) * 2.2; }
+          b.yaw = (b.yaw || 0) + ((b.yawTo || 0) - (b.yaw || 0)) * Math.min(1, dt * 1.6);
+          const c0 = Math.cos(b.yaw), s0 = Math.sin(b.yaw), ndx = dx * c0 - dy * s0; dy = dx * s0 + dy * c0; dx = ndx;
+        } else b.yaw = 0;
         if (m > 0.1) {
-          const sp = (RC.BOATS[b.type || 'boat'].speed) * Math.min(1, m), nx = b.x + dx * sp * dt, ny = b.y + dy * sp * dt;
+          const sp = (RC.BOATS[b.type || 'boat'].speed) * (b.storm ? 0.8 : 1) * Math.min(1, m), nx = b.x + dx * sp * dt, ny = b.y + dy * sp * dt;
           if (this.isWater(nx, ny)) { b.x = nx; b.y = ny; } else if (this.isWater(nx, b.y)) b.x = nx; else if (this.isWater(b.x, ny)) b.y = ny;
-          const da = ((Math.atan2(dy, dx) - b.ang + Math.PI) % 6.283185 + 6.283185) % 6.283185 - Math.PI; b.ang += da * Math.min(1, dt * 5);
+          const da = ((Math.atan2(dy, dx) - b.ang + Math.PI) % 6.283185 + 6.283185) % 6.283185 - Math.PI; b.ang += da * Math.min(1, dt * (b.storm ? 1.8 : 5));
         }
       }
       b.riders.forEach((id, k) => { const p = this.players.get(id), o = k === 0 ? 12 : -14; p.x = b.x + Math.cos(b.ang) * o; p.y = b.y + Math.sin(b.ang) * o; p.fa = b.ang; });
@@ -702,6 +709,7 @@ class Room {
       }
       if (!spd) { if (dx || dy) w.fa = Math.atan2(dy, dx); continue; }
       let nx = w.x + dx * spd * dt, ny = w.y + dy * spd * dt;
+      if (w.st !== 2 && !(wi === 0 ? RC.inSnow(nx, ny) : RC.biomeAt(is.x, is.y, is.r, is.b, nx, ny) === 's')) { if (w.st === 1) { w.st = 2; w.rt = 0; } else { w.sit = 1; } continue; }   // wolves, bears and mammoths never leave the snow: a chase ends at its edge and they head home
       if (w.st !== 2 && (nearFire(nx, ny) || Math.hypot(nx - w.hx, ny - w.hy) > WOLF.leash)) { w.st = 2; w.rt = 0; continue; }   // got near the fire / too far from home: back it goes
       { const ex = nx - is.x, ey = ny - is.y, L = Math.hypot(ex, ey); if (L > is.r - 45) { nx = is.x + ex * (is.r - 45) / L; ny = is.y + ey * (is.r - 45) / L; } }   // stays on its island
       for (const st of this.struct) { if (st.k === 'trap' || st.k === 'spike' || (st.k === 'gate' && st.open)) continue; const [qx, qy, qr] = solidPt(st, nx, ny), sd = Math.hypot(nx - qx, ny - qy), mn = qr + (w.big ? 26 : 12); if (sd < mn && sd > 0.01) { nx = qx + (nx - qx) / sd * mn; ny = qy + (ny - qy) / sd * mn; } }   // walls and gates are solid for wolves too
@@ -1021,7 +1029,7 @@ class Room {
       t: 's', c: Math.round(this.c * 10) / 10, n: this.night, ph: this.ph(), o: this.over > 0 ? 1 : 0,
       f: [Math.round(f.fuel), RC.fuelMax(f.lvl), f.lvl, f.fuel > 0 ? RC.camp(f.lvl) : 0],
       p: [...this.players.values()].map(p => [p.id, p.name, p.cls, Math.round(p.x), Math.round(p.y), Math.round(p.hp), p.mhp, p.wood, p.stone, p.food, p.down, Math.round(p.rev * 10) / 10, p.sw, p.swk, Math.round(p.swa * 100), p.scrap, Math.round(p.fa * 100), Math.round(p.sta), p.tired, p.slots, p.boat || 0, p.meat || 0, p.gold || 0, p.pelt || 0, slotCap(p, this), !(p.prof && p.prof.abil && p.prof.abil[p.cls]) ? 0 : p.abilCd > 0 ? Math.ceil(p.abilCd) + 1 : 1, p.apelt || 0]),
-      bt: this.boats.map(b => [b.id, Math.round(b.x), Math.round(b.y), Math.round(b.ang * 100), b.riders.length, b.drv, b.type || 'boat', Math.round(100 * (b.life == null ? 1 : b.life / RC.BOATS[b.type || 'boat'].life))]), sf: this.scrapFound ? 1 : 0,
+      bt: this.boats.map(b => [b.id, Math.round(b.x), Math.round(b.y), Math.round(b.ang * 100), b.riders.length, b.drv, b.type || 'boat', Math.round(100 * (b.life == null ? 1 : b.life / RC.BOATS[b.type || 'boat'].life)), b.storm || 0]), sf: this.scrapFound ? 1 : 0,
       a: this.aliens.map(a => [a.id, Math.round(a.x), Math.round(a.y), Math.round(a.hp), a.mhp, a.k, a.fa === undefined ? null : Math.round(a.fa * 100), Math.ceil(a.trapT > 0 ? a.trapT : 0), a.aim > 0 ? Math.round(Math.min(1, a.aim / 1.5) * 100) : 0]),
       wf: (this.wolves || []).map(w => [w.id, Math.round(w.x), Math.round(w.y), Math.round(w.fa * 100), Math.round(w.hp), w.mhp, w.st, w.bite > 0 ? 1 : 0, w.alpha || 0, w.big || 0]),
       rb: this.rabbits.map(b => [b.id, Math.round(b.x), Math.round(b.y), Math.round(b.fa * 100), b.run ? 1 : b.sit ? 0 : 2]),

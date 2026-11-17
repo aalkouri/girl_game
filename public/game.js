@@ -437,6 +437,12 @@ function buildIsland(is, idx) {   // is = [x, y, radius, biome]: the quarter fac
   const shore = new PIXI.Graphics(); shore.beginFill(0x9d8c58, .5); shore.drawPolygon(polyOf(a => ef(a) + 10)); shore.endFill(); c.addChild(shore);
   const sand = new PIXI.TilingSprite(biome === 's' ? T_SNOW : T_SAND, R * 2 + 120, R * 2 + 120); sand.position.set(-R - 60, -R - 60); if (biome === 'd') sand.tint = 0xf2c076;
   const sm = new PIXI.Graphics(); sm.beginFill(0xffffff); sm.drawPolygon(polyOf(ef)); sm.endFill(); sand.mask = sm; c.addChild(sm, sand);
+  if (biome === 'm') {   // a mixed island: the half away from the side facing home (w < 0 across the home direction) is snow, the other half desert
+    const [hx, hy] = RC.homeDir(ix, iy), kx = -hy, ky = hx, B = R * 2.4, hp = new PIXI.Graphics(); hp.beginFill(0xffffff);
+    hp.drawPolygon([[-B, -B], [B, -B], [B, 0], [-B, 0]].flatMap(([t, w]) => [hx * t + kx * w, hy * t + ky * w])); hp.endFill();
+    const snowC = new PIXI.Container(), sm2 = new PIXI.Graphics(); sm2.beginFill(0xffffff); sm2.drawPolygon(polyOf(ef)); sm2.endFill();
+    const snow = new PIXI.TilingSprite(T_SNOW, R * 2 + 120, R * 2 + 120); snow.position.set(-R - 60, -R - 60); snow.mask = hp; snowC.addChild(snow, hp); snowC.mask = sm2; c.addChild(sm2, snowC);
+  }
   const rng = mulberry(idx * 977 + 13);
   if (biome === 'd') {   // desert: a few darker dunes, kept off the forest
     const dn = new PIXI.Graphics(); dn.beginFill(0xc99a4e, .25);
@@ -718,19 +724,33 @@ function syncBoats(m) {
       const bty = RC.BOATS[b[6]] || RC.BOATS.boat, sp = new PIXI.Sprite(T_BOAT); sp.anchor.set(.5); sp.scale.set(bty.sc); if (b[6] === 'sloop') sp.tint = 0xb8d4f0; else if (b[6] === 'galleon') sp.tint = 0xf0d48a; sh.scale.set(2.2 * bty.sc / .8, 1); c.addChild(sh, sp); ents.addChild(c);
       e = boatE[b[0]] = { c, sp, x: b[1], y: b[2], tx: b[1], ty: b[2], ang: b[3] / 100, ta: b[3] / 100, ph: rnd(0, TAU) }; c.position.set(e.x, e.y);
     }
-    e.tx = b[1]; e.ty = b[2]; e.ta = b[3] / 100; e.riders = b[4]; e.drv = b[5];
+    e.tx = b[1]; e.ty = b[2]; e.ta = b[3] / 100; e.riders = b[4]; e.drv = b[5]; e.storm = b[8] || 0;
     const lf = b[7] == null ? 100 : b[7];   // how much of its life is left: the hull darkens and a bar shows once it is below half
     if (e.lf !== lf) { e.lf = lf; const base = b[6] === 'sloop' ? [0xb8, 0xd4, 0xf0] : b[6] === 'galleon' ? [0xf0, 0xd4, 0x8a] : [255, 255, 255], k = .45 + .55 * Math.min(1, lf / 60);
       e.sp.tint = (Math.round(base[0] * k) << 16) | (Math.round(base[1] * k * .9) << 8) | Math.round(base[2] * k * .8);
-      if (lf < 50) { if (!e.bar) { e.bar = new PIXI.Graphics(); e.bar.y = -46; e.c.addChild(e.bar); } e.bar.clear(); e.bar.beginFill(0x000000, .6); e.bar.drawRect(-21, -3, 42, 6); e.bar.endFill(); e.bar.beginFill(lf < 20 ? 0xff5252 : 0xffb74d); e.bar.drawRect(-20, -2, 40 * lf / 50, 4); e.bar.endFill(); } }
+      if (!e.bar) { e.bar = new PIXI.Graphics(); e.c.addChild(e.bar); e.rl = 64 * (RC.BOATS[b[6]] || RC.BOATS.boat).sc; }   // the boat's health sits behind its stern
+      e.bar.clear(); e.bar.beginFill(0x000000, .65); e.bar.drawRect(-22, -4, 44, 8); e.bar.endFill(); e.bar.beginFill(lf < 20 ? 0xff5252 : lf < 50 ? 0xffb74d : 0x66bb6a); e.bar.drawRect(-20, -2, 40 * lf / 100, 4); e.bar.endFill(); }
   }
   for (const id in boatE) if (!seen[id]) { boatE[id].c.destroy({ children: true }); delete boatE[id]; }
+}
+let stormEl = null, stormLt = 3, stormFlash = 0;
+function stormFx(dt) {   // aboard a boat at night: rain, whitecaps, dark sky and the odd flash of lightning
+  const me = ents2['p' + myId], mp = S && S.p.find(q => q[0] === myId), on = !!(me && mp && mp[20] && S.ph === 2 && Object.values(boatE).some(e => e.storm));
+  if (!stormEl) { stormEl = document.createElement('div'); stormEl.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:4;background:#06142a;opacity:0;transition:opacity .8s'; document.body.appendChild(stormEl); }
+  if (!on) { if (stormEl.style.opacity !== '0') stormEl.style.opacity = '0'; return; }
+  stormLt -= dt; if (stormLt <= 0) { stormLt = rnd(4, 11); stormFlash = .22; shake = Math.max(shake, .25); }
+  stormFlash = Math.max(0, stormFlash - dt); stormEl.style.background = stormFlash > 0 ? '#dfeaff' : '#06142a'; stormEl.style.opacity = stormFlash > 0 ? .55 : .32;
+  for (let i = 0; i < 5; i++) { const x = me.x + rnd(-W / Z / 2, W / Z / 2), y = me.y + rnd(-H / Z / 2, H / Z / 2); emit(overL, T_GLOW, x, y, -140, 520, .45, .05, .05, 0xbfd8ff, .55, false, 0); }   // rain
+  if (Math.random() < dt * 14) { const a = rnd(0, TAU), d = rnd(60, 280); emit(pfx, T_GLOW, me.x + Math.cos(a) * d, me.y + Math.sin(a) * d, rnd(-30, 30), rnd(-20, 20), 1.1, .12, .5, 0xffffff, .5, false, 0); }   // whitecaps
 }
 function stepBoats(dt) {
   for (const id in boatE) {
     const e = boatE[id], k = Math.min(1, dt * 12); e.x += (e.tx - e.x) * k; e.y += (e.ty - e.y) * k; e.ang = angLerp(e.ang, e.ta, Math.min(1, dt * 8));
-    e.c.position.set(e.x, e.y + Math.sin(T * 1.6 + e.ph) * 1.5); e.c.zIndex = e.y - 40; e.sp.rotation = e.ang;
+    const rough = e.storm ? 1 : 0, wob = rough ? Math.sin(T * 2.6 + e.ph) * .09 + Math.sin(T * 6.1 + e.ph * 2) * .035 : 0;   // in a storm the boat pitches and bobs hard
+    e.c.position.set(e.x, e.y + Math.sin(T * (rough ? 3.4 : 1.6) + e.ph) * (rough ? 6 : 1.5)); e.c.zIndex = e.y - 40; e.sp.rotation = e.ang + wob;
+    if (e.bar) e.bar.position.set(-Math.cos(e.ang) * e.rl, -Math.sin(e.ang) * e.rl + 4);
   }
+  stormFx(dt);
 }
 // ---- placed structures (crafting bench, spike walls) ----
 const structE = {}; let GEAR = {}, craftOpen = false, craftSig = '', chestId = null, chestSig = '', potOpen = false, potSig = '';
