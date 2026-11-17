@@ -141,6 +141,10 @@ const T_BERRY = tex(26, 28, g => {
   g.fillStyle = '#ffe082'; [[9, 15], [15, 13], [18, 17], [12, 19], [8, 20], [14, 23]].forEach(p => ell(g, p[0], p[1], .9, 1.3));
   poly(g, '#43a047', [13, 8, 5, 5, 9, 10]); poly(g, '#43a047', [13, 8, 21, 5, 17, 10]); poly(g, '#2e7d32', [13, 8, 10, 3, 16, 3]);
 });
+const T_GEM = tex(26, 26, g => {
+  poly(g, '#26c6da', [13, 2, 23, 10, 13, 24, 3, 10]); poly(g, '#80deea', [13, 2, 23, 10, 13, 10, 3, 10]); poly(g, '#00acc1', [13, 10, 23, 10, 13, 24]);
+  g.strokeStyle = 'rgba(255,255,255,.8)'; g.lineWidth = 1; g.beginPath(); g.moveTo(3, 10); g.lineTo(23, 10); g.moveTo(13, 2); g.lineTo(9, 10); g.lineTo(13, 24); g.lineTo(17, 10); g.lineTo(13, 2); g.stroke();
+});
 const T_SLASH = tex(80, 80, g => { g.strokeStyle = '#fff'; g.lineCap = 'round'; g.lineWidth = 7; g.beginPath(); g.arc(8, 40, 52, -.75, .75); g.stroke(); g.lineWidth = 3; g.globalAlpha = .6; g.beginPath(); g.arc(8, 40, 44, -.6, .6); g.stroke(); });
 const T_BENCH = tex(112, 84, g => {
   g.fillStyle = 'rgba(0,0,0,.0)';
@@ -341,7 +345,8 @@ function floatText(x, y, txt, col) {
 const ftexts = [];
 
 // ---------- entities ----------
-let warnUntil = 0, lastMe = null;
+let warnUntil = 0, lastMe = null, noticeUntil = 0, noticeText = '';
+function notice(t) { noticeText = t; noticeUntil = performance.now() + 3000; }   // one-shot headline text, shown for 3 seconds
 let S = null, myId = 0, roomCode = '', tipUntil = 0, ws = null, T = 0, shake = 0, lastInv = null, lastHp = null;
 const ents2 = {}; // key -> {x,y,tx,ty,node...}
 function mkPlayer(p) {
@@ -434,14 +439,14 @@ function stepFallers(dt) {
 }
 
 // ground pickups (logs from trees, stones from rocks): hop out, bob, fly to the player that grabs them
-const dropE = {}, flyers = [], DROP_S = { w: .8, s: .85, m: .9, f: .75 };
+const dropE = {}, flyers = [], DROP_S = { w: .8, s: .85, m: .9, f: .75, d: .9 };
 function syncDrops(m, _d, _dx) {
   const seen = {};
   for (const d of m.dr || []) {
     seen[d[0]] = 1; let e = dropE[d[0]];
     if (!e) {
       const c = new PIXI.Container(), sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5); sh.scale.set(.6, .35); sh.y = 4;
-      const spr = new PIXI.Sprite(d[1] === 'w' ? T_LOG : d[1] === 'm' ? T_SCRAP : d[1] === 'f' ? T_BERRY : T_STONE); spr.anchor.set(.5); spr.scale.set(DROP_S[d[1]]); spr.rotation = d[1] === 'w' ? rnd(-.8, .8) : rnd(-.4, .4);
+      const spr = new PIXI.Sprite(d[1] === 'w' ? T_LOG : d[1] === 'm' ? T_SCRAP : d[1] === 'f' ? T_BERRY : d[1] === 'd' ? T_GEM : T_STONE); spr.anchor.set(.5); spr.scale.set(DROP_S[d[1]]); spr.rotation = d[1] === 'w' ? rnd(-.8, .8) : rnd(-.4, .4);
       c.addChild(sh, spr); c.position.set(d[2], d[3]); c.zIndex = d[3]; ents.addChild(c);
       e = dropE[d[0]] = { c, spr, sh, x: d[2], y: d[3], t: 0, ph: rnd(0, TAU), k: d[1], dur: d[1] === 'm' ? .5 : .35 };
       if (d[1] === 'm') {   // metal scrap jumps out of the nearest smelter
@@ -458,7 +463,7 @@ function syncDrops(m, _d, _dx) {
     else { e.c.destroy({ children: true }); }
   }
 }
-function overGlow(e) { /* small sparkle when a pickup appears */ emit(overL, T_GLOW, e.x, e.y - 6, 0, -20, .5, .16, .02, e.k === 'w' ? 0xffd9a0 : e.k === 'f' ? 0xffb3b3 : 0xdfe8f5, .8, true, 0); }
+function overGlow(e) { /* small sparkle when a pickup appears */ emit(overL, T_GLOW, e.x, e.y - 6, 0, -20, .5, .16, .02, e.k === 'w' ? 0xffd9a0 : e.k === 'f' ? 0xffb3b3 : e.k === 'd' ? 0x7fe9ff : 0xdfe8f5, .8, true, 0); }
 function stepDrops(dt) {
   for (const id in dropE) {
     const e = dropE[id]; e.t += dt; const u = Math.min(1, e.t / e.dur), hop = Math.sin(u * Math.PI) * (e.from ? 46 : 26) * (1 - u * .3);
@@ -707,6 +712,8 @@ function onSnap(m) {
   }
   if (prevS && m.n > prevS.n) floatText(0, -120, 'Night ' + m.n + ' begins', 0xffffff);
   if (prevS) {
+    if (m.ph === 1 && prevS.ph !== 1) notice('Night is approaching...');
+    if (prevS.f[0] >= 25 && m.f[0] < 25 && m.f[0] > 0) notice('Fire is low - bring wood!');
     if (m.ph !== prevS.ph) { if (m.ph === 1) SFX.horn(); else if (m.ph === 2) SFX.night(); else SFX.dawn(); }
     if (m.f[0] > prevS.f[0] + 5) SFX.feed();
     if (m.f[2] > prevS.f[2]) SFX.levelup();
@@ -786,9 +793,22 @@ app.ticker.add(() => {
     if (r.shake <= 0) { if (r.k === 't') r.s.skew.x = Math.sin(T * 1.3 + r.ph) * .035 + Math.sin(T * 3.1 + r.ph) * .01; else if (r.k === 'b') r.s.skew.x = Math.sin(T * 2 + r.ph) * .02; }
   }
   updateGhost(me);
-  { // the ACT button becomes REVIVE while a downed teammate is within reach (same 60 px the server uses)
-    const near = !me.d[10] && S.p.some(q => q[10] && q[0] !== myId && Math.hypot(q[3] - me.x, q[4] - me.y) < 60), ab = $('act'), lab = near ? 'REVIVE' : 'ACT';
-    if (ab.textContent !== lab) { ab.textContent = lab; ab.style.fontSize = near ? '11px' : ''; }
+  { // the ACT button names whatever ACT would do right now (same priority and ranges as the server)
+    let lab = 'ACT';
+    if (placingId) lab = 'PLACE';
+    else if (!me.d[10]) {
+      const dist = (x, y) => Math.hypot(x - me.x, y - me.y), st = (S.st || []).find(t => (t[1] === 'chest' || t[1] === 'pot' || t[1] === 'smelter') && dist(t[2], t[3]) < RC.RADIUS[t[1]] + 62);
+      if (S.p.some(q => q[10] && q[0] !== myId && dist(q[3], q[4]) < 60)) lab = 'REVIVE';
+      else if (st) lab = st[1] === 'chest' ? 'OPEN' : st[1] === 'pot' ? 'COOK' : 'SMELT';
+      else if (Math.hypot(me.x, me.y) < 80) {
+        const feed = (GC.BY[me.d[2]] || GC.BY.forester).feed || 1;
+        lab = S.f[1] - S.f[0] > 15 * feed * .5 ? 'REFUEL' : S.f[2] < 5 ? 'UPGRADE' : 'ACT';
+      } else {
+        let bd = 55, near = null; for (const r of resNodes) if (r.hp > 0) { const dd = dist(r.x, r.y); if (dd < bd) { bd = dd; near = r; } }
+        if (near) lab = near.k === 't' ? 'CHOP' : near.k === 'r' ? 'MINE' : 'PICK';
+      }
+    }
+    const ab = $('act'); if (ab.textContent !== lab) { ab.textContent = lab; ab.style.fontSize = lab.length > 6 ? '9.5px' : lab.length > 4 ? '11px' : ''; }
   }
   // camera
   camX += (me.x - camX) * Math.min(1, dt * 10); camY += (me.y - camY) * Math.min(1, dt * 10);
@@ -851,19 +871,18 @@ function hud() {
   $('pl').textContent = S.p.length + ' player' + (S.p.length > 1 ? 's' : '');
   { const el = (performance.now() - buffAt) / 1000, bt = []; if (BUFF.speed - el > 0) bt.push('⚡' + Math.ceil(BUFF.speed - el) + 's'); if (BUFF.regen - el > 0) bt.push('💚' + Math.ceil(BUFF.regen - el) + 's'); if (BUFF.dmg - el > 0) bt.push('⚔' + Math.ceil(BUFF.dmg - el) + 's'); const bs = bt.join('  '); if ($('buffs').textContent !== bs) $('buffs').textContent = bs; }
   const now = performance.now(); let b = '';
-  if (S.o) b = 'Everyone is down... restarting';
+  if (S.o) b = 'Everyone is down... heading back to the title screen';
   else if (now < warnUntil) b = '⚠ A CHARGER is hunting! It cannot be killed - stay inside the fire ring until dawn!';
   else if (mp && mp[10]) b = 'You are down - a teammate can revive you (they stand next to you and hold ACT for 10 s)';
-  else if (S.ph === 1) b = (Math.floor(now / 500) % 2 ? '🌆 ' : '') + 'DUSK - get back to the fire!';
+  else if (now < noticeUntil) b = noticeText;
   else if (S.ph === 2 && f[0] <= 0) b = '⚠ The fire is out!';
-  else if (f[0] > 0 && f[0] < 25) b = 'Fire is low - bring wood!';
   else if (now < tipUntil) b = 'Hold ACT by a tree (4 hits) or rock (3 hits), pick berries, then run over the logs, stones and berries. Push the stick past the ring to run (uses stamina). At the fire, ACT adds wood or upgrades it (stone). ATTACK: fight aliens.';
   const bn = $('banner'); if (bn.textContent !== b) { bn.textContent = b; bn.style.fontSize = b.length > 60 ? '15px' : '22px'; }
 }
 
 // ---------- accounts (Google or emailed code) / lobby ----------
 const post = async (path, body) => { try { const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); return await r.json(); } catch (e) { return { ok: false, err: 'Network problem. Check your connection.' }; } };
-let token = '', myEmail = '', cfg = {};
+let token = '', myEmail = '', cfg = {}, runOver = false;
 try { token = localStorage.getItem('tok') || ''; } catch (e) { }
 const PF = { d: 0, owned: GC.DEFAULT_OWNED.slice() };
 let sel = 'forester', hadCls = false; try { const sc = localStorage.getItem('cls'); if (sc) { sel = sc; hadCls = true; } } catch (e) { }
@@ -930,6 +949,7 @@ function logoutUI(msg) { token = ''; myEmail = ''; try { localStorage.removeItem
 function loggedIn(r) {
   token = r.token || token; myEmail = r.email; try { localStorage.setItem('tok', token); localStorage.removeItem('pid'); } catch (e) { }
   $('who').textContent = myEmail; $('login').style.display = 'none'; applyProfile(r.profile, !hadCls); hadCls = true; $('err').textContent = '';
+  try { const rr = JSON.parse(sessionStorage.getItem('runres') || 'null'); sessionStorage.removeItem('runres'); if (rr) $('runres').textContent = 'Last run: ' + rr.n + ' day' + (rr.n === 1 ? '' : 's') + ' survived  ·  +' + rr.d + ' 💎'; } catch (e) { }
   let rj = 0; try { rj = +sessionStorage.getItem('rejoin') || 0; sessionStorage.removeItem('rejoin'); } catch (e) { }
   if (rj && Date.now() - rj < 20 * 60 * 1000 && $('room').value) setTimeout(() => $('go').onclick(), 0);   // dropped mid-game: jump straight back into the same room
 }
@@ -999,7 +1019,7 @@ $('go').onclick = () => {
   ws.onopen = () => ws.send(JSON.stringify({ t: 'join', name, cls: sel, room: $('room').value, token }));
   ws.onerror = () => $('err').textContent = 'Could not connect';
   ws.onclose = () => {
-    if (!myId) return; $('banner').textContent = 'Connection lost - reconnecting...';
+    if (!myId || runOver) return; $('banner').textContent = 'Connection lost - reconnecting...';
     try { sessionStorage.setItem('rejoin', String(Date.now())); } catch (e) { }
     const tryBack = async () => { try { const r = await fetch('/api/config', { cache: 'no-store' }); if (r.ok) { location.reload(); return; } } catch (e) { } setTimeout(tryBack, 2000); };
     setTimeout(tryBack, 1500);
@@ -1024,6 +1044,10 @@ $('go').onclick = () => {
       const msg = $('potMsg'); msg.textContent = m.msg || ''; msg.style.color = m.ok ? '#7fe9a0' : '#ff8a80';
       if (m.b) { for (const k in BUFF) BUFF[k] = m.b[k] || 0; buffAt = performance.now(); }
       if (m.ok) { SFX.cook(); const me = ents2['p' + myId]; if (me) floatText(me.x, me.y - 10, m.msg, 0xffe082); }
+    } else if (m.t === 'over') {   // everyone went down: remember the result, then back to the title screen
+      runOver = true; setDia(m.total); try { sessionStorage.setItem('runres', JSON.stringify({ n: m.n, d: m.d })); sessionStorage.removeItem('rejoin'); } catch (e) { }
+      $('banner').style.fontSize = '22px'; $('banner').textContent = 'Game over - you survived ' + m.n + ' day' + (m.n === 1 ? '' : 's') + ' and earned ' + m.d + ' 💎';
+      setTimeout(() => { try { ws.close(); } catch (e) { } location.reload(); }, 3500);
     } else if (m.t === 'dia') {
       setDia(m.d); const me = ents2['p' + myId];
       if (me) floatText(me.x, me.y - 24, '+' + m.n + ' 💎' + (m.why === 'milestone' ? ' milestone!' : ''), 0x7fe9ff);

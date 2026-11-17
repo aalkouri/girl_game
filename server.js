@@ -129,6 +129,8 @@ const HP = { t: 4, r: 3, b: 1 };            // hits to break: tree 4, rock 3, be
 const STRUCT = { bench: { r: RC.RADIUS.bench }, chest: { r: RC.RADIUS.chest }, pot: { r: RC.RADIUS.pot }, smelter: { r: RC.RADIUS.smelter }, wall: { r: RC.RADIUS.wall, hp: 60 } };
 const CHEST_CAP = 500, REACH = 62;   // collision radius / hit points of placed structures
 const SPILL = { t: 5, r: 3 };
+// end-of-run payout: 1 diamond per day survived up to day 20, 2 per day for days 21-60, 3 per day after that
+const runPayout = days => { let t = 0; for (let d = 1; d <= days; d++) t += d <= 20 ? 1 : d <= 60 ? 2 : 3; return t; };
 const REVIVE = { sec: 10, hp: .5, decay: 1 };   // a downed player is revived by a teammate standing still next to them and holding ACT for 10 s (Medic-type classes are faster); they come back with half health
 const STA = { max: 100, drain: 16, regen: 22, delay: 1, tiredDelay: 1.6, resume: 25, sprint: 1.7 };   // stamina: a full-stick run drains 16/s (~6 s), refills 22/s after a 1 s rest; at 0 you are winded until it climbs back to 25
 // the Charger: from night 4 on, one huge, very fast enemy per night that hammers players far backwards and vanishes at dawn
@@ -141,6 +143,15 @@ class Room {
     const add = (k, n, min = 130) => { for (let i = 0; i < n; i++) { const a = Math.random() * 6.283, d = min + Math.sqrt(Math.random()) * (R - 70 - min); this.res.push({ k, x: Math.cos(a) * d, y: Math.sin(a) * d, hp: HP[k], mhp: HP[k], rt: 0 }); } };
     add('t', 135, CAMP_CLEAR); add('r', 84); add('b', 66);   // island area is 4x, so ~3x the resources
     this.reset();
+  }
+  endRun() {   // everyone is down: pay out by days survived, send everyone back to the title screen, and start the room fresh
+    const days = Math.max(0, this.night - 1), pay = runPayout(days);
+    for (const p of this.players.values()) {
+      p.ended = 1; let got = 0;
+      if (p.prof && pay > 0) { const before = p.prof.d; award(p, pay, 'run'); got = p.prof.d - before; }
+      send(p.ws, { t: 'over', n: days, d: got, total: p.prof ? p.prof.d : 0 });
+    }
+    this.players.clear(); this.away.clear(); this.reset();
   }
   reset() {
     this.c = +process.env.START_C || 0; this.night = +process.env.START_N || 1; this.fire = { fuel: 150, lvl: 1 }; this.aliens = []; this.over = 0;
@@ -244,12 +255,11 @@ class Room {
   tick(dt) {
     const P = [...this.players.values()];
     if (!P.length) { this.emptyFor += dt; return; } this.emptyFor = 0;
-    if (this.over > 0) { this.over -= dt; if (this.over <= 0) this.reset(); return; }
+    if (this.over > 0) { this.over -= dt; if (this.over <= 0) this.endRun(); return; }
     this.c += dt;
     if (this.c >= CYC) {
       this.c -= CYC; this.night++;
-      const survived = this.night - 1, bonus = survived % 5 === 0 ? 10 : 0;
-      for (const p of P) { award(p, 5 + bonus, bonus ? 'milestone' : 'night'); if (p.prof) { p.prof.n++; dirty = true; } }
+      for (const p of P) if (p.prof) { p.prof.n++; dirty = true; }   // diamonds are paid when the run ends, not per night
     }
     const ph = this.ph(), f = this.fire, maxF = 150 + (f.lvl - 1) * 75;
     let burn = 1; for (const p of P) if (!p.down) burn = Math.min(burn, GC.BY[p.cls].burn);
@@ -345,7 +355,7 @@ class Room {
     }
     for (let i = this.drops.length - 1; i >= 0; i--) {
       const d = this.drops[i]; d.ttl -= dt; let taken = false;
-      if (d.ttl > 0) for (const p of P) if (!p.down && dist(p, d) < 30) { if (d.k === 'w') p.wood++; else if (d.k === 's') p.stone++; else if (d.k === 'f') p.food++; else p.scrap++; taken = true; break; }
+      if (d.ttl > 0) for (const p of P) if (!p.down && dist(p, d) < 30) { if (d.k === 'w') p.wood++; else if (d.k === 's') p.stone++; else if (d.k === 'f') p.food++; else if (d.k === 'd') award(p, 1, 'drop'); else p.scrap++; taken = true; break; }
       if (taken || d.ttl <= 0) this.drops.splice(i, 1);
     }
     // aliens
@@ -386,6 +396,7 @@ class Room {
         if (tgt.hp <= 0) { tgt.hp = 0; tgt.down = 1; tgt.rev = 0; }
       }
     }
+    for (const a of this.aliens) if (a.hp <= 0 && !a.dropped) { a.dropped = 1; if (Math.random() < 0.03) this.pend.push({ k: 'd', x: a.x, y: a.y, t: 0.35 }); }   // 3% of dead mobs leave a diamond
     this.aliens = this.aliens.filter(a => a.hp > 0);
     if (this.struct.some(st => st.dead)) this.struct = this.struct.filter(st => !st.dead);
     if (P.every(p => p.down)) this.over = 6;
@@ -442,7 +453,7 @@ wss.on('connection', ws => {
       me.inp = { dx: n(m.dx), dy: n(m.dy), act: m.act ? 1 : 0, hit: m.hit ? 1 : 0, rn: Math.max(0, Math.min(1, +m.rn || 0)) }; me.inpAt = Date.now();
     }
   });
-  ws.on('close', () => { if (room && me) { room.stash(me); room.players.delete(me.id); } });
+  ws.on('close', () => { if (room && me) { if (!me.ended) room.stash(me); room.players.delete(me.id); } });
   ws.on('error', () => { });
 });
 
