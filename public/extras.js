@@ -66,6 +66,10 @@ function xSnap(m) {
       const stones = []; for (let i = 0; i < 10; i++) { const a = i / 10 * TAU, s = new PIXI.Sprite(T_ROCK); s.anchor.set(.5, .8); s.scale.set(.26); s.position.set(c[1] + Math.cos(a) * 30, c[2] + Math.sin(a) * 30 + 4); s.zIndex = s.y; s.tint = 0xbbbbbb; ents.addChild(s); stones.push(s); }
       e = campE[c[0]] = { flames, glow, ring, stones, ringR: 0, ph: rnd(0, TAU) };
     }
+    if (e.d) {   // sounds for campfires, like the main fire has (only for ones you are near)
+      const me = ents2['p' + myId], near = me && Math.hypot(me.x - c[1], me.y - c[2]) < 900;
+      if (near) { if (c[5] > e.d[5]) SFX.levelup(); else if (c[3] > e.d[3] + 5) SFX.feed(); if (e.d[3] > 0 && c[3] <= 0) SFX.fireOut(); }
+    }
     e.d = c;
   }
   for (const id in campE) if (!seen[id]) { const e = campE[id]; e.flames.forEach(s => s.destroy()); e.glow.destroy(); e.ring.destroy(); e.stones.forEach(s => s.destroy()); delete campE[id]; }
