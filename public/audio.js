@@ -55,6 +55,7 @@ const SFX = (() => {
     chop(d, dx) { noise({ f: 900, q: .8, dur: .09, gain: .5, dist: d, dx }); tone({ f: 170, f2: 90, dur: .12, type: 'triangle', gain: .45, dist: d, dx }); },
     mine(d, dx) { noise({ type: 'highpass', f: 2500, dur: .06, gain: .35, dist: d, dx }); tone({ f: 1100, f2: 900, dur: .16, gain: .22, dist: d, dx }); tone({ f: 1650, dur: .1, gain: .12, when: .02, dist: d, dx }); },
     pick(d, dx) { noise({ f: 2800, f2: 1800, q: 1.2, dur: .2, gain: .22, attack: .03, dist: d, dx }); tone({ f: 500, f2: 700, dur: .08, gain: .1, dist: d, dx }); },
+    rustle(d, dx) { noise({ type: 'highpass', f: 3200, f2: 6500, q: .5, dur: .16, gain: .3, dist: d, dx }); noise({ type: 'bandpass', f: 2200, f2: 3600, q: .6, dur: .22, gain: .18, when: .05, dist: d, dx }); noise({ type: 'highpass', f: 4500, dur: .1, gain: .15, when: .12, dist: d, dx }); },
     feed(d, dx) { noise({ f: 300, f2: 1800, q: .7, dur: .55, gain: .35, attack: .08, dist: d, dx }); noise({ type: 'highpass', f: 2500, dur: .3, gain: .12, when: .1, dist: d, dx }); tone({ f: 110, f2: 70, dur: .4, gain: .25, type: 'triangle', dist: d, dx }); },
     levelup(d, dx) { [440, 554, 659, 880].forEach((f, i) => tone({ f, dur: .35, type: 'triangle', gain: .22, when: i * .09, dist: d, dx })); noise({ f: 3000, q: .6, dur: .5, gain: .08, when: .25, dist: d, dx }); },
     hit(d, dx) { noise({ f: 700, q: .7, dur: .1, gain: .4, dist: d, dx }); tone({ f: 220, f2: 70, dur: .14, type: 'square', gain: .2, lp: 900, dist: d, dx }); },

@@ -593,6 +593,16 @@ function emit(layer, t, x, y, vx, vy, life, s0, s1, col, a0, add, g) {
   parts.push({ s, vx, vy, life, max: life, s0, s1, a0, g: g || 0 });
 }
 function burst(x, y, n, col, speed, add, size) { for (let i = 0; i < n; i++) { const a = rnd(0, TAU), v = rnd(.3, 1) * speed; emit(add ? overL : pfx, T_GLOW, x, y, Math.cos(a) * v, Math.sin(a) * v, rnd(.3, .6), size || .12, 0, col, 1, add, 0); } }
+const T_LEAF = tex(16, 10, g => { g.fillStyle = '#5fae3c'; g.beginPath(); g.ellipse(8, 5, 7, 3.5, 0, 0, TAU); g.fill(); g.strokeStyle = '#2f6a22'; g.lineWidth = 1; g.beginPath(); g.moveTo(2, 5); g.lineTo(14, 5); g.stroke(); });
+const bushHit = new Map(), bushList = { n: -1, a: [] };   // bush node -> time it last rustled, so walking through does not spam
+function rustleBushes(e, sp) {   // anyone brushing a berry bush sets it rustling: a swishing sound and a few leaves flying out
+  const now = performance.now(); if (sp < 25) return;
+  if (bushList.n !== resNodes.length) { bushList.n = resNodes.length; bushList.a = resNodes.filter(r => r.k === 'b'); }
+  for (const r of bushList.a) { if (r.hp <= 0 || Math.abs(r.x - e.x) > 34 || Math.abs(r.y - e.y) > 34 || Math.hypot(r.x - e.x, r.y - e.y) > 30) continue;
+    if (now - (bushHit.get(r) || 0) < 700) continue; bushHit.set(r, now); r.shake = .25;
+    const me = ents2['p' + myId], d = me ? Math.hypot(r.x - me.x, r.y - me.y) : 0; SFX.rustle(d, me ? r.x - me.x : 0);
+    for (let i = 0; i < 4; i++) { const a = rnd(0, TAU), v = rnd(70, 150); emit(pfx, T_LEAF, r.x, r.y - 14, Math.cos(a) * v, Math.sin(a) * v - 70, rnd(.45, .8), rnd(.8, 1.1), .25, [0x5fae3c, 0x7cb342, 0x4a9a3a][i % 3], 1, false, 260); } }
+}
 function stepParts(dt) {
   for (let i = parts.length - 1; i >= 0; i--) {
     const p = parts[i]; p.life -= dt;
@@ -1297,6 +1307,7 @@ app.ticker.add(() => {
         if (e.sta.visible) { const f = Math.max(0, e.stv / 100), tired = !!p[18], col = tired ? (Math.sin(T * 12) > 0 ? 0xff5252 : 0xb71c1c) : f < .3 ? 0xffb74d : 0xffee58; if (e.stDraw !== col + ':' + Math.round(f * 60)) { e.stDraw = col + ':' + Math.round(f * 60); drawHp(e.sta, 34, f, col); if (tired) { e.sta.beginFill(0xffffff, .85); e.sta.drawRect(-17 + 34 * .3 - .5, -1, 1, 7); e.sta.endFill(); } } }
       }
       if (e.lh !== p[5] || e.ld !== p[10] || e.lr !== p[11]) { e.lh = p[5]; e.ld = p[10]; e.lr = p[11]; if (p[10]) drawHp(e.hp, 40, Math.min(1, p[11] / 10), 0x4caf50); else drawHp(e.hp, 34, p[5] / p[6], 0xef5350); }
+      if (!down && !p[20]) rustleBushes(e, sp);
       if (sp > 30 && !down && !p[20]) { e.st = (e.st || 0) - dt; if (e.st <= 0) { e.st = .3; SFX.step(Math.hypot(e.x - me.x, e.y - me.y), e.x - me.x); } e.dust -= dt; if (e.dust <= 0) { e.dust = .14; emit(pfx, T_GLOW, e.x, e.y + 8, rnd(-8, 8), rnd(-8, 4), .5, .12, .3, 0xd9c79a, .35, false, 0); } }
     } else if (e.kind === 'w' && e.vul) {   // vulture: wings beating high above the ground (its shadow stays on the ground), folded up when it has landed
       const w = e.d; e.age += dt; e.c.alpha = Math.min(1, e.age * 2); e.lift += ((e.air ? 1 : 0) - e.lift) * Math.min(1, dt * 3);

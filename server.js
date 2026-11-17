@@ -135,6 +135,7 @@ const BUSHES = 132;                  // berry bushes on home (4x the area of the
 const HP = { t: 4, r: 3, b: 1, c: 4, p: 8, g: 5 };   // p = snowy pine (twice the chops), g = gold ore vein            // hits to break: tree 4, rock 3, berry bush 1
 // the nearest point of a structure's solid body to (x, y), and its radius: most are round; a gate is a 104-long bar along its rotation
 const GATE_HALF = 52;
+const RES_R = { t: 17, p: 15, c: 13, r: 24, g: 24 };   // how wide the solid base of each resource is (you walk behind the tops of trees, but not through the trunk)
 function solidPt(st, x, y) {
   if (st.k !== 'gate') return [st.x, st.y, st.r];
   const a = (st.rot || 0) * Math.PI / 4, ux = Math.cos(a), uy = Math.sin(a), t = Math.max(-GATE_HALF, Math.min(GATE_HALF, (x - st.x) * ux + (y - st.y) * uy));
@@ -394,6 +395,10 @@ class Room {
     if (!ok || Date.now() - f.t < 2500 || Math.hypot(p.x - q.x, p.y - q.y) > 180) return toast('It got away!');
     this.pools = this.pools.filter(x => x !== q); p['fish' + q.kind] = (p['fish' + q.kind] || 0) + 1;
     send(p.ws, { t: 'fishCaught', kind: q.kind });
+  }
+  resGrid() {   // trees, cacti, rocks and ore are solid at their base: a coarse grid so a player only checks what is right beside them
+    if (!this._rg || this._rgN !== this.res.length) { this._rgN = this.res.length; const g = new Map(); for (const r of this.res) { if (!RES_R[r.k]) continue; const key = Math.floor(r.x / 200) * 100003 + Math.floor(r.y / 200); (g.get(key) || g.set(key, []).get(key)).push(r); } this._rg = g; }
+    return this._rg;
   }
   gateNear(p) { let best = null, bd = 70; for (const st of this.struct) if (st.k === 'gate') { const [qx, qy] = solidPt(st, p.x, p.y), d = Math.hypot(p.x - qx, p.y - qy); if (d < bd) { bd = d; best = st; } } return best; }
   boatNear(p) { let best = null, bd = 125; for (const b of this.boats) { const d = Math.hypot(p.x - b.x, p.y - b.y); if (d < bd) { bd = d; best = b; } } return best; }
@@ -948,6 +953,9 @@ class Room {
       if (!flying) { p.x += dx * spd * dt; p.y += dy * spd * dt; } if (m > 0.1) p.fa = Math.atan2(dy, dx);
       if (i.am) p.fa = i.aim;   // aiming (mouse cursor / aim stick): you face where you aim, whichever way you walk
       for (const st of this.struct) { if (st.k === 'trap' || st.k === 'spike' || (st.k === 'gate' && st.open)) continue; const [qx, qy, qr] = solidPt(st, p.x, p.y), sd = Math.hypot(p.x - qx, p.y - qy), mn = qr + 14; if (sd < mn && sd > 0.01) { p.x = qx + (p.x - qx) / sd * mn; p.y = qy + (p.y - qy) / sd * mn; } }
+      { const g = this.resGrid(), cx = Math.floor(p.x / 200), cy = Math.floor(p.y / 200);   // trunks and boulders are obstacles
+        for (let ax = -1; ax <= 1; ax++) for (let ay = -1; ay <= 1; ay++) { const arr = g.get((cx + ax) * 100003 + cy + ay); if (!arr) continue;
+          for (const r of arr) { if (r.hp <= 0) continue; const sd = Math.hypot(p.x - r.x, p.y - r.y), mn = RES_R[r.k] + 14; if (sd < mn && sd > 0.01) { p.x = r.x + (p.x - r.x) / sd * mn; p.y = r.y + (p.y - r.y) / sd * mn; } } } }
       if (this.landAt(p.x, p.y) < 0) { const q = this.landPoint(p.x, p.y); p.x = q[0]; p.y = q[1]; }   // stay on land (any island); only boats go on water
       const d = Math.hypot(p.x, p.y);
 
