@@ -993,7 +993,7 @@ class Room {
     // aliens
     if (ph === 2) for (let i = 0; i < this.islands.length; i++) this.nightSpawns(i, P, dt);
     for (const a of this.aliens) {
-      if (ph !== 2) { if (a.k === 2) a.hp = 0; else a.hp -= 25 * dt; }       // sunlight burns them; the Charger vanishes the moment night ends
+      if (ph !== 2) { if (a.k === 2) a.hp = 0; else if (a.k < 3) a.hp -= 25 * dt; }   // dawn: aliens burn and the Charger vanishes, but raiding villagers (k 3-4, the tribesmen) are people, not creatures of the night       // sunlight burns them; the Charger vanishes the moment night ends
       a.cd -= dt;
       if (a.k === 2 && !(a.trapT > 0)) { const tr = this.struct.find(st => st.k === 'trap' && Math.hypot(a.x - st.x, a.y - st.y) < 34); if (tr) { a.trapT = TRAP_SEC; this.struct = this.struct.filter(s => s !== tr); for (const q of P) send(q.ws, { t: 'trapped' }); } }   // the big monster ran over a trap: stuck for 20 s
       if (a.trapT > 0) { a.trapT -= dt; a.cd = Math.max(a.cd, 0.3); continue; }   // stuck: no moving, no attacking
