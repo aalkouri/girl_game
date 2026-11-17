@@ -586,7 +586,8 @@ function buildCraft() {
   if (!bench) list.insertAdjacentHTML('beforeend', '<div class="lockhint">🔒 Place a Crafting Bench in your camp to unlock more recipes.</div>');
   for (const r of RC.LIST) {
     if (r.id === 'bench' ? bench : !bench) continue;   // bench recipe hides once one exists; other recipes appear once it does
-    const owned = r.kind === 'gear' && GEAR[r.gear], ok = iv.wood >= r.cost.wood && iv.stone >= r.cost.stone;
+    if (r.kind === 'gear' && GEAR[r.gear]) continue;   // tools you already made disappear from your menu (per player)
+    const owned = false, ok = iv.wood >= r.cost.wood && iv.stone >= r.cost.stone;
     const co = [r.cost.wood ? '<span class="' + (iv.wood >= r.cost.wood ? '' : 'no') + '">🪵 ' + iv.wood + '/' + r.cost.wood + '</span>' : '', r.cost.stone ? '<span class="' + (iv.stone >= r.cost.stone ? '' : 'no') + '">🪨 ' + iv.stone + '/' + r.cost.stone + '</span>' : ''].filter(Boolean).join(' &nbsp; ');
     const d = document.createElement('div'); d.className = 'rc';
     d.innerHTML = '<div class="ic">' + r.e + '</div><div class="tx"><div class="nm">' + r.n + '</div><div class="ds">' + r.d + '</div><div class="co">' + co + '</div></div>';
