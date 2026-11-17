@@ -266,29 +266,36 @@ class Room {
   onIsland(p, i) { return i === 0 ? Math.hypot(p.x, p.y) < R + 40 : this.landAt(p.x, p.y, 0) === i; }
   // night enemies for one island. Home always gets them (they gather around the fire); any other island only while someone
   // is standing on it: the same mix (aliens, brutes, the Charger, villager raids), coming ashore, scaled to the island's size
+  inFire(x, y, m = 0) { return this.fires().some(F => Math.hypot(x - F.x, y - F.y) < RC.camp(F.f.lvl) + m); }
+  outOfFire(x, y) {   // slide a spawn point out of any campfire's range (straight away from that fire)
+    for (const F of this.fires()) { const R0 = RC.camp(F.f.lvl) + 30, dx = x - F.x, dy = y - F.y, d = Math.hypot(dx, dy); if (d < R0) { const k = R0 / (d || 1); x = F.x + (d ? dx * k : R0); y = F.y + (d ? dy * k : 0); } }
+    return [x, y];
+  }
+  spawnA(a) { if (!this.inFire(a.x, a.y)) this.aliens.push(a); }   // enemies never appear inside a campfire's range
   nightSpawns(i, P, dt) {
     const is = this.islands[i], home = i === 0, here = P.filter(p => !p.boat && this.onIsland(p, i));
     if (!home && !here.some(p => !p.down)) return;
     const st = home ? this : (this.islNight[i] = this.islNight[i] || { chargerNight: 0, raidNight: 0 });
     const size = home ? 1 : Math.min(1, Math.max(0.15, is.r / R));   // never more than home gets
-    const at = (ang, out = 0) => home ? [Math.cos(ang) * (ALIEN_R + out), Math.sin(ang) * (ALIEN_R + out)] : [is.x + Math.cos(ang) * (is.r - 40), is.y + Math.sin(ang) * (is.r - 40)];
+    const at0 = (ang, out = 0) => home ? [Math.cos(ang) * (ALIEN_R + out), Math.sin(ang) * (ALIEN_R + out)] : [is.x + Math.cos(ang) * (is.r - 40), is.y + Math.sin(ang) * (is.r - 40)];
+    const at = (ang, out = 0) => { let [x, y] = this.outOfFire(...at0(ang, out)); if (!home) { const dx = x - is.x, dy = y - is.y, d = Math.hypot(dx, dy); if (d > is.r - 40) { x = is.x + dx * (is.r - 40) / d; y = is.y + dy * (is.r - 40) / d; } } return [x, y]; };   // never inside a campfire's range
     let want = Math.min(40, 2 + this.night * 2); if (this.night % 5 === 0) want = Math.floor(want * 1.5);
     if (!home) want = Math.max(2, Math.round(want * size));
     if (this.night >= CHARGER.firstNight && st.chargerNight !== this.night) {
       st.chargerNight = this.night; const [x, y] = at(Math.random() * 6.283), hp = 1;   // it cannot be hurt; hp only exists so dawn can remove it
-      this.aliens.push({ id: this.nid++, isl: i, x, y, hp, mhp: hp, sp: Math.min(CHARGER.spMax, CHARGER.sp0 + CHARGER.spPerNight * (this.night - CHARGER.firstNight)), dmg: CHARGER.dmg, k: 2, cd: 0, rad: CHARGER.rad, reach: CHARGER.reach, stop: CHARGER.stop });
+      this.spawnA({ id: this.nid++, isl: i, x, y, hp, mhp: hp, sp: Math.min(CHARGER.spMax, CHARGER.sp0 + CHARGER.spPerNight * (this.night - CHARGER.firstNight)), dmg: CHARGER.dmg, k: 2, cd: 0, rad: CHARGER.rad, reach: CHARGER.reach, stop: CHARGER.stop });
     }
     if (this.night % 5 === 0 && st.raidNight !== this.night) {   // every 5th night villagers raid: 3 the first time, one more each time, stronger every night
       st.raidNight = this.night; const n = 3 + (this.night / 5 - 1), s = 1 + 0.04 * (this.night - 1), a0 = Math.random() * 6.283, arch = Math.floor(n / 2);
       for (let k = 0; k < n; k++) {
         const [x, y] = at(a0 + (k - (n - 1) / 2) * (home ? 0.22 : 0.5), 40), archer = k < arch, hp = Math.round((archer ? 30 : 45) * s);
-        this.aliens.push({ id: this.nid++, isl: i, x, y, hp, mhp: hp, sp: archer ? 70 : 80, dmg: (archer ? 6 : 7) * s, k: archer ? 4 : 3, cd: 0, atkCd: 1.5, reach: archer ? 0 : 30, stop: archer ? 250 : 22, range: 290, aim: 0, shotCd: 0 });
+        this.spawnA({ id: this.nid++, isl: i, x, y, hp, mhp: hp, sp: archer ? 70 : 80, dmg: (archer ? 6 : 7) * s, k: archer ? 4 : 3, cd: 0, atkCd: 1.5, reach: archer ? 0 : 30, stop: archer ? 250 : 22, range: 290, aim: 0, shotCd: 0 });
       }
       for (const q of home ? P : here) send(q.ws, { t: 'raid', n });
     }
     if (this.aliens.filter(a => (a.isl | 0) === i && a.k < 2).length < want && Math.random() < dt * 2) {
       const [x, y] = at(Math.random() * 6.283), brute = this.night % 5 === 0 && Math.random() < 0.2;
-      this.aliens.push({ id: this.nid++, isl: i, x, y, hp: brute ? 120 : 30, mhp: brute ? 120 : 30, sp: brute ? 55 : 70 + Math.min(30, this.night * 2), dmg: brute ? 20 : 10, k: brute ? 1 : 0, cd: 0 });
+      this.spawnA({ id: this.nid++, isl: i, x, y, hp: brute ? 120 : 30, mhp: brute ? 120 : 30, sp: brute ? 55 : 70 + Math.min(30, this.night * 2), dmg: brute ? 20 : 10, k: brute ? 1 : 0, cd: 0 });
     }
   }
   landAt(x, y, m = 30) { for (let i = 0; i < this.islands.length; i++) { const s = this.islands[i]; if (Math.hypot(x - s.x, y - s.y) < s.r - m) return i; } return -1; }
@@ -693,7 +700,7 @@ class Room {
             let x, y;
             if (i === 0) { const a = RC.SNOW_A + (Math.random() - 0.5) * 1.3, d = 1300 + Math.random() * (R - 1500); x = Math.cos(a) * d; y = Math.sin(a) * d; if (!RC.inSnow(x, y)) continue; }
             else { const a = Math.random() * 6.283, d = Math.sqrt(Math.random()) * (is.r - 200); x = is.x + Math.cos(a) * d; y = is.y + Math.sin(a) * d; if (RC.biomeAt(is.x, is.y, is.r, is.b, x, y) !== 's') continue; }
-            if (!P.some(p => Math.hypot(p.x - x, p.y - y) < 600)) q = [x, y];
+            if (!P.some(p => Math.hypot(p.x - x, p.y - y) < 600) && !this.inFire(x, y, 60)) q = [x, y];
           }
           if (!q) continue; have++;
           const f = i > 0 ? DIST_F(q[0], q[1]) : 0, rl = Math.random(), nB = this.wolves.filter(w => w.isl === i && w.big === 1).length, nM = this.wolves.filter(w => w.isl === i && w.big === 2).length;
