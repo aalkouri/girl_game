@@ -65,23 +65,25 @@
   // boat types (what the Boat Dealer sells): speed, riders, extra carry slots while aboard
   const BOATS = { boat: { speed: 190, riders: 2, slots: 0, sc: .8 }, sloop: { speed: 250, riders: 3, slots: 2, sc: 1 }, galleon: { speed: 320, riders: 4, slots: 4, sc: 1.25 } };
   const ARMOR = [0, .15, .30, .45];   // damage reduction by armor level
+  const ARM_PC = { ah: 0.10, al: 0.12, ab: 0.23 };   // head / legs / body armor pieces (pelt trader): damage reduction, all three = 45%
+  const armorOf = g => (g.ah ? ARM_PC.ah : 0) + (g.al ? ARM_PC.al : 0) + (g.ab ? ARM_PC.ab : 0);
   const GUNS = { pistol: { dmg: 18, cd: .6, speed: 900, ttl: .55 }, rifle: { dmg: 40, cd: 1.1, speed: 1200, ttl: .9 } };
   // The five traders found on the outer islands. offers: cost is paid from your own bag.
   const TRADERS = {
     1: { n: 'Pelt Trader', e: '🐺', d: 'Trades wolf pelts for armor.', offers: [
-      { id: 'pelt1', n: 'Pelt Cloak', e: '🧥', cost: { pelt: 3 }, armor: 1, d: 'Take 15% less damage.' },
-      { id: 'pelt2', n: 'Pelt Armor', e: '🦺', cost: { pelt: 6 }, armor: 2, d: 'Take 30% less damage.' },
-      { id: 'pelt3', n: 'Frost Plate', e: '🛡️', cost: { pelt: 12 }, armor: 3, d: 'Take 45% less damage.' }] },
+      { id: 'phood', n: 'Pelt Hood', e: '🧢', cost: { pelt: 4, scrap: 3 }, gear: 'ah', d: 'Head armor: take 10% less damage.' },
+      { id: 'plegs', n: 'Pelt Leggings', e: '👖', cost: { pelt: 6, scrap: 5 }, gear: 'al', d: 'Leg armor: take 12% less damage.' },
+      { id: 'pbody', n: 'Alpha Mantle', e: '🦺', cost: { apelt: 1, pelt: 8, scrap: 8, gold: 2 }, gear: 'ab', d: 'Body armor: take 23% less damage. The strongest piece.' }] },
     2: { n: 'Fisherman', e: '🎣', d: 'Sells a fishing rod for plain resources.', offers: [
-      { id: 'rod', n: 'Fishing Rod', e: '🎣', cost: { wood: 20, stone: 10 }, gear: 'rod', d: 'Press ACT at the shore to fish: you reel in berries from the sea.' }] },
+      { id: 'rod', n: 'Fishing Rod', e: '🎣', cost: { scrap: 4, gold: 1 }, gear: 'rod', d: 'Press ACT at the shore to fish: you reel in berries from the sea.' }] },
     3: { n: 'Blacksmith', e: '⚒️', d: 'Trades scrap for weapons, guns included.', offers: [
       { id: 'sword', n: 'Iron Sword', e: '🗡️', cost: { scrap: 6 }, gear: 'sword', d: '+8 melee damage.' },
       { id: 'pistol', n: 'Pistol', e: '🔫', cost: { scrap: 10 }, gear: 'pistol', d: 'ATTACK fires bullets: 18 damage, fast, long range.' },
       { id: 'rifle', n: 'Rifle', e: '🎯', cost: { scrap: 18 }, gear: 'rifle', d: 'ATTACK fires a slow, heavy shot: 40 damage, very long range.' }] },
     4: { n: 'Boat Dealer', e: '⚓', d: 'Sells bigger, faster boats that carry more loot.', offers: [
-      { id: 'sloop', n: 'Sloop', e: '🚤', cost: { wood: 40, scrap: 8 }, item: 'sloop', d: 'Speed 250, 3 riders, +2 item slots while aboard. Goes into a slot; use it at the shore.' },
-      { id: 'galleon', n: 'Galleon', e: '🛳️', cost: { wood: 80, stone: 40, scrap: 20 }, item: 'galleon', d: 'Speed 320, 4 riders, +4 item slots while aboard. Goes into a slot; use it at the shore.' }] },
+      { id: 'sloop', n: 'Sloop', e: '🚤', cost: { scrap: 8, gold: 2 }, item: 'sloop', d: 'Speed 250, 3 riders, +2 item slots while aboard. Goes into a slot; use it at the shore.' },
+      { id: 'galleon', n: 'Galleon', e: '🛳️', cost: { scrap: 20, gold: 6 }, item: 'galleon', d: 'Speed 320, 4 riders, +4 item slots while aboard. Goes into a slot; use it at the shore.' }] },
     5: { n: 'Ability Unlocker', e: '🔮', d: 'Unlocks the hidden ability of any class you own, for the right resources.', offers: [] },
   };
-  return { BOATS, ARMOR, GUNS, TRADERS, biomeAt, FIRE_MAX, fuelMax, LIST, BY, FOOD, FOOD_BY, ITEM_BY, camp, SMELT, RADIUS, FIRE_R, fireClear, STATION_GAP: 120, WALL_GAP: 80, FOREST_CUT, homeDir, forestEdge, inForestPart, SNOW_A, snowIn, snowHalf, inSnow };
+  return { BOATS, ARMOR, armorOf, GUNS, TRADERS, biomeAt, FIRE_MAX, fuelMax, LIST, BY, FOOD, FOOD_BY, ITEM_BY, camp, SMELT, RADIUS, FIRE_R, fireClear, STATION_GAP: 120, WALL_GAP: 80, FOREST_CUT, homeDir, forestEdge, inForestPart, SNOW_A, snowIn, snowHalf, inSnow };
 });

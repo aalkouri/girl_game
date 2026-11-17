@@ -58,7 +58,7 @@
     legend: { id: 'legendary', n: 'Legendary', e: '👑', cd: 120, d: 'Full heal, plus 8 seconds of double damage and +40% speed.' },
   };
   // what the Ability Unlocker charges (by class price tier)
-  const abilCost = c => ({ 0: { scrap: 6, stone: 20 }, 50: { scrap: 10, stone: 30, wood: 20 }, 120: { scrap: 16, stone: 40, wood: 30, pelt: 2 }, 250: { scrap: 24, stone: 60, wood: 40, pelt: 4 }, 400: { scrap: 32, stone: 80, wood: 60, pelt: 6 } })[c.price];
+  const abilCost = c => ({ 0: { scrap: 6, gold: 1 }, 50: { scrap: 10, gold: 2 }, 120: { scrap: 16, gold: 3, pelt: 2 }, 250: { scrap: 24, gold: 5, pelt: 4 }, 400: { scrap: 32, gold: 8, pelt: 6, apelt: 1 } })[c.price];
   const LIST = RAW.map(c => Object.assign({}, DEF, c));
   const BY = {}; LIST.forEach(c => BY[c.id] = c);
   return { ABIL, abilCost, LIST, BY, DEF, DEFAULT_OWNED: LIST.filter(c => c.price === 0).map(c => c.id) };

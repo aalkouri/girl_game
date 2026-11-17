@@ -30,7 +30,7 @@ const T_TRADER = {}; for (const k in TRADER_LOOK) T_TRADER[k] = PIXI.Texture.fro
 // ---------- state ----------
 let LOOT = [], cullList = [], lootE = {}, campE = {}, bulletE = {}, zoneE = {}, turretE = {};
 const BSPEED = { 1: 700, 2: 800, 3: 1000 };
-const COSTI = { wood: '🪵', stone: '🪨', food: '🍓', scrap: '🔩', pelt: '🐺', meat: '🍖', gold: '🪙' }, COSTX = { wood: 7, stone: 8, food: 9, scrap: 15, meat: 21, gold: 22, pelt: 23 };
+const COSTI = { wood: '🪵', stone: '🪨', food: '🍓', scrap: '🔩', pelt: '🐺', apelt: '🐾', meat: '🍖', gold: '🪙' }, COSTX = { wood: 7, stone: 8, food: 9, scrap: 15, meat: 21, gold: 22, pelt: 23, apelt: 26 };
 
 // ---------- loot areas ----------
 function xInit(m) {

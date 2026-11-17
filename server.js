@@ -136,10 +136,12 @@ const HP = { t: 4, r: 3, b: 1, c: 4, p: 8, g: 5 };   // p = snowy pine (twice th
 const STRUCT = { bench: { r: RC.RADIUS.bench }, chest: { r: RC.RADIUS.chest }, pot: { r: RC.RADIUS.pot }, smelter: { r: RC.RADIUS.smelter }, wall: { r: RC.RADIUS.wall, hp: 60 }, trap: { r: RC.RADIUS.trap } };
 const CHEST_CAP = 500, REACH = 62;   // collision radius / hit points of placed structures
 const SPILL = { t: 5, r: 3, c: 8, p: 12 };   // a pine gives far more wood
-const SPEAR_REACH = 115;   // how much further than the normal swing the spear's poke reaches (straight ahead)
+const SPEAR_REACH = 60;   // how much further than the normal swing the spear's poke reaches (straight ahead)
 const GOLD_P = 0.01;   // chance a rock (new or regrowing) comes up as a gold ore vein
 const WOODY = k => k === 't' || k === 'c' || k === 'p', ROCKY = k => k === 'r' || k === 'g';
-const WOLF = { aHp: 100, aDmg: 16, aRun: 150, n: 6, outer: 8, alpha: 0.20, respawn: 40, reAggro: 3, pelt: 0.10, hp: 45, see: 300, give: 520, leash: 1100, run: 132, walk: 30, dmg: 9, reach: 30, cd: 1.0, fireGap: 140 };   // snow wolves: count, respawn s, hp, notice range, give-up range, max chase from home spot, speeds (players walk 150), bite   // a cactus gives more wood than a tree
+const WOLF = { aHp: 100, aDmg: 16, aRun: 150, n: 6, outer: 8, alpha: 0.20, respawn: 40, reAggro: 3, pelt: 0.15, aPelt: 0.3, hp: 45, see: 300, give: 520, leash: 1100, run: 132, walk: 30, dmg: 9, reach: 30, cd: 1.0, fireGap: 140 };
+const BIG = { 1: { name: 'bear', hp: 1000, dmg: 35, run: 105, reach: 46, cd: 1.3, walk: 26, see: 330, meat: [3, 3], pelt: 0.7 }, 2: { name: 'mammoth', hp: 2000, dmg: 50, run: 80, reach: 64, cd: 2.0, walk: 20, see: 280, meat: [6, 4], pelt: 1 } };   // snow-island giants (player walks 150): a bear takes ~30 s to kill, a mammoth ~60 s
+const DIST_F = (x, y) => Math.max(0, Math.min(1, (Math.hypot(x, y) - R) / (WORLD_R - R)));   // 0 at home's shore, 1 at the far edge: out there alphas are common and bears / mammoths appear   // snow wolves: count, respawn s, hp, notice range, give-up range, max chase from home spot, speeds (players walk 150), bite   // a cactus gives more wood than a tree
 // ---------- the archipelago: island 0 is home (all forest); the others are random sizes, each 25% forest on the side facing home and 75% its own biome (b) ----------
 const WORLD_R = 30000, BOAT_SPEED = 190, BOAT_AHEAD = 100, ISL_VER = 5;   // ISL_VER: bump when island generation changes so saved rooms regenerate their outer islands
 function seeded(code) { let h = 2166136261; for (const ch of String(code)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); let a = h >>> 0; return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
@@ -341,9 +343,8 @@ class Room {
     const R2 = (a, b) => a + Math.floor(Math.random() * (b - a + 1)), got = [];
     const give = (k, n, e) => { if (n > 0) { p[k] = (p[k] || 0) + n; got.push('+' + n + ' ' + e); } };
     const t = l.tier;
-    give('wood', t === 1 ? R2(8, 15) : t === 2 ? R2(15, 25) : R2(25, 40), '🪵'); give('stone', t === 1 ? R2(6, 12) : t === 2 ? R2(12, 20) : R2(20, 35), '🪨');
-    give('food', t === 1 ? R2(3, 6) : t === 2 ? R2(5, 9) : R2(8, 14), '🍓'); give('scrap', t === 1 ? R2(1, 2) : t === 2 ? R2(3, 5) : R2(6, 10), '🔩');
-    if (t >= 2) give('meat', R2(1, 2), '🍖'); if (t === 3) { give('pelt', R2(1, 2), '🐺'); give('gold', R2(1, 2), '🪙'); }
+    // chests hold only what the traders want: scrap and gold (pelts come from wolves)
+    give('scrap', t === 1 ? R2(2, 4) : t === 2 ? R2(5, 8) : R2(9, 14), '🔩'); if (t >= 2) give('gold', t === 2 ? R2(1, 2) : R2(3, 5), '🪙');
     const dia = t === 3 ? R2(2, 4) : t === 2 && Math.random() < 0.3 ? 1 : 0; if (dia) { award(p, dia, 'chest'); got.push('+' + dia + ' 💎'); }
     l.open = 1; this.scrapFound = this.scrapFound || got.some(g => g.includes('🔩'));
     send(p.ws, { t: 'loot', tier: t, msg: ['', 'Small', 'Silver', 'Golden'][t] + ' chest: ' + got.join('  ') });
@@ -372,7 +373,7 @@ class Room {
     return { ok: true, msg: 'Deal!' };
   }
   hurt(p, d) {   // every hit on a player goes through here (armor, Bulwark, Blood Rage)
-    const B = p.buff; d *= 1 - RC.ARMOR[p.gear.armor || 0]; if (B.shield > 0) d *= 0.3; if (B.rage > 0) d *= 1.5;
+    const B = p.buff; d *= 1 - Math.min(0.6, RC.ARMOR[p.gear.armor || 0] + RC.armorOf(p.gear)); if (B.shield > 0) d *= 0.3; if (B.rage > 0) d *= 1.5;
     p.hp -= d; if (p.hp <= 0) { p.hp = 0; p.down = 1; p.rev = 0; }
   }
   killCredit(p, a) { if (a.hp <= 0 && !a.cred) { a.cred = 1; if (p.prof) { p.prof.k++; dirty = true; if (p.prof.k % 10 === 0) award(p, 1, 'kills'); } } }
@@ -615,7 +616,10 @@ class Room {
             if (!P.some(p => Math.hypot(p.x - x, p.y - y) < 600)) q = [x, y];
           }
           if (!q) continue; have++;
-          const al = i > 0 && Math.random() < WOLF.alpha, hp = al ? WOLF.aHp : WOLF.hp;   // out on the snow islands 1 in 5 is an alpha
+          const f = i > 0 ? DIST_F(q[0], q[1]) : 0, rl = Math.random(), nB = this.wolves.filter(w => w.isl === i && w.big === 1).length, nM = this.wolves.filter(w => w.isl === i && w.big === 2).length;
+          const big = i > 0 && nM < 1 && rl < 0.07 * f ? 2 : i > 0 && nB < 2 && rl < 0.07 * f + 0.28 * f ? 1 : 0;   // farther out: more bears, and the odd mammoth
+          if (big) { const B = BIG[big]; this.wolves.push({ id: this.nid++, wolf: 1, big, heavy: 1, isl: i, alpha: 0, x: q[0], y: q[1], hx: q[0], hy: q[1], hp: B.hp, mhp: B.hp, run: B.run, dmg: B.dmg, reach: B.reach, bcd: B.cd, see: B.see, walk: B.walk, fa: Math.random() * 6.283, st: 0, tg: 0, cd: 0, wt: 0, wa: 0, bite: 0 }); continue; }
+          const al = i > 0 && Math.random() < 0.08 + 0.55 * f, hp = al ? WOLF.aHp : WOLF.hp;   // alphas get more common the farther from home
           this.wolves.push({ id: this.nid++, wolf: 1, isl: i, alpha: al ? 1 : 0, x: q[0], y: q[1], hx: q[0], hy: q[1], hp, mhp: hp, run: al ? WOLF.aRun : WOLF.run, dmg: al ? WOLF.aDmg : WOLF.dmg, fa: Math.random() * 6.283, st: 0, tg: 0, cd: 0, wt: 0, wa: 0, bite: 0 });
         }
       }
@@ -633,15 +637,15 @@ class Room {
       if (w.st !== 2) {
         let tg = w.st === 1 ? P.find(p => p.id === w.tg && !p.down && !p.boat) : null;
         if (tg && Math.hypot(tg.x - w.x, tg.y - w.y) > WOLF.give) tg = null;
-        if (!tg) { let nd = WOLF.see; for (const p of P) if (!p.down && !p.boat && this.onIsland(p, wi)) { const d = Math.hypot(p.x - w.x, p.y - w.y); if (d < nd) { nd = d; tg = p; } } }
+        if (!tg) { let nd = w.see || WOLF.see; for (const p of P) if (!p.down && !p.boat && this.onIsland(p, wi)) { const d = Math.hypot(p.x - w.x, p.y - w.y); if (d < nd) { nd = d; tg = p; } } }
         if (tg && !nearFire(tg.x, tg.y)) {
           w.st = 1; w.tg = tg.id; const d = Math.hypot(tg.x - w.x, tg.y - w.y) || 1; dx = (tg.x - w.x) / d; dy = (tg.y - w.y) / d;
-          if (d > WOLF.reach * (w.alpha ? 1.25 : 1)) spd = w.run || WOLF.run;
-          else if (w.cd <= 0) { w.cd = WOLF.cd; w.bite = 0.25; this.hurt(tg, w.dmg || WOLF.dmg); }
+          if (d > (w.reach || WOLF.reach) * (w.alpha ? 1.25 : 1)) spd = w.run || WOLF.run;
+          else if (w.cd <= 0) { w.cd = w.bcd || WOLF.cd; w.bite = 0.25; this.hurt(tg, w.dmg || WOLF.dmg); }
         } else if (w.st === 1) { w.st = 2; w.rt = 0; continue; }   // lost them (or they reached the fire): head home
         else {   // roaming around its spot
           w.wt -= dt; if (w.wt <= 0) { w.wt = 1.5 + Math.random() * 3; w.sit = Math.random() < 0.5; w.wa = home > 260 ? Math.atan2(w.hy - w.y, w.hx - w.x) : Math.random() * 6.283; }
-          if (!w.sit) { dx = Math.cos(w.wa); dy = Math.sin(w.wa); spd = WOLF.walk; }
+          if (!w.sit) { dx = Math.cos(w.wa); dy = Math.sin(w.wa); spd = w.walk || WOLF.walk; }
         }
       }
       if (!spd) { if (dx || dy) w.fa = Math.atan2(dy, dx); continue; }
@@ -650,8 +654,9 @@ class Room {
       { const ex = nx - is.x, ey = ny - is.y, L = Math.hypot(ex, ey); if (L > is.r - 45) { nx = is.x + ex * (is.r - 45) / L; ny = is.y + ey * (is.r - 45) / L; } }   // stays on its island
       w.x = nx; w.y = ny; w.fa = Math.atan2(dy, dx);
     }
-    for (const w of this.wolves) if (w.hp <= 0 && !w.dropped) { w.dropped = 1; const n = 1 + (Math.random() < 0.5 ? 1 : 0); for (let i = 0; i < n; i++) { const a = Math.random() * 6.283, d = 8 + Math.random() * 18; this.pend.push({ k: 'n', x: w.x + Math.cos(a) * d, y: w.y + Math.sin(a) * d, t: 0.15 }); }
-      if (Math.random() < WOLF.pelt) this.pend.push({ k: 'h', x: w.x + 10, y: w.y - 6, t: 0.2 }); }   // 1-2 meat scraps, and a 10% chance of a wolf pelt
+    for (const w of this.wolves) if (w.hp <= 0 && !w.dropped) { w.dropped = 1; const BG = BIG[w.big], AL = w.alpha || w.big === 2, n = BG ? BG.meat[0] + (Math.random() * (BG.meat[1] + 1) | 0) : 1 + (Math.random() < 0.5 ? 1 : 0); for (let i = 0; i < n; i++) { const a = Math.random() * 6.283, d = 8 + Math.random() * (BG ? 40 : 18); this.pend.push({ k: 'n', x: w.x + Math.cos(a) * d, y: w.y + Math.sin(a) * d, t: 0.15 }); }
+      if (BG) { for (let i = 0; i < (w.big === 2 ? 3 : 1); i++) if (Math.random() < BG.pelt) this.pend.push({ k: 'h', x: w.x + 10 + i * 14, y: w.y - 6, t: 0.2 }); } else if (Math.random() < WOLF.pelt) this.pend.push({ k: 'h', x: w.x + 10, y: w.y - 6, t: 0.2 });
+      if (AL && Math.random() < (w.big === 2 ? 1 : WOLF.aPelt)) this.pend.push({ k: 'H', x: w.x - 12, y: w.y + 8, t: 0.25 }); }   // alpha wolves (and mammoths) can drop an alpha pelt   // 1-2 meat scraps, and a 10% chance of a wolf pelt
     if (this.wolves.some(w => w.hp <= 0)) this.wolves = this.wolves.filter(w => w.hp > 0);
   }
   killRabbit(b) {   // one hit: 1-2 meat scraps, and a 10% chance of a lucky rabbit's foot
@@ -661,7 +666,7 @@ class Room {
     for (const q of drops) { const a = Math.random() * 6.283, d = 8 + Math.random() * 18; q.x = b.x + Math.cos(a) * d; q.y = b.y + Math.sin(a) * d; q.t = 0.15; this.pend.push(q); }
   }
   ph() { return this.c < DAY ? 0 : this.c < DAY + DUSK ? 1 : 2; }
-  awayEntry(p) { return { t: Date.now(), s: { wood: p.wood, stone: p.stone, food: p.food, scrap: p.scrap, meat: p.meat, gold: p.gold, pelt: p.pelt, gear: p.gear, buff: p.buff, slots: p.slots, cls: p.cls, down: p.down, hp: p.hp, x: p.x, y: p.y } }; }
+  awayEntry(p) { return { t: Date.now(), s: { wood: p.wood, stone: p.stone, food: p.food, scrap: p.scrap, meat: p.meat, gold: p.gold, pelt: p.pelt, apelt: p.apelt, gear: p.gear, buff: p.buff, slots: p.slots, cls: p.cls, down: p.down, hp: p.hp, x: p.x, y: p.y } }; }
   stash(p) {   // remember a leaving player's character so they can come back (dropped connection) within the room window
     if (!p.email) return; const now = Date.now(); for (const [k, v] of this.away) if (now - v.t > ROOM_IDLE_SEC * 1000) this.away.delete(k);
     this.away.set(p.email, this.awayEntry(p));
@@ -710,12 +715,12 @@ class Room {
   }
   add(ws, name, cls, pf, email) {
     this.rForce = 1;   // the next snapshot carries the full resource state for the newcomer
-    const p = { id: this.nid++, ws, name, cls, prof: pf, gear: {}, buff: { speed: 0, regen: 0, dmg: 0 }, actPrev: 0, fa: 0, sw: 0, swk: 0, swa: 0, wood: parseInt(process.env.START_WOOD) || 0, stone: parseInt(process.env.START_STONE) || 0, food: parseInt(process.env.START_FOOD) || 0, scrap: parseInt(process.env.START_SCRAP) || 0, meat: parseInt(process.env.START_MEAT) || 0, gold: 0, pelt: 0, slots: [], abilCd: 0, sta: STA.max, staCd: 0, tired: 0, actcd: 0, hitcd: 0, eat: 0, inp: { dx: 0, dy: 0, act: 0, hit: 0 } };
+    const p = { id: this.nid++, ws, name, cls, prof: pf, gear: {}, buff: { speed: 0, regen: 0, dmg: 0 }, actPrev: 0, fa: 0, sw: 0, swk: 0, swa: 0, wood: parseInt(process.env.START_WOOD) || 0, stone: parseInt(process.env.START_STONE) || 0, food: parseInt(process.env.START_FOOD) || 0, scrap: parseInt(process.env.START_SCRAP) || 0, meat: parseInt(process.env.START_MEAT) || 0, gold: 0, pelt: 0, apelt: 0, slots: [], abilCd: 0, sta: STA.max, staCd: 0, tired: 0, actcd: 0, hitcd: 0, eat: 0, inp: { dx: 0, dy: 0, act: 0, hit: 0 } };
     p.email = email; p.inf = INFINITE.has(email); this.respawn(p);
     if (process.env.START_ABIL && pf) { pf.abil = {}; for (const c of GC.LIST) pf.abil[c.id] = 1; }   // (test hook: every ability unlocked)
     const a = email && this.away.get(email); this.away.delete(email);
     if (a && Date.now() - a.t <= ROOM_IDLE_SEC * 1000) {   // welcome back: same stuff, same spot (a downed player just respawns)
-      const o = a.s; p.wood = o.wood; p.stone = o.stone; p.food = o.food; p.scrap = o.scrap; p.meat = o.meat || 0; p.gold = o.gold || 0; p.pelt = o.pelt || 0; p.gear = o.gear; p.buff = o.buff; p.slots = (o.slots || []).filter(id => RC.ITEM_BY[id]).slice(0, 7);
+      const o = a.s; p.wood = o.wood; p.stone = o.stone; p.food = o.food; p.scrap = o.scrap; p.meat = o.meat || 0; p.gold = o.gold || 0; p.pelt = o.pelt || 0; p.apelt = o.apelt || 0; p.gear = o.gear; p.buff = o.buff; p.slots = (o.slots || []).filter(id => RC.ITEM_BY[id]).slice(0, 7);
       if (o.cls === cls && !o.down) { p.hp = Math.min(p.mhp, o.hp); p.x = o.x; p.y = o.y; if (this.landAt(p.x, p.y) < 0) { const q = this.landPoint(p.x, p.y); p.x = q[0]; p.y = q[1]; } }   // (someone who left while sailing comes back on the nearest shore)
     }
     this.players.set(p.id, p); return p;
@@ -723,7 +728,7 @@ class Room {
   tick(dt) {
     const P = [...this.players.values()];
     if (!P.length) { this.emptyFor += dt; return; } this.emptyFor = 0;
-    for (const p of P) if (p.inf) { p.wood = p.stone = p.food = p.scrap = p.meat = p.gold = p.pelt = INF_N; }   // test accounts: bag always full
+    for (const p of P) if (p.inf) { p.wood = p.stone = p.food = p.scrap = p.meat = p.gold = p.pelt = p.apelt = INF_N; }   // test accounts: bag always full
     if (this.over > 0) { this.over -= dt; if (this.over <= 0) this.endRun(); return; }
     this.c += dt;
     if (this.c >= CYC) {
@@ -839,7 +844,7 @@ class Room {
         else if (best) {
           let mul = (B.rage > 0 || B.power > 0 ? 2 : 1) * (B.flurry > 0 ? 1.5 : 1); if (B.crit3 > 0) { mul *= 3; B.crit3 = 0; }
           best.hp -= (c.dmg + (p.gear.spear ? 6 : 0) + (p.gear.sword ? 8 : 0) + (B.dmg > 0 ? 5 : 0)) * (Math.random() < c.crit ? 2 : 1) * mul;
-          const kd = Math.max(1, dist(p, best)); const kr = best.k === 2 ? 0.2 : 1; best.x += (best.x - p.x) / kd * c.knock * kr; best.y += (best.y - p.y) / kd * c.knock * kr;
+          const kd = Math.max(1, dist(p, best)); const kr = best.k === 2 ? 0.2 : best.big === 2 ? 0.05 : best.heavy ? 0.12 : 1; best.x += (best.x - p.x) / kd * c.knock * kr; best.y += (best.y - p.y) / kd * c.knock * kr;
           if (best.wolf) { best.st = 1; best.tg = p.id; }   // a hit wolf turns on you
           if (best.hp <= 0 && p.prof) { p.prof.k++; dirty = true; if (p.prof.k % 10 === 0) award(p, 1, 'kills'); }
         }
@@ -870,7 +875,7 @@ class Room {
     for (let i = this.drops.length - 1; i >= 0; i--) {
       const d = this.drops[i]; d.ttl -= dt; let taken = false;
       if (d.ttl > 0) for (const p of P) if (!p.down && dist(p, d) < 30) { if (d.k === 'q') { if (p.slots.length >= slotCap(p, this) || (d.food === 'foot' && p.slots.includes('foot'))) continue; p.slots.push(d.food); taken = true; break; }   // cooked food needs a free slot; with all 3 full it stays on the floor
-        if (d.k === 'w') p.wood++; else if (d.k === 's') p.stone++; else if (d.k === 'f') p.food++; else if (d.k === 'd') award(p, 1, 'drop'); else if (d.k === 'n') p.meat++; else if (d.k === 'o') p.gold++; else if (d.k === 'h') p.pelt++; else { p.scrap++; this.scrapFound = true; } taken = true; break; }
+        if (d.k === 'w') p.wood++; else if (d.k === 's') p.stone++; else if (d.k === 'f') p.food++; else if (d.k === 'd') award(p, 1, 'drop'); else if (d.k === 'n') p.meat++; else if (d.k === 'o') p.gold++; else if (d.k === 'h') p.pelt++; else if (d.k === 'H') p.apelt++; else { p.scrap++; this.scrapFound = true; } taken = true; break; }
       if (taken || d.ttl <= 0) this.drops.splice(i, 1);
     }
     this.stepRabbits(P, dt); this.stepWolves(P, dt);
@@ -944,10 +949,10 @@ class Room {
     return JSON.stringify({
       t: 's', c: Math.round(this.c * 10) / 10, n: this.night, ph: this.ph(), o: this.over > 0 ? 1 : 0,
       f: [Math.round(f.fuel), RC.fuelMax(f.lvl), f.lvl, f.fuel > 0 ? RC.camp(f.lvl) : 0],
-      p: [...this.players.values()].map(p => [p.id, p.name, p.cls, Math.round(p.x), Math.round(p.y), Math.round(p.hp), p.mhp, p.wood, p.stone, p.food, p.down, Math.round(p.rev * 10) / 10, p.sw, p.swk, Math.round(p.swa * 100), p.scrap, Math.round(p.fa * 100), Math.round(p.sta), p.tired, p.slots, p.boat || 0, p.meat || 0, p.gold || 0, p.pelt || 0, slotCap(p, this), !(p.prof && p.prof.abil && p.prof.abil[p.cls]) ? 0 : p.abilCd > 0 ? Math.ceil(p.abilCd) + 1 : 1]),
+      p: [...this.players.values()].map(p => [p.id, p.name, p.cls, Math.round(p.x), Math.round(p.y), Math.round(p.hp), p.mhp, p.wood, p.stone, p.food, p.down, Math.round(p.rev * 10) / 10, p.sw, p.swk, Math.round(p.swa * 100), p.scrap, Math.round(p.fa * 100), Math.round(p.sta), p.tired, p.slots, p.boat || 0, p.meat || 0, p.gold || 0, p.pelt || 0, slotCap(p, this), !(p.prof && p.prof.abil && p.prof.abil[p.cls]) ? 0 : p.abilCd > 0 ? Math.ceil(p.abilCd) + 1 : 1, p.apelt || 0]),
       bt: this.boats.map(b => [b.id, Math.round(b.x), Math.round(b.y), Math.round(b.ang * 100), b.riders.length, b.drv, b.type || 'boat']), sf: this.scrapFound ? 1 : 0,
       a: this.aliens.map(a => [a.id, Math.round(a.x), Math.round(a.y), Math.round(a.hp), a.mhp, a.k, a.fa === undefined ? null : Math.round(a.fa * 100), Math.ceil(a.trapT > 0 ? a.trapT : 0), a.aim > 0 ? Math.round(Math.min(1, a.aim / 1.5) * 100) : 0]),
-      wf: (this.wolves || []).map(w => [w.id, Math.round(w.x), Math.round(w.y), Math.round(w.fa * 100), Math.round(w.hp), w.mhp, w.st, w.bite > 0 ? 1 : 0, w.alpha || 0]),
+      wf: (this.wolves || []).map(w => [w.id, Math.round(w.x), Math.round(w.y), Math.round(w.fa * 100), Math.round(w.hp), w.mhp, w.st, w.bite > 0 ? 1 : 0, w.alpha || 0, w.big || 0]),
       rb: this.rabbits.map(b => [b.id, Math.round(b.x), Math.round(b.y), Math.round(b.fa * 100), b.run ? 1 : b.sit ? 0 : 2]),
       cf: this.camps.map(c => [c.id, Math.round(c.x), Math.round(c.y), Math.round(c.fuel), RC.fuelMax(c.lvl), c.lvl, c.fuel > 0 ? RC.camp(c.lvl) : 0]),
       lo: this.loot.filter(l => l.open).map(l => l.id),

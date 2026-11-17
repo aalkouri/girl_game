@@ -305,7 +305,38 @@ const T_WOLFA = tex(84, 50, g => {   // alpha wolf: near-black, scarred, a spiky
   g.strokeStyle = '#8a2a2a'; g.lineWidth = 1.2; g.beginPath(); g.moveTo(56, 17); g.lineTo(62, 22); g.stroke();   // scar
   g.strokeStyle = 'rgba(0,0,0,.5)'; g.lineWidth = 1.4; g.beginPath(); g.ellipse(35, 25, 22, 13, 0, 0, TAU); g.stroke();
 });
+const T_BEAR = tex(110, 70, g => {   // polar-ish bear from above, facing right
+  g.fillStyle = '#d9d4c7'; ell(g, 18, 35, 14, 11); g.fillStyle = '#e8e4d8'; ell(g, 46, 35, 34, 23);
+  g.fillStyle = '#cfc9b9'; ell(g, 44, 35, 24, 8);
+  g.fillStyle = '#b9b3a2'; ell(g, 70, 15, 8, 5); ell(g, 70, 55, 8, 5); ell(g, 22, 18, 8, 5); ell(g, 22, 52, 8, 5);   // paws
+  g.fillStyle = '#f0ece0'; ell(g, 82, 35, 17, 14); g.fillStyle = '#e0dccf'; ell(g, 95, 35, 9, 6);
+  g.fillStyle = '#d9d4c7'; circ(g, 78, 21, 5); circ(g, 78, 49, 5); g.fillStyle = '#222'; circ(g, 102, 35, 3); circ(g, 89, 28, 2); circ(g, 89, 42, 2);
+  g.strokeStyle = 'rgba(0,0,0,.4)'; g.lineWidth = 1.6; g.beginPath(); g.ellipse(46, 35, 34, 23, 0, 0, TAU); g.stroke();
+});
+const T_MAMMOTH = tex(170, 120, g => {   // woolly mammoth from above, facing right: huge shaggy brown body, domed head, two curling tusks
+  g.fillStyle = '#4a2e1c'; ell(g, 62, 60, 52, 40);
+  g.fillStyle = '#5d3a24'; ell(g, 58, 60, 44, 33);
+  g.strokeStyle = '#3a2214'; g.lineWidth = 2; for (let i = 0; i < 26; i++) { const x = 22 + (i % 13) * 7, y = i < 13 ? 36 + (i % 4) * 3 : 70 + (i % 4) * 3; g.beginPath(); g.moveTo(x, y); g.lineTo(x - 5, y + (i < 13 ? -9 : 9)); g.stroke(); }   // shaggy fur
+  g.fillStyle = '#3a2214'; ell(g, 34, 60, 22, 7);
+  g.fillStyle = '#6b4429'; ell(g, 112, 60, 28, 26); g.fillStyle = '#7a4f31'; ell(g, 106, 60, 14, 15);   // head with a high dome
+  g.fillStyle = '#4a2e1c'; ell(g, 140, 60, 14, 8); ell(g, 156, 60, 12, 5);   // trunk
+  g.strokeStyle = '#efe6cf'; g.lineWidth = 6; g.lineCap = 'round'; for (const sg of [-1, 1]) { g.beginPath(); g.moveTo(128, 60 + sg * 16); g.quadraticCurveTo(160, 60 + sg * 34, 166, 60 + sg * 10); g.stroke(); }
+  g.fillStyle = '#4a2e1c'; ell(g, 96, 24, 8, 5); ell(g, 96, 96, 8, 5); ell(g, 36, 22, 8, 5); ell(g, 36, 98, 8, 5);
+  g.fillStyle = '#111'; circ(g, 124, 49, 2.4); circ(g, 124, 71, 2.4);
+  g.strokeStyle = 'rgba(0,0,0,.4)'; g.lineWidth = 1.8; g.beginPath(); g.ellipse(62, 60, 52, 40, 0, 0, TAU); g.stroke();
+});
+const T_APELT = tex(40, 30, g => {   // an alpha wolf pelt: near-black with a pale mane stripe
+  const P = [6, 10, 2, 4, 10, 8, 30, 8, 38, 4, 34, 10, 36, 22, 38, 28, 30, 23, 10, 23, 2, 28, 4, 22];
+  poly(g, '#2e3238', P); g.fillStyle = '#4a4f57'; ell(g, 20, 15, 11, 5); g.fillStyle = '#c62828'; ell(g, 20, 13, 7, 1.6);
+  g.strokeStyle = 'rgba(0,0,0,.6)'; g.lineWidth = 1.4; g.beginPath(); g.moveTo(P[0], P[1]); for (let i = 2; i < P.length; i += 2) g.lineTo(P[i], P[i + 1]); g.closePath(); g.stroke();
+});
 function mkWolf(w) {
+  if (w[9]) {   // bear (1) or woolly mammoth (2)
+    const mm = w[9] === 2, c = new PIXI.Container(), sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5); sh.scale.set(mm ? 3 : 1.7, mm ? 1.3 : .8); sh.y = mm ? 20 : 12;
+    const body = new PIXI.Sprite(mm ? T_MAMMOTH : T_BEAR); body.anchor.set(.5); body.scale.set(mm ? 1.15 : .95); const hp = new PIXI.Graphics(); hp.visible = false;
+    c.addChild(sh, body, hp); ents.addChild(c); c.alpha = 0;
+    return { c, body, sh, hp, eyes: [], al: false, big: w[9], kind: 'w', ang: w[3] / 100, age: 0, lh: -1, flash: 0, lunge: 0, gait: 0, st: w[6] };
+  }
   const al = !!w[8], c = new PIXI.Container(), sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5); sh.scale.set(al ? 1.25 : .9, al ? .6 : .45); sh.y = al ? 8 : 6;
   const body = new PIXI.Sprite(al ? T_WOLFA : T_WOLF); body.anchor.set(.5); body.scale.set(al ? 1.2 : .85); const hp = new PIXI.Graphics(); hp.visible = false;
   c.addChild(sh, body, hp); ents.addChild(c); c.alpha = 0;
@@ -620,14 +651,14 @@ function stepFallers(dt) {
 }
 
 // ground pickups (logs from trees, stones from rocks): hop out, bob, fly to the player that grabs them
-const dropE = {}, flyers = [], DROP_S = { w: .8, s: .85, m: .9, f: .75, d: .9, q: 1, n: .8, o: .85, h: .9 };
+const dropE = {}, flyers = [], DROP_S = { w: .8, s: .85, m: .9, f: .75, d: .9, q: 1, n: .8, o: .85, h: .9, H: 1 };
 function syncDrops(m, _d, _dx) {
   const seen = {};
   for (const d of m.dr || []) {
     seen[d[0]] = 1; let e = dropE[d[0]];
     if (!e) {
       const c = new PIXI.Container(), sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5); sh.scale.set(.6, .35); sh.y = 4;
-      const spr = d[1] === 'q' ? Object.assign(new PIXI.Text((RC.ITEM_BY[d[4]] || {}).e || '🍲', { fontSize: 30 }), { resolution: 2 }) : new PIXI.Sprite(d[1] === 'w' ? T_LOG : d[1] === 'm' ? T_SCRAP : d[1] === 'f' ? T_BERRY : d[1] === 'd' ? T_GEM : d[1] === 'n' ? T_MEAT : d[1] === 'o' ? T_ORE : d[1] === 'h' ? T_PELT : T_STONE); spr.anchor.set(.5); spr.scale.set(DROP_S[d[1]]); spr.rotation = d[1] === 'w' ? rnd(-.8, .8) : rnd(-.4, .4);
+      const spr = d[1] === 'q' ? Object.assign(new PIXI.Text((RC.ITEM_BY[d[4]] || {}).e || '🍲', { fontSize: 30 }), { resolution: 2 }) : new PIXI.Sprite(d[1] === 'w' ? T_LOG : d[1] === 'm' ? T_SCRAP : d[1] === 'f' ? T_BERRY : d[1] === 'd' ? T_GEM : d[1] === 'n' ? T_MEAT : d[1] === 'o' ? T_ORE : d[1] === 'h' ? T_PELT : d[1] === 'H' ? T_APELT : T_STONE); spr.anchor.set(.5); spr.scale.set(DROP_S[d[1]]); spr.rotation = d[1] === 'w' ? rnd(-.8, .8) : rnd(-.4, .4);
       c.addChild(sh, spr); c.position.set(d[2], d[3]); c.zIndex = d[3]; ents.addChild(c);
       e = dropE[d[0]] = { c, spr, sh, x: d[2], y: d[3], t: 0, ph: rnd(0, TAU), k: d[1], dur: d[1] === 'm' || d[1] === 'q' ? .5 : .35 };
       if (d[1] === 'm' || (d[1] === 'q' && d[4] !== 'foot')) {   // metal scrap jumps out of the nearest smelter; cooked food pops out of the nearest pot
@@ -1103,13 +1134,13 @@ app.ticker.add(() => {
       if (sp > 30 && !down && !p[20]) { e.st = (e.st || 0) - dt; if (e.st <= 0) { e.st = .3; SFX.step(Math.hypot(e.x - me.x, e.y - me.y), e.x - me.x); } e.dust -= dt; if (e.dust <= 0) { e.dust = .14; emit(pfx, T_GLOW, e.x, e.y + 8, rnd(-8, 8), rnd(-8, 4), .5, .12, .3, 0xd9c79a, .35, false, 0); } }
     } else if (e.kind === 'w') {   // wolf: trots when roaming, gallops when chasing or running home, lunges when it bites
       const w = e.d; e.age += dt; e.c.alpha = Math.min(1, e.age * 2);
-      e.c.renderable = Math.abs(e.x - camX) < W / Z / 2 + 90 && Math.abs(e.y - camY) < H / Z / 2 + 90;
+      e.c.renderable = Math.abs(e.x - camX) < W / Z / 2 + (e.big ? 160 : 90) && Math.abs(e.y - camY) < H / Z / 2 + (e.big ? 160 : 90);
       e.ang = angLerp(e.ang, w[3] / 100, Math.min(1, dt * 10)); e.body.rotation = e.ang;
-      const run = sp > 60; e.gait += dt * (run ? 16 : sp > 6 ? 8 : 0);
+      const run = sp > 60; e.gait += dt * (e.big ? (run ? 6 : 3) : run ? 16 : sp > 6 ? 8 : 0);
       e.lunge = Math.max(0, e.lunge - dt); const lo = e.lunge > 0 ? Math.sin(e.lunge / .25 * Math.PI) * 10 : 0;
       e.body.x = Math.cos(e.ang) * lo; e.body.y = (sp > 6 ? -Math.abs(Math.sin(e.gait)) * (run ? 3 : 1.5) : 0) + Math.sin(e.ang) * lo;
       e.flash = Math.max(0, e.flash - dt); e.body.tint = e.flash > 0 ? 0xff8a80 : 0xffffff;
-      if (w[4] < w[5] && e.lh2 !== w[4]) { e.lh2 = w[4]; drawHp(e.hp, e.al ? 42 : 30, w[4] / w[5], 0xef5350); e.hp.y = e.al ? -34 : -24; e.hp.visible = true; }
+      if (w[4] < w[5] && e.lh2 !== w[4]) { e.lh2 = w[4]; drawHp(e.hp, e.big === 2 ? 90 : e.big ? 60 : e.al ? 42 : 30, w[4] / w[5], 0xef5350); e.hp.y = e.big === 2 ? -78 : e.big ? -48 : e.al ? -34 : -24; e.hp.visible = true; }
       if (e.eyes.length) { const ca = Math.cos(e.ang), sa = Math.sin(e.ang), o = 28 * 1.2 / 1, sy = 6; const bx = e.x + e.body.x, by = e.y + e.body.y;
         e.eyes[0].position.set(bx + ca * o - sa * -sy, by + sa * o + ca * -sy); e.eyes[1].position.set(bx + ca * o - sa * sy, by + sa * o + ca * sy);
         e.eyes.forEach(s => { s.visible = e.c.renderable; s.alpha = e.c.alpha * (.75 + Math.sin(T * 7 + e.x) * .25); }); }
@@ -1247,7 +1278,7 @@ function hud() {
   const f = S.f, mp = S.p.find(p => p[0] === myId), PH = ['DAY', 'DUSK', 'NIGHT'][S.ph], left = Math.ceil(S.ph === 0 ? 90 - S.c : S.ph === 1 ? 120 - S.c : 180 - S.c);
   $('t1').textContent = 'Night ' + S.n + ' · ' + PH + ' ' + left + 's · 🔥 Lv' + f[2];
   $('bar').firstElementChild.style.width = (100 * f[0] / f[1]) + '%';
-  if (mp) $('inv').textContent = '🪵' + mp[7] + '  🪨' + mp[8] + '  🍓' + mp[9] + (mp[15] ? '  🔩' + mp[15] : '') + (mp[21] ? '  🍖' + mp[21] : '') + (mp[22] ? '  🪙' + mp[22] : '') + (mp[23] ? '  🐺' + mp[23] : '') + '   ❤ ' + mp[5] + '/' + mp[6];
+  if (mp) $('inv').textContent = '🪵' + mp[7] + '  🪨' + mp[8] + '  🍓' + mp[9] + (mp[15] ? '  🔩' + mp[15] : '') + (mp[21] ? '  🍖' + mp[21] : '') + (mp[22] ? '  🪙' + mp[22] : '') + (mp[23] ? '  🐺' + mp[23] : '') + (mp[26] ? '  🐾' + mp[26] : '') + '   ❤ ' + mp[5] + '/' + mp[6];
   if (window.xHud) xHud(mp);
   if (mp && !window.xHud) { const sl = mp[19] || [], sig = sl.join(','); if (sig !== slotSig) { slotSig = sig; document.querySelectorAll('#slots .slot').forEach((el, i) => { const f = RC.ITEM_BY[sl[i]]; el.textContent = f ? f.e : ''; el.classList.toggle('full', !!f); el.title = f ? f.n + ' - tap to use' : 'empty'; }); } }
   $('pl').textContent = S.p.length + ' player' + (S.p.length > 1 ? 's' : '');
