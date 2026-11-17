@@ -750,6 +750,7 @@ class Room {
     }
     const ph = this.ph(), f = this.fire, maxF = RC.fuelMax(f.lvl);
     let burn = 1; for (const p of P) if (!p.down) burn = Math.min(burn, GC.BY[p.cls].burn);
+    burn *= Math.min(2, 1 + 0.03 * Math.max(0, this.night - 1));   // fires burn a little faster every night (+3% per night, up to double)
     f.fuel = Math.max(0, f.fuel - (ph === 0 ? 0.4 : 1) * burn * (f.slow > 0 ? 0.5 : 1) * dt); f.slow = Math.max(0, (f.slow || 0) - dt);
     const fr = f.fuel > 0 ? RC.camp(f.lvl) : 0;
 
