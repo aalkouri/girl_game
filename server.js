@@ -193,10 +193,12 @@ function genLoot(islands, code) {
       out.push({ id: id++, isl: i, x: Math.round(x), y: Math.round(y), b: RC.biomeAt(is.x, is.y, is.r, is.b, x, y), seed, tier, cx: Math.round(x + Math.cos(ca) * 90), cy: Math.round(y + Math.sin(ca) * 90), trader, tx: Math.round(x + Math.cos(ca + 3.14159) * 105), ty: Math.round(y + Math.sin(ca + 3.14159) * 105), open: 0 }); k++;
     }
   }
-  const rnd = seeded(code + '@traders');   // every outer island gets at least one trader, and a 35% chance of a second
-  for (let i = 1; i < islands.length; i++) { const here = out.filter(l => l.isl === i); if (!here.length) continue; const n = rnd() < 0.35 && here.length > 1 ? 2 : 1; for (let k = 0; k < n; k++) { const c = here.filter(l => !l.trader); if (!c.length) break; c[Math.floor(rnd() * c.length)].trader = 1 + Math.floor(rnd() * 5); } }
-  const have = new Set(out.map(l => l.trader));   // every kind of trader exists somewhere in the world
-  for (let t = 1; t <= 5; t++) if (!out.some(l => l.trader === t)) { const c = out.filter(l => l.trader && out.filter(q => q.trader === l.trader).length > 1); if (c.length) c[Math.floor(rnd() * c.length)].trader = t; }   // retype a duplicate so every kind exists (still 1-2 per island)
+  const rnd = seeded(code + '@traders');   // exactly one of each of the five traders on the whole map, on random islands (some islands get none, a few may get two)
+  const isls = [...new Set(out.map(l => l.isl))];
+  for (let t = 1; t <= 5 && isls.length; t++) {   // each trader goes to a random island that has none yet (while any are left), in a random loot area there
+    const free = isls.filter(i => !out.some(l => l.isl === i && l.trader)), pool = free.length ? free : isls, isl = pool[Math.floor(rnd() * pool.length)];
+    const c = out.filter(l => l.isl === isl && !l.trader); if (c.length) c[Math.floor(rnd() * c.length)].trader = t;
+  }
   return out;
 }
 const SLOTS = 3, TRAP_SEC = 20, ARROW_SPEED = 520;
