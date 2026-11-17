@@ -587,14 +587,17 @@ function buildCraft() {
   for (const r of RC.LIST) {
     if (r.id === 'bench' ? bench : !bench) continue;   // bench recipe hides once one exists; other recipes appear once it does
     if (r.kind === 'gear' && GEAR[r.gear]) continue;   // tools you already made disappear from your menu (per player)
-    const owned = false, ok = iv.wood >= r.cost.wood && iv.stone >= r.cost.stone;
+    const ok = iv.wood >= r.cost.wood && iv.stone >= r.cost.stone;
     const co = [r.cost.wood ? '<span class="' + (iv.wood >= r.cost.wood ? '' : 'no') + '">🪵 ' + iv.wood + '/' + r.cost.wood + '</span>' : '', r.cost.stone ? '<span class="' + (iv.stone >= r.cost.stone ? '' : 'no') + '">🪨 ' + iv.stone + '/' + r.cost.stone + '</span>' : ''].filter(Boolean).join(' &nbsp; ');
     const d = document.createElement('div'); d.className = 'rc';
     d.innerHTML = '<div class="ic">' + r.e + '</div><div class="tx"><div class="nm">' + r.n + '</div><div class="ds">' + r.d + '</div><div class="co">' + co + '</div></div>';
-    const placeable = r.kind !== 'gear';
-    const b = document.createElement('button'); b.textContent = owned ? '✔ Owned' : ok ? (placeable ? 'Place' : 'Craft') : 'Need more'; b.disabled = !!owned || !ok;
-    b.onclick = () => { if (placeable) startPlacing(r); else if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'craft', id: r.id })); };
-    d.appendChild(b); list.appendChild(d);
+    const placeable = r.kind !== 'gear';   // the whole row is the button: tap anywhere on it
+    d.classList.add('pick'); if (!ok) d.classList.add('dim');
+    d.onclick = () => {
+      if (!ok) { const m = $('craftMsg'); m.textContent = 'Not enough materials for ' + r.n + '.'; m.style.color = '#ff8a80'; return; }
+      if (placeable) startPlacing(r); else if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'craft', id: r.id }));
+    };
+    list.appendChild(d);
   }
   craftSig = refreshSig();
 }
