@@ -163,6 +163,12 @@ const T_BOAT = tex(132, 74, g => {
   g.strokeStyle = '#7a5428'; g.lineWidth = 3; [38, 60, 82].forEach(x => { g.beginPath(); g.moveTo(x, 18); g.lineTo(x, 56); g.stroke(); });
   g.strokeStyle = 'rgba(0,0,0,.5)'; g.lineWidth = 2; g.beginPath(); g.moveTo(8, 37); g.quadraticCurveTo(14, 8, 60, 8); g.quadraticCurveTo(112, 10, 126, 37); g.quadraticCurveTo(112, 64, 60, 66); g.quadraticCurveTo(14, 66, 8, 37); g.stroke();
 });
+const T_TRAP = tex(64, 56, g => {
+  g.fillStyle = 'rgba(0,0,0,.25)'; ell(g, 32, 38, 26, 10);
+  g.fillStyle = '#6b6f76'; ell(g, 32, 32, 26, 16); g.fillStyle = '#4b4f55'; ell(g, 32, 32, 20, 11);
+  g.fillStyle = '#b8bec6'; for (let i = 0; i < 9; i++) { const a = i / 9 * TAU, x = 32 + Math.cos(a) * 20, y = 32 + Math.sin(a) * 11; g.beginPath(); g.moveTo(x - 3, y); g.lineTo(x, y - 9); g.lineTo(x + 3, y); g.closePath(); g.fill(); }
+  g.fillStyle = '#d9a441'; circ(g, 32, 32, 4);
+});
 const T_SLASH = tex(80, 80, g => { g.strokeStyle = '#fff'; g.lineCap = 'round'; g.lineWidth = 7; g.beginPath(); g.arc(8, 40, 52, -.75, .75); g.stroke(); g.lineWidth = 3; g.globalAlpha = .6; g.beginPath(); g.arc(8, 40, 44, -.6, .6); g.stroke(); });
 const T_BENCH = tex(112, 84, g => {
   g.fillStyle = 'rgba(0,0,0,.0)';
@@ -410,12 +416,16 @@ const AK = {
   0: { sc: .5, eo: 10, es: 6, hpW: 26, hpY: -26, shX: 1, shY: .55, eye: .24, tint: 0xffffff, eyeCol: 0xc6ff2a },
   1: { sc: .95, eo: 20, es: 12, hpW: 50, hpY: -42, shX: 1.8, shY: .9, eye: .42, tint: 0xff9ad0, eyeCol: 0xc6ff2a },
   2: { sc: 1.5, eo: 31, es: 18, hpW: 96, hpY: -78, shX: 3.4, shY: 1.4, eye: .72, tint: 0xff7043, eyeCol: 0xff2a2a },
+  3: { sc: .85, eo: 0, es: 0, hpW: 34, hpY: -32, shX: .8, shY: .5, eye: 0, tint: 0xffffff, eyeCol: 0, human: true },   // raiding villager (melee)
+  4: { sc: .85, eo: 0, es: 0, hpW: 34, hpY: -32, shX: .8, shY: .5, eye: 0, tint: 0xffffff, eyeCol: 0, human: true },   // raiding villager (archer)
 };
+const T_VIL = { 3: PIXI.Texture.from(mkPlayerCanvas(['#b0432f', '#7a2a1c', '#3e2723', 'sword'])), 4: PIXI.Texture.from(mkPlayerCanvas(['#5d8f3a', '#33691e', '#3e2723', 'bow'])) };
+const T_ARROW = tex(40, 8, g => { g.fillStyle = '#c9a66b'; g.fillRect(2, 3, 28, 2); g.fillStyle = '#e0e0e0'; poly(g, '#e0e0e0', [38, 4, 29, 0, 29, 8]); g.fillStyle = '#d32f2f'; g.fillRect(0, 1, 6, 2); g.fillRect(0, 5, 6, 2); });
 function mkAlien(a) {
   const ak = AK[a[5]] || AK[0], c = new PIXI.Container(), sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5); sh.scale.set(ak.shX, ak.shY); sh.y = a[5] === 2 ? 14 : 6;
-  const body = new PIXI.Sprite(T_ALIEN); body.anchor.set(.5); body.scale.set(ak.sc); body.tint = ak.tint;
+  const body = new PIXI.Sprite(ak.human ? T_VIL[a[5]] : T_ALIEN); body.anchor.set(.5); body.scale.set(ak.sc); body.tint = ak.tint;
   const hp = new PIXI.Graphics(); c.addChild(sh, body, hp); ents.addChild(c); c.alpha = 0;
-  const eyes = [0, 1].map(() => { const s = new PIXI.Sprite(T_GLOW); s.anchor.set(.5); s.tint = ak.eyeCol; s.blendMode = BM.ADD; s.scale.set(ak.eye); overL.addChild(s); return s; });
+  const eyes = (ak.human ? [] : [0, 1]).map(() => { const s = new PIXI.Sprite(T_GLOW); s.anchor.set(.5); s.tint = ak.eyeCol; s.blendMode = BM.ADD; s.scale.set(ak.eye); overL.addChild(s); return s; });
   return { c, body, hp, eyes, sc: ak.sc, ak, big: a[5] > 0, charger: a[5] === 2, ang: 0, age: 0, lh: -1, kind: 'a', flash: 0, trail: 0 };
 }
 function drawHp(g, w, f, col) { g.clear(); g.beginFill(0x000000, .55); g.drawRoundedRect(-w / 2, 0, w, 5, 2); g.endFill(); g.beginFill(col); g.drawRoundedRect(-w / 2, 0, Math.max(0, w * f), 5, 2); g.endFill(); }
@@ -525,6 +535,23 @@ function stepDrops(dt) {
   }
 }
 
+// ---- villager arrows and archers' aim lines ----
+const arrowE = {}, aimG = new PIXI.Graphics(); pfx.addChild(aimG);
+function syncArrows(m) {
+  const seen = {}, now = performance.now();
+  for (const w of m.ar || []) {
+    seen[w[0]] = 1; let e = arrowE[w[0]];
+    if (!e) { const s = new PIXI.Sprite(T_ARROW); s.anchor.set(.9, .5); s.scale.set(.9); ents.addChild(s); e = arrowE[w[0]] = { s }; }
+    e.x = w[1]; e.y = w[2]; e.a = w[3] / 100; e.t0 = now; e.s.rotation = e.a;
+  }
+  for (const id in arrowE) if (!seen[id]) { arrowE[id].s.destroy(); delete arrowE[id]; }
+}
+function stepArrows() {
+  const now = performance.now();
+  for (const id in arrowE) { const e = arrowE[id], el = Math.min(.12, (now - e.t0) / 1000); e.s.position.set(e.x + Math.cos(e.a) * 520 * el, e.y + Math.sin(e.a) * 520 * el); e.s.zIndex = e.s.y; }   // keep flying between snapshots
+  aimG.clear();
+  for (const k in ents2) { const e = ents2[k]; if (e.kind !== 'a' || !e.d || !(e.d[8] > 0)) continue; const f = e.d[8] / 100, a = e.d[6] != null ? e.d[6] / 100 : e.ang; aimG.lineStyle(1.5 + f * 2.5, 0xff5252, .25 + f * .55); aimG.moveTo(e.x, e.y); aimG.lineTo(e.x + Math.cos(a) * 300, e.y + Math.sin(a) * 300); }
+}
 // ---- boats (placed in the water; two riders; the first one steers) ----
 const boatE = {};
 function syncBoats(m) {
@@ -548,7 +575,7 @@ function stepBoats(dt) {
 }
 // ---- placed structures (crafting bench, spike walls) ----
 const structE = {}; let GEAR = {}, craftOpen = false, craftSig = '', chestId = null, chestSig = '', potOpen = false, potSig = '';
-const SDEF = { bench: { tex: T_BENCH, ay: .8, base: .72, sh: 2, hy: 14 }, wall: { tex: T_WALL, ay: .85, base: .62, sh: 1.6, hy: 12 }, chest: { tex: T_CHEST, ay: .8, base: .62, sh: 1.7, hy: 12 }, pot: { tex: T_POT, ay: .8, base: .62, sh: 1.5, hy: 12 }, smelter: { tex: T_SMELTER, ay: .84, base: .62, sh: 1.9, hy: 12 } };
+const SDEF = { bench: { tex: T_BENCH, ay: .8, base: .72, sh: 2, hy: 14 }, wall: { tex: T_WALL, ay: .85, base: .62, sh: 1.6, hy: 12 }, chest: { tex: T_CHEST, ay: .8, base: .62, sh: 1.7, hy: 12 }, pot: { tex: T_POT, ay: .8, base: .62, sh: 1.5, hy: 12 }, smelter: { tex: T_SMELTER, ay: .84, base: .62, sh: 1.9, hy: 12 } , trap: { tex: T_TRAP, ay: .5, base: .8, sh: 1, hy: 10 }};
 function syncStructs(m, first) {
   const seen = {}, me = ents2['p' + myId];
   for (const t of m.st || []) {
@@ -594,7 +621,7 @@ function stepStructs(dt) {
 let placingId = null, ghost = null, ghostRot = null, ghostF = null, placeRot = 0, lastPlaceAt = 0;
 const PLACE_AHEAD = 58;   // must match the server
 function placeCheck(r, x, y) {   // mirrors the server's rules so the silhouette can show green/red; the server stays in charge
-  const d = Math.hypot(x, y), campR = RC.camp(S.f[2]), sr = RC.RADIUS[r.kind], station = r.kind !== 'wall';
+  const d = Math.hypot(x, y), campR = RC.camp(S.f[2]), sr = RC.RADIUS[r.kind], station = r.kind !== 'wall' && r.kind !== 'trap';
   if (d < RC.fireClear(r.kind)) return 'Too close to the fire';
   if (station && d > campR) return 'Must be inside the camp (the fire ring)';
   if (!station && d > campR + 200) return 'Too far from camp';
@@ -604,7 +631,7 @@ function placeCheck(r, x, y) {   // mirrors the server's rules so the silhouette
     const stWall = t[1] === 'wall', dd = Math.hypot(t[2] - x, t[3] - y), need = station && !stWall ? RC.STATION_GAP : (station || !stWall) ? RC.WALL_GAP : RC.RADIUS[t[1]] + sr - 4;
     if (dd < need) return need > 60 ? 'Too close to another structure' : 'Something is already there';
   }
-  const pl = pooled(); if (pl.wood < r.cost.wood || pl.stone < r.cost.stone) return 'Not enough materials';
+  const pl = pooled(); if (pl.wood < r.cost.wood || pl.stone < r.cost.stone || pl.scrap < (r.cost.scrap || 0)) return 'Not enough materials';
   return '';
 }
 const lastRot = {};   // remember the last rotation used for each recipe (handy when lining up walls)
@@ -678,7 +705,7 @@ function buildCraft() {
     if (r.scrap && !(S && S.sf)) continue;   // scrap recipes (the boat) appear once anyone has found scrap
     if (r.kind === 'gear' && GEAR[r.gear]) continue;   // tools you already made disappear from your menu (per player)
     const ok = iv.wood >= r.cost.wood && iv.stone >= r.cost.stone && iv.scrap >= (r.cost.scrap || 0);
-    const co = [r.cost.wood ? '<span class="' + (iv.wood >= r.cost.wood ? '' : 'no') + '">🪵 ' + iv.wood + '/' + r.cost.wood + '</span>' : '', r.cost.stone ? '<span class="' + (iv.stone >= r.cost.stone ? '' : 'no') + '">🪨 ' + iv.stone + '/' + r.cost.stone + '</span>' : ''].filter(Boolean).join(' &nbsp; ');
+    const co = [r.cost.wood ? '<span class="' + (iv.wood >= r.cost.wood ? '' : 'no') + '">🪵 ' + iv.wood + '/' + r.cost.wood + '</span>' : '', r.cost.stone ? '<span class="' + (iv.stone >= r.cost.stone ? '' : 'no') + '">🪨 ' + iv.stone + '/' + r.cost.stone + '</span>' : '', r.cost.scrap ? '<span class="' + (iv.scrap >= r.cost.scrap ? '' : 'no') + '">🔩 ' + iv.scrap + '/' + r.cost.scrap + '</span>' : ''].filter(Boolean).join(' &nbsp; ');
     const d = document.createElement('div'); d.className = 'rc';
     d.innerHTML = '<div class="ic">' + r.e + '</div><div class="tx"><div class="nm">' + r.n + '</div><div class="ds">' + r.d + '</div><div class="co">' + co + '</div></div>';
     const placeable = r.kind !== 'gear' && r.kind !== 'boat';   // the whole row is the button: tap anywhere on it
@@ -831,7 +858,7 @@ function onSnap(m) {
     r.hp = hp;
   }
   syncDrops(m, _d, _dx);
-  syncStructs(m, !prevS); syncBoats(m);
+  syncStructs(m, !prevS); syncBoats(m); syncArrows(m);
   if (chestId !== null) { if (!nearStruct(chestId)) closeChest(); else buildChest(); }
   if (potOpen) { if (!anyPotNear()) closePot(); else buildPot(); }
   if (craftOpen) { const bid = nearestOf('bench'), me2 = ents2['p' + myId], benchNear = bid != null ? nearStruct(bid) : !!(me2 && Math.hypot(me2.x, me2.y) < RC.camp(m.f[2])); if (!benchNear) setCraft(false); else if (refreshSig() !== craftSig) buildCraft(); }
@@ -909,9 +936,14 @@ app.ticker.add(() => {
       e.body.rotation = e.ang; const pulse = 1 + Math.sin(T * 9 + e.x * .1) * .05; e.body.scale.set(e.sc * pulse);
       if (S.ph === 2 && Math.random() < dt * .12) { const gd = Math.hypot(e.x - me.x, e.y - me.y); if (gd < 520) SFX.growl(gd, e.x - me.x); }
       e.flash = Math.max(0, e.flash - dt); e.body.tint = e.flash > 0 ? 0xffffff : e.ak.tint;
+      if (a[7] > 0) {   // caught in a trap: tinted, struggling, with a countdown over its head
+        if (e.flash <= 0) e.body.tint = 0x8fb4ff; e.body.rotation += Math.sin(T * 34) * .06;
+        if (!e.trapTxt) { e.trapTxt = new PIXI.Text('', { fontFamily: 'system-ui,sans-serif', fontSize: 15, fontWeight: '800', fill: 0xffe082, stroke: 0x000000, strokeThickness: 4 }); e.trapTxt.anchor.set(.5, 1); e.trapTxt.resolution = 2; e.trapTxt.y = e.ak.hpY - 14; e.c.addChild(e.trapTxt); }
+        const tt = 'TRAPPED ' + a[7]; if (e.trapTxt.text !== tt) e.trapTxt.text = tt; e.trapTxt.visible = true;
+      } else if (e.trapTxt) e.trapTxt.visible = false;
       if (a[3] < a[4] && e.lh2 !== a[3]) { e.lh2 = a[3]; drawHp(e.hp, e.ak.hpW, a[3] / a[4], e.charger ? 0xff5252 : 0xb6ff3c); e.hp.y = e.ak.hpY; e.hp.visible = true; }
       const ca = Math.cos(e.ang), sa = Math.sin(e.ang), o = e.ak.eo, sy = e.ak.es;
-      e.eyes[0].position.set(e.x + ca * o - sa * -sy, e.y + sa * o + ca * -sy); e.eyes[1].position.set(e.x + ca * o - sa * sy, e.y + sa * o + ca * sy);
+      if (e.eyes.length) e.eyes[0].position.set(e.x + ca * o - sa * -sy, e.y + sa * o + ca * -sy); if (e.eyes.length) e.eyes[1].position.set(e.x + ca * o - sa * sy, e.y + sa * o + ca * sy);
       e.eyes.forEach(s => s.alpha = e.c.alpha * (.75 + Math.sin(T * 6 + e.x) * .25));
       if (e.charger && sp > 90) { e.trail -= dt; if (e.trail <= 0) { e.trail = .04; emit(pfx, T_GLOW, e.x - Math.cos(e.ang) * 40 + rnd(-14, 14), e.y + 18 + rnd(-8, 8), -Math.cos(e.ang) * 30, rnd(-14, 6), .7, .32, .8, 0xd9c79a, .45, false, 0); } }   // dust kicked up by the charge
     }
@@ -976,7 +1008,7 @@ app.ticker.add(() => {
   ring.visible = alive; ring.scale.set(ringR * 2 / 256 * 1.0); ring.alpha = .35 + Math.sin(T * 2) * .08;
   if (alive) { fireTick += dt * (20 + 40 * fuelK); while (fireTick > 1) { fireTick--; emit(overL, T_GLOW, rnd(-8, 8), -2, rnd(-14, 14), rnd(-70, -35), rnd(.6, 1.3), .08, .01, Math.random() < .5 ? 0xffb347 : 0xffe08a, 1, true, -10); } }
   smokeTick += dt * (alive ? 4 : 9); while (smokeTick > 1) { smokeTick--; emit(pfx, T_GLOW, rnd(-6, 6), -14, rnd(-6, 6), rnd(-26, -14), 2.2, .25, .9, alive ? 0x555555 : 0x444444, alive ? .22 : .35, false, 0); }
-  stepParts(dt); stepFallers(dt); stepDrops(dt); stepStructs(dt); stepBoats(dt);
+  stepParts(dt); stepFallers(dt); stepDrops(dt); stepStructs(dt); stepBoats(dt); stepArrows();
   for (let i = ftexts.length - 1; i >= 0; i--) { const q = ftexts[i]; q.life -= dt; q.t.y -= dt * 34; q.t.alpha = clamp(q.life * 2, 0, 1); if (q.life <= 0) { q.t.destroy(); ftexts.splice(i, 1); } }
   // lighting
   const d = darkness(S.c);
@@ -1177,7 +1209,7 @@ $('go').onclick = () => {
       $('rm').textContent = 'Room ' + roomCode + ' (tap to copy link)'; tipUntil = performance.now() + 14000; history.replaceState(null, '', '?room=' + roomCode);
     } else if (m.t === 'crafted') {
       GEAR = m.gear || GEAR; const msg = $('craftMsg'); msg.textContent = m.msg || ''; msg.style.color = m.ok ? '#7fe9a0' : '#ff8a80';
-      if (placingId && m.id === placingId) { if (m.ok) { const r = RC.BY[placingId], pl = pooled(); if (r.kind !== 'wall' || pl.wood < r.cost.wood || pl.stone < r.cost.stone) stopPlacing(); } else { const me0 = ents2['p' + myId]; if (me0) floatText(me0.x, me0.y - 6, m.msg || 'Cannot place here', 0xff8a80); } }
+      if (placingId && m.id === placingId) { if (m.ok) { const r = RC.BY[placingId], pl = pooled(); if ((r.kind !== 'wall' && r.kind !== 'trap') || pl.wood < r.cost.wood || pl.stone < r.cost.stone || pl.scrap < (r.cost.scrap || 0)) stopPlacing(); } else { const me0 = ents2['p' + myId]; if (me0) floatText(me0.x, me0.y - 6, m.msg || 'Cannot place here', 0xff8a80); } }
       if (m.ok) { SFX.levelup(); const me = ents2['p' + myId]; if (me) floatText(me.x, me.y - 10, m.msg, 0xffe082); }
       if (craftOpen) buildCraft();
     } else if (m.t === 'toast') {
@@ -1189,6 +1221,10 @@ $('go').onclick = () => {
       const msg = $('potMsg'); msg.textContent = m.msg || ''; msg.style.color = m.ok ? '#7fe9a0' : '#ff8a80';
       if (m.b) { for (const k in BUFF) BUFF[k] = m.b[k] || 0; buffAt = performance.now(); }
       if (m.ok) { SFX.cook(); const me = ents2['p' + myId]; if (me) floatText(me.x, me.y - 10, m.msg, 0xffe082); }
+    } else if (m.t === 'raid') {
+      notice('Villagers are raiding the camp!'); SFX.horn();
+    } else if (m.t === 'trapped') {
+      notice('The big monster is trapped for 20 seconds!');
     } else if (m.t === 'boatPlaced') {
       if (m.ok) { stopPlacing(); actBlock = true; SFX.levelup(); const me = ents2['p' + myId]; if (me) floatText(me.x, me.y - 14, m.msg, 0xffe082); }
       else { const pm = $('placeMsg'); pm.textContent = m.msg || 'Could not place it there.'; pm.style.color = '#ff8a80'; }

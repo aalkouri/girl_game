@@ -16,6 +16,7 @@
     { id: 'pot', n: 'Cooking Pot', e: '🍲', kind: 'pot', norot: true, cost: { wood: 5, stone: 15 }, max: 1, d: 'Press ACT next to it to cook food and drinks from berries.' },
     { id: 'smelter', n: 'Smelter', e: '⚒️', kind: 'smelter', norot: true, cost: { wood: 10, stone: 25 }, max: 1, d: 'Press ACT next to it: it takes 5 rocks and smelts them into 1 metal scrap, which pops out for pickup.' },
     { id: 'boat', n: 'Boat', e: '⛵', kind: 'boat', scrap: true, cost: { wood: 20, stone: 0, scrap: 4 }, d: 'Carries two players across the sea to other islands. It goes into one of your slots - use it, then put it in the water at the shore.' },
+    { id: 'trap', n: 'Trap', e: '🪤', kind: 'trap', scrap: true, norot: true, cost: { wood: 0, stone: 0, scrap: 2 }, max: 8, d: 'Place it where the big monster will walk. When he runs over it he is stuck for 20 seconds. One use.' },
     { id: 'wall', n: 'Spike Wall', e: '🚧', kind: 'wall', cost: { wood: 6, stone: 0 }, max: 24, d: 'A solid, indestructible barricade that blocks aliens. Placed in front of you, near camp.' },
   ];
   // things you can cook at a cooking pot (cost is in berries)
@@ -32,7 +33,7 @@
   const fuelMax = lvl => lvl <= 5 ? 150 + (lvl - 1) * 75 : 450 + (lvl - 5) * 40;
   const SMELT = { cost: 5, time: 10, queue: 5 };   // rocks per scrap, seconds per scrap, jobs a smelter can hold
   const FIRE_R = 46;   // footprint of the fire pit (flames + stone ring)
-  const fireClear = kind => FIRE_R + (({ bench: 30, chest: 26, pot: 24, smelter: 30, wall: 24 })[kind] || 24) + 10;   // closest an item's centre may be to the fire: its whole body stays off the pit
-  const RADIUS = { bench: 30, chest: 26, pot: 24, smelter: 30, wall: 24 };   // collision radius of each placeable (shared by server and the placement ghost)
+  const fireClear = kind => FIRE_R + (({ bench: 30, chest: 26, pot: 24, smelter: 30, wall: 24, trap: 18 })[kind] || 24) + 10;   // closest an item's centre may be to the fire: its whole body stays off the pit
+  const RADIUS = { bench: 30, chest: 26, pot: 24, smelter: 30, wall: 24, trap: 18 };   // collision radius of each placeable (shared by server and the placement ghost)
   return { FIRE_MAX, fuelMax, LIST, BY, FOOD, FOOD_BY, ITEM_BY, camp, SMELT, RADIUS, FIRE_R, fireClear, STATION_GAP: 120, WALL_GAP: 80 };
 });

@@ -127,7 +127,7 @@ const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const CAMP_CLEAR = RC.camp(RC.FIRE_MAX) + 30;          // no trees anywhere the camp can grow to (max level)
 const BUSHES = 33;                   // berry bushes per island (was 66)
 const HP = { t: 4, r: 3, b: 1, c: 4 };            // hits to break: tree 4, rock 3, berry bush 1
-const STRUCT = { bench: { r: RC.RADIUS.bench }, chest: { r: RC.RADIUS.chest }, pot: { r: RC.RADIUS.pot }, smelter: { r: RC.RADIUS.smelter }, wall: { r: RC.RADIUS.wall, hp: 60 } };
+const STRUCT = { bench: { r: RC.RADIUS.bench }, chest: { r: RC.RADIUS.chest }, pot: { r: RC.RADIUS.pot }, smelter: { r: RC.RADIUS.smelter }, wall: { r: RC.RADIUS.wall, hp: 60 }, trap: { r: RC.RADIUS.trap } };
 const CHEST_CAP = 500, REACH = 62;   // collision radius / hit points of placed structures
 const SPILL = { t: 5, r: 3, c: 8 };   // a cactus gives more wood than a tree
 // ---------- the archipelago: island 0 is home; the others are random sizes. The nearest quarter of the distance range is forest, the rest desert ----------
@@ -151,7 +151,7 @@ function islandRes(is, idx, code) {
 }
 // end-of-run payout: 1 diamond per day survived up to day 20, 2 per day for days 21-60, 3 per day after that
 const runPayout = days => { let t = 0; for (let d = 1; d <= days; d++) t += d <= 20 ? 1 : d <= 60 ? 2 : 3; return t; };
-const SLOTS = 3;   // cooked food you can carry
+const SLOTS = 3, TRAP_SEC = 20, ARROW_SPEED = 520;   // how long a trap holds the big monster   // cooked food you can carry
 const REVIVE = { sec: 10, hp: .5, decay: 1 };   // a downed player is revived by a teammate standing still next to them and holding ACT for 10 s (Medic-type classes are faster); they come back with half health
 const STA = { max: 100, drain: 16, regen: 22, delay: 1, tiredDelay: 1.6, resume: 30, sprint: 1.7, swing: 8, bush: 5, attack: 6 };   // stamina: a full-stick run drains 16/s (~6 s), refills 22/s after a 1 s rest; at 0 you are winded (no running, chopping, mining or attacking) until it climbs back to 30%; every chop/mine/pick costs 8/8/5 and every attack swing 6
 // the Charger: from night 4 on, one huge, very fast enemy per night that hammers players far backwards and vanishes at dawn
@@ -178,7 +178,7 @@ class Room {
   reset() {
     this.c = +process.env.START_C || 0; this.night = +process.env.START_N || 1; this.fire = { fuel: 150, lvl: 1 }; this.aliens = []; this.over = 0;
     for (const r of this.res) r.hp = r.mhp;
-    this.drops = []; this.pend = []; this.struct = []; this.chargerNight = 0; this.boats = []; this.scrapFound = !!process.env.START_SCRAPFOUND;
+    this.drops = []; this.pend = []; this.struct = []; this.chargerNight = 0; this.boats = []; this.arrows = []; this.raidNight = 0; this.scrapFound = !!process.env.START_SCRAPFOUND;
     if (process.env.START_BENCH) this.struct.push({ id: this.nid++, k: 'bench', x: 110, y: 0, r: RC.RADIUS.bench, hp: 0, mhp: 0, rot: 0 });   // (test hook)
     for (const p of this.players.values()) { this.respawn(p); p.gear = {}; p.buff = { speed: 0, regen: 0, dmg: 0 }; p.kb = null; p.slots = []; }
   }
@@ -260,10 +260,10 @@ class Room {
     }
     if (r.kind !== 'gear') {
       const x = p.x + Math.cos(p.fa) * 58, y = p.y + Math.sin(p.fa) * 58, d = Math.hypot(x, y), campR = RC.camp(this.fire.lvl);
-      const sr = STRUCT[r.kind].r, station = r.kind !== 'wall';
+      const sr = STRUCT[r.kind].r, station = r.kind !== 'wall' && r.kind !== 'trap';
       if (d < RC.fireClear(r.kind)) return fail('Too close to the fire. Nothing can be built on or against it.');
       if (station && d > campR) return fail('Stand inside the camp (the fire ring), a little away from the fire, facing a free spot.');
-      if (!station && d > campR + 200) return fail('Walls go in or just outside the camp.');
+      if (!station && d > campR + 200) return fail('Walls and traps go in or just outside the camp.');
       if (d > R - 50) return fail('Too close to the water.');
       if (this.struct.filter(st => st.k === r.kind).length >= (r.max || 99)) return fail('You have built the maximum number of those.');
       for (const st of this.struct) {   // nothing may be crafted too close to anything else
@@ -339,11 +339,11 @@ class Room {
   }
   snapshot() {   // everything needed to rebuild this room after a server restart; connected players are saved as 'away' so they get their character back when they reconnect
     const away = [...this.away]; for (const p of this.players.values()) if (p.email) away.push([p.email, this.awayEntry(p)]);
-    return { code: this.code, c: this.c, night: this.night, fire: this.fire, aliens: this.aliens, res: this.res, islands: this.islands, boats: this.boats.map(b => ({ id: b.id, x: b.x, y: b.y, ang: b.ang })), scrapFound: this.scrapFound, drops: this.drops, pend: this.pend, struct: this.struct, chargerNight: this.chargerNight, nid: this.nid, away };
+    return { code: this.code, c: this.c, night: this.night, fire: this.fire, aliens: this.aliens, res: this.res, islands: this.islands, boats: this.boats.map(b => ({ id: b.id, x: b.x, y: b.y, ang: b.ang })), scrapFound: this.scrapFound, drops: this.drops, pend: this.pend, struct: this.struct, chargerNight: this.chargerNight, raidNight: this.raidNight, nid: this.nid, away };
   }
   static restore(o) {
     const r = new Room(o.code), genIsl = r.islands, genExtra = r.res.filter(x => x.isl > 0);
-    Object.assign(r, { c: o.c, night: o.night, fire: o.fire, aliens: o.aliens || [], res: o.res, drops: (o.drops || []).filter(d => d.k !== 'q' || RC.ITEM_BY[d.food]), pend: o.pend || [], struct: o.struct || [], chargerNight: o.chargerNight || 0, nid: o.nid || 1, over: 0, emptyFor: 0 });
+    Object.assign(r, { c: o.c, night: o.night, fire: o.fire, aliens: o.aliens || [], res: o.res, drops: (o.drops || []).filter(d => d.k !== 'q' || RC.ITEM_BY[d.food]), pend: o.pend || [], struct: o.struct || [], chargerNight: o.chargerNight || 0, raidNight: o.raidNight || 0, nid: o.nid || 1, over: 0, emptyFor: 0 });
     if (o.islands) { r.islands = o.islands; r.boats = (o.boats || []).map(b => ({ id: b.id, x: b.x, y: b.y, ang: b.ang, riders: [], drv: 0 })); r.scrapFound = !!o.scrapFound; }
     else { r.islands = genIsl; r.res = o.res.concat(genExtra); }   // rooms saved before the islands existed get the archipelago added
     { let nb = 0; r.res = r.res.filter(x => x.k !== 'b' || x.isl > 0 || ++nb <= BUSHES); }   // rooms saved before the bush cut lose their extra bushes (done before anyone joins, so client indexes stay aligned)
@@ -401,7 +401,7 @@ class Room {
       let flying = false;
       if (p.kb) { p.kb.t += dt; const u = p.kb.t / CHARGER.stunSec; if (u >= 1) p.kb = null; else { const v = p.kb.v0 * (1 - u) * (1 - u); p.x += p.kb.dx * v * dt; p.y += p.kb.dy * v * dt; flying = true; } }   // knocked back: no steering until it wears off
       if (!flying) { p.x += dx * spd * dt; p.y += dy * spd * dt; } if (m > 0.1) p.fa = Math.atan2(dy, dx);
-      for (const st of this.struct) { const sd = Math.hypot(p.x - st.x, p.y - st.y), mn = st.r + 14; if (sd < mn && sd > 0.01) { p.x = st.x + (p.x - st.x) / sd * mn; p.y = st.y + (p.y - st.y) / sd * mn; } }
+      for (const st of this.struct) { if (st.k === 'trap') continue; const sd = Math.hypot(p.x - st.x, p.y - st.y), mn = st.r + 14; if (sd < mn && sd > 0.01) { p.x = st.x + (p.x - st.x) / sd * mn; p.y = st.y + (p.y - st.y) / sd * mn; } }
       if (this.landAt(p.x, p.y) < 0) { const q = this.landPoint(p.x, p.y); p.x = q[0]; p.y = q[1]; }   // stay on land (any island); only boats go on water
       const d = Math.hypot(p.x, p.y);
 
@@ -481,7 +481,15 @@ class Room {
         this.chargerNight = this.night; const a = Math.random() * 6.283, hp = 1;   // it cannot be hurt; hp only exists so dawn can remove it
         this.aliens.push({ id: this.nid++, x: Math.cos(a) * ALIEN_R, y: Math.sin(a) * ALIEN_R, hp, mhp: hp, sp: Math.min(CHARGER.spMax, CHARGER.sp0 + CHARGER.spPerNight * (this.night - CHARGER.firstNight)), dmg: CHARGER.dmg, k: 2, cd: 0, rad: CHARGER.rad, reach: CHARGER.reach, stop: CHARGER.stop });
       }
-      if (this.aliens.filter(a => a.k !== 2).length < want && Math.random() < dt * 2) {
+      if (this.night % 5 === 0 && this.raidNight !== this.night) {   // every 5th night villagers raid the camp: 3 the first time, one more each time, stronger every night
+        this.raidNight = this.night; const n = 3 + (this.night / 5 - 1), s = 1 + 0.08 * (this.night - 1), a0 = Math.random() * 6.283, arch = Math.floor(n / 2);
+        for (let i = 0; i < n; i++) {
+          const ang = a0 + (i - (n - 1) / 2) * 0.22, archer = i < arch, hp = Math.round((archer ? 45 : 60) * s);
+          this.aliens.push({ id: this.nid++, x: Math.cos(ang) * (ALIEN_R + 40), y: Math.sin(ang) * (ALIEN_R + 40), hp, mhp: hp, sp: archer ? 80 : 95, dmg: (archer ? 10 : 12) * s, k: archer ? 4 : 3, cd: 0, reach: archer ? 0 : 30, stop: archer ? 250 : 22, range: 290, aim: 0, shotCd: 0 });
+        }
+        for (const q of P) send(q.ws, { t: 'raid', n });
+      }
+      if (this.aliens.filter(a => a.k < 2).length < want && Math.random() < dt * 2) {
         const a = Math.random() * 6.283, brute = this.night % 5 === 0 && Math.random() < 0.2;
         this.aliens.push({ id: this.nid++, x: Math.cos(a) * ALIEN_R, y: Math.sin(a) * ALIEN_R, hp: brute ? 120 : 30, mhp: brute ? 120 : 30, sp: brute ? 55 : 70 + Math.min(30, this.night * 2), dmg: brute ? 20 : 10, k: brute ? 1 : 0, cd: 0 });
       }
@@ -489,6 +497,8 @@ class Room {
     for (const a of this.aliens) {
       if (ph !== 2) { if (a.k === 2) a.hp = 0; else a.hp -= 25 * dt; }       // sunlight burns them; the Charger vanishes the moment night ends
       a.cd -= dt;
+      if (a.k === 2 && !(a.trapT > 0)) { const tr = this.struct.find(st => st.k === 'trap' && Math.hypot(a.x - st.x, a.y - st.y) < 34); if (tr) { a.trapT = TRAP_SEC; this.struct = this.struct.filter(s => s !== tr); for (const q of P) send(q.ws, { t: 'trapped' }); } }   // the big monster ran over a trap: stuck for 20 s
+      if (a.trapT > 0) { a.trapT -= dt; a.cd = Math.max(a.cd, 0.3); continue; }   // stuck: no moving, no attacking
       let tgt = null, bd = 1e9, slow = 0;
       for (const p of P) if (!p.down && !p.boat && Math.hypot(p.x, p.y) < R + 40) {   // aliens only hunt players on the home island
         const dd = dist(a, p); if (dd < bd) { bd = dd; tgt = p; }
@@ -500,7 +510,7 @@ class Room {
       let mx = (tx - a.x) / d, my = (ty - a.y) / d;
       { // the firelight ring is a wall for aliens: when the straight line to the player would run into it, slide around it (the short way) instead of getting stuck on the near side
         const ad0 = Math.max(1, Math.hypot(a.x, a.y));
-        if (fr > 0 && ad0 < fr + 70) {
+        if (fr > 0 && a.k < 3 && ad0 < fr + 70) {
           const ux = a.x / ad0, uy = a.y / ad0;
           if (mx * ux + my * uy < 0.15) {
             const cr = ux * my - uy * mx; if (Math.abs(cr) > 0.25) a.side = cr >= 0 ? 1 : -1; else if (!a.side) a.side = Math.random() < 0.5 ? 1 : -1;
@@ -508,14 +518,23 @@ class Room {
           }
         }
       }
-      if (d > (a.stop || 20)) { a.x += mx * sp * dt; a.y += my * sp * dt; }
+      let stay = false;
+      if (a.k === 4 && tgt) {   // archer villager: stops at range, aims for 1.5 s (the client shows a red aim line), then looses a fast arrow
+        if (a.shotCd > 0) a.shotCd -= dt;
+        if (d <= a.range && a.shotCd <= 0) {
+          a.aim = (a.aim || 0) + dt; stay = true;
+          if (a.aim >= 1.5) { const ang = Math.atan2(ty - a.y, tx - a.x); this.arrows.push({ id: this.nid++, x: a.x, y: a.y, vx: Math.cos(ang) * ARROW_SPEED, vy: Math.sin(ang) * ARROW_SPEED, dmg: a.dmg, ttl: 1.3 }); a.aim = 0; a.shotCd = 1.2; }
+        } else a.aim = 0;
+      } else if (a.k === 4) a.aim = 0;
+      if (!stay && d > (a.stop || 20)) { a.x += mx * sp * dt; a.y += my * sp * dt; }
       const ad = Math.hypot(a.x, a.y);
-      for (const st of this.struct) {   // every structure is solid and indestructible
+      for (const st of this.struct) {   // every structure is solid and indestructible (except traps)
+        if (st.k === 'trap') continue;
         const sd = Math.hypot(a.x - st.x, a.y - st.y), mn = st.r + (a.rad || 12);
         if (sd < mn) { const k = sd > 0.01 ? mn / sd : 1; a.x = st.x + (a.x - st.x) * k; a.y = st.y + (a.y - st.y) * k; }   // solid: aliens slide around it, but cannot damage it, and it does not damage them
       }
-      if (fr > 0 && ad < fr) { const k = fr / Math.max(1, ad); a.x = ad < 1 ? fr : a.x * k; a.y *= ad < 1 ? 1 : k; }   // repelled by firelight
-      if (tgt && d < (a.reach || 28) && a.cd <= 0 && (fr === 0 || Math.hypot(tgt.x, tgt.y) >= fr)) {
+      if (fr > 0 && a.k < 3 && ad < fr) { const k = fr / Math.max(1, ad); a.x = ad < 1 ? fr : a.x * k; a.y *= ad < 1 ? 1 : k; }   // repelled by firelight
+      if (tgt && d < (a.reach === undefined ? 28 : a.reach) && a.cd <= 0 && (a.k >= 3 || fr === 0 || Math.hypot(tgt.x, tgt.y) >= fr)) {
         tgt.hp -= a.dmg; a.cd = 1;
         if (a.k === 2) {   // the Charger sends you flying (about 10 steps) and then needs a moment before it can hit again
           const kx = tgt.x - a.x, ky = tgt.y - a.y, kl = Math.max(1, Math.hypot(kx, ky));
@@ -523,6 +542,12 @@ class Room {
         }
         if (tgt.hp <= 0) { tgt.hp = 0; tgt.down = 1; tgt.rev = 0; }
       }
+    }
+    for (let i = this.arrows.length - 1; i >= 0; i--) {   // arrows fly straight; spike walls / stations stop them, players take the damage
+      const w = this.arrows[i]; w.x += w.vx * dt; w.y += w.vy * dt; w.ttl -= dt; let dead = w.ttl <= 0;
+      if (!dead) for (const st of this.struct) if (st.k !== 'trap' && Math.hypot(w.x - st.x, w.y - st.y) < st.r) { dead = true; break; }
+      if (!dead) for (const p of P) if (!p.down && !p.boat && Math.hypot(p.x - w.x, p.y - w.y) < 18) { p.hp -= w.dmg; if (p.hp <= 0) { p.hp = 0; p.down = 1; p.rev = 0; } dead = true; break; }
+      if (dead) this.arrows.splice(i, 1);
     }
     for (const a of this.aliens) if (a.hp <= 0 && !a.dropped) { a.dropped = 1; if (Math.random() < 0.03) this.pend.push({ k: 'd', x: a.x, y: a.y, t: 0.35 }); }   // 3% of dead mobs leave a diamond
     this.aliens = this.aliens.filter(a => a.hp > 0);
@@ -536,7 +561,8 @@ class Room {
       f: [Math.round(f.fuel), RC.fuelMax(f.lvl), f.lvl, f.fuel > 0 ? RC.camp(f.lvl) : 0],
       p: [...this.players.values()].map(p => [p.id, p.name, p.cls, Math.round(p.x), Math.round(p.y), Math.round(p.hp), p.mhp, p.wood, p.stone, p.food, p.down, Math.round(p.rev * 10) / 10, p.sw, p.swk, Math.round(p.swa * 100), p.scrap, Math.round(p.fa * 100), Math.round(p.sta), p.tired, p.slots, p.boat || 0]),
       bt: this.boats.map(b => [b.id, Math.round(b.x), Math.round(b.y), Math.round(b.ang * 100), b.riders.length, b.drv]), sf: this.scrapFound ? 1 : 0,
-      a: this.aliens.map(a => [a.id, Math.round(a.x), Math.round(a.y), Math.round(a.hp), a.mhp, a.k, a.fa === undefined ? null : Math.round(a.fa * 100)]),
+      a: this.aliens.map(a => [a.id, Math.round(a.x), Math.round(a.y), Math.round(a.hp), a.mhp, a.k, a.fa === undefined ? null : Math.round(a.fa * 100), Math.ceil(a.trapT > 0 ? a.trapT : 0), a.aim > 0 ? Math.round(Math.min(1, a.aim / 1.5) * 100) : 0]),
+      ar: this.arrows.map(w => [w.id, Math.round(w.x), Math.round(w.y), Math.round(Math.atan2(w.vy, w.vx) * 100)]),
       r: this.res.map(r => Math.max(0, Math.ceil(r.hp - 1e-9))).join(''),
       dr: this.drops.map(d => [d.id, d.k, Math.round(d.x), Math.round(d.y), d.food]),
       st: this.struct.map(t => [t.id, t.k, Math.round(t.x), Math.round(t.y), Math.round(t.hp), t.mhp, t.items ? [t.items.wood, t.items.stone, t.items.food, t.items.scrap] : t.smelt ? [t.smelt.q, Math.round(t.smelt.prog / RC.SMELT.time * 100) / 100] : 0, t.rot || 0]),
