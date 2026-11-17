@@ -14,9 +14,9 @@
     { id: 'spear', n: 'Wooden Spear', e: '🔱', kind: 'gear', gear: 'spear', cost: { wood: 4, stone: 3 }, d: '+6 damage and longer reach against aliens.' },
     { id: 'chest', n: 'Storage Chest', e: '📦', kind: 'chest', cost: { wood: 15, stone: 5 }, max: 1, d: 'Shared storage that only takes things in. Everything inside is used automatically when anyone crafts. Press ACT next to it.' },
     { id: 'pot', n: 'Cooking Pot', e: '🍲', kind: 'pot', norot: true, cost: { wood: 5, stone: 15 }, max: 1, d: 'Press ACT next to it to cook food and drinks from berries.' },
-    { id: 'smelter', n: 'Smelter', e: '⚒️', kind: 'smelter', norot: true, cost: { wood: 10, stone: 25 }, max: 1, d: 'Press ACT next to it: it takes 5 rocks and smelts them into 1 metal scrap, which pops out for pickup.' },
+    { id: 'smelter', n: 'Smelter', e: '⚒️', kind: 'smelter', norot: true, cost: { wood: 10, stone: 25 }, max: 1, d: 'Press ACT next to it and put rocks in: every 5 rocks smelt into 1 metal scrap, which pops out for pickup.' },
     { id: 'boat', n: 'Boat', e: '⛵', kind: 'boat', scrap: true, cost: { wood: 20, stone: 0, scrap: 4 }, d: 'Carries two players across the sea to other islands. It goes into one of your slots - use it, then put it in the water at the shore.' },
-    { id: 'trap', n: 'Trap', e: '🪤', kind: 'trap', scrap: true, norot: true, cost: { wood: 0, stone: 0, scrap: 2 }, max: 8, d: 'Place it where the big monster will walk. When he runs over it he is stuck for 20 seconds. One use.' },
+    { id: 'trap', n: 'Trap', e: '🪤', kind: 'item', item: 'trap', scrap: true, cost: { wood: 0, stone: 0, scrap: 2 }, d: 'Goes into one of your slots. Tap it there to set it down where you stand. When the big monster runs over it he is stuck for 20 seconds. One use.' },
     { id: 'wall', n: 'Spike Wall', e: '🚧', kind: 'wall', cost: { wood: 6, stone: 0 }, max: 24, d: 'A solid, indestructible barricade that blocks aliens. Placed in front of you, near camp.' },
   ];
   // things you can cook at a cooking pot (cost is in berries)
@@ -26,7 +26,7 @@
   ];
   const BY = {}; LIST.forEach(r => BY[r.id] = r);
   const FOOD_BY = {}; FOOD.forEach(f => FOOD_BY[f.id] = f);
-  const ITEM_BY = Object.assign({ boat: { id: 'boat', n: 'Boat', e: '⛵' } }, FOOD_BY);   // everything that can sit in a slot
+  const ITEM_BY = Object.assign({ boat: { id: 'boat', n: 'Boat', e: '⛵' }, trap: { id: 'trap', n: 'Trap', e: '🪤' } }, FOOD_BY);   // everything that can sit in a slot
   // the camp (safe ring + build area) grows a little with every fire level
   const FIRE_MAX = 20;   // the fire can be levelled up to 20 (it used to stop at 5)
   const camp = lvl => lvl <= 5 ? 140 + lvl * 40 : 340 + (lvl - 5) * 12;   // safe ring / build area: +40 per level up to 5, then +12 per level (520 at level 20)

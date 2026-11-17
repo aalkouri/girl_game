@@ -136,13 +136,17 @@ const STRUCT = { bench: { r: RC.RADIUS.bench }, chest: { r: RC.RADIUS.chest }, p
 const CHEST_CAP = 500, REACH = 62;   // collision radius / hit points of placed structures
 const SPILL = { t: 5, r: 3, c: 8 };   // a cactus gives more wood than a tree
 // ---------- the archipelago: island 0 is home (all forest); the others are random sizes, each 25% forest on the side facing home and 75% its own biome (b) ----------
-const WORLD_R = 8600, BOAT_SPEED = 190, BOAT_AHEAD = 100, ISL_VER = 2;   // ISL_VER: bump when island generation changes so saved rooms regenerate their outer islands
+const WORLD_R = 15000, BOAT_SPEED = 190, BOAT_AHEAD = 100, ISL_VER = 3;   // ISL_VER: bump when island generation changes so saved rooms regenerate their outer islands
 function seeded(code) { let h = 2166136261; for (const ch of String(code)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); let a = h >>> 0; return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+// every outer island is at least as big as home (radius R to 1.4 R). The two nearest sit 500-1100 of open sea from home's shore
+// (about the same sail as before); the rest spread out across the world with at least 450 of sea between any two shores
+const ISL_MIN = R, ISL_MAX = R * 1.4, ISL_GAP = 450;
 function genIslands(code) {
   const rnd = seeded(code), out = [{ x: 0, y: 0, r: R, b: 'f' }]; let tries = 0;
-  while (out.length < 11 && tries++ < 6000) {
-    const near = out.length <= 2, r = 260 + rnd() * 460, dist = near ? 2900 + rnd() * 700 : 3900 + rnd() * 3900, a = rnd() * 6.283, x = Math.cos(a) * dist, y = Math.sin(a) * dist;
-    if (dist < R + r + 400 || out.some(i => Math.hypot(x - i.x, y - i.y) < r + i.r + 320)) continue;   // keep water between islands
+  while (out.length < 11 && tries++ < 20000) {
+    const near = out.length <= 2, r = ISL_MIN + rnd() * (ISL_MAX - ISL_MIN), lo = R + r + (near ? 500 : ISL_GAP), hi = near ? lo + 600 : WORLD_R - r - 300;
+    const dist = lo + rnd() * (hi - lo), a = rnd() * 6.283, x = Math.cos(a) * dist, y = Math.sin(a) * dist;
+    if (out.some(i => Math.hypot(x - i.x, y - i.y) < r + i.r + ISL_GAP)) continue;   // keep water between islands
     out.push({ x: Math.round(x), y: Math.round(y), r: Math.round(r), b: 'd' });   // only desert for now; later biomes plug in here
   }
   return out;
@@ -207,7 +211,7 @@ class Room {
     const is = this.islands[i], home = i === 0, here = P.filter(p => !p.boat && this.onIsland(p, i));
     if (!home && !here.some(p => !p.down)) return;
     const st = home ? this : (this.islNight[i] = this.islNight[i] || { chargerNight: 0, raidNight: 0 });
-    const size = home ? 1 : Math.max(0.15, is.r / R);
+    const size = home ? 1 : Math.min(1, Math.max(0.15, is.r / R));   // never more than home gets
     const at = (ang, out = 0) => home ? [Math.cos(ang) * (ALIEN_R + out), Math.sin(ang) * (ALIEN_R + out)] : [is.x + Math.cos(ang) * (is.r - 40), is.y + Math.sin(ang) * (is.r - 40)];
     let want = Math.min(40, 2 + this.night * 2); if (this.night % 5 === 0) want = Math.floor(want * 1.5);
     if (!home) want = Math.max(2, Math.round(want * size));
@@ -286,12 +290,12 @@ class Room {
     if (r.kind !== 'bench' && !hasBench) return fail('Build a crafting bench first.');
     if (r.kind === 'gear' && p.gear[r.gear]) return fail('You already have that.');
     if (!this.canPay(p, r.cost)) return fail('Not enough materials (your bag plus the chests).');
-    if (r.kind === 'boat') {
-      if (!this.scrapFound) return fail('Nobody has found scrap yet.');
-      this.pay(p, r.cost);
-      if (p.slots.length < SLOTS) { p.slots.push('boat'); return { ok: true, msg: 'Boat crafted - it is in your slot.' }; }
-      const q = this.landPoint(p.x + 30, p.y + 30, 50); this.pend.push({ k: 'q', food: 'boat', x: q[0], y: q[1], t: 0.2 });
-      return { ok: true, msg: 'Boat crafted - your slots are full, so it dropped on the floor.' };
+    if (r.kind === 'boat' || r.kind === 'item') {   // items (boat, trap) go into a free slot, or onto the floor next to you when all 3 are full
+      if (r.scrap && !this.scrapFound) return fail('Nobody has found scrap yet.');
+      this.pay(p, r.cost); const it = r.item || 'boat';
+      if (p.slots.length < SLOTS) { p.slots.push(it); return { ok: true, msg: r.n + ' crafted - it is in your slot.' }; }
+      const q = this.landPoint(p.x + 30, p.y + 30, 50); this.pend.push({ k: 'q', food: it, x: q[0], y: q[1], t: 0.2 });
+      return { ok: true, msg: r.n + ' crafted - your slots are full, so it dropped on the floor.' };
     }
     if (r.kind !== 'gear') {
       const x = p.x + Math.cos(p.fa) * 58, y = p.y + Math.sin(p.fa) * 58, d = Math.hypot(x, y), campR = RC.camp(this.fire.lvl);
@@ -325,11 +329,15 @@ class Room {
     else for (const [k, n] of [['w', wood], ['s', stone]]) for (let i = 0; i < n; i++) { const a = Math.random() * 6.283, d = st.r + 16 + Math.random() * 30; this.pend.push({ k, x: st.x + Math.cos(a) * d, y: st.y + Math.sin(a) * d, t: 0.45 }); }
     return { ok: true, msg: r.n + ' dismantled.' + extra };
   }
-  smelterStart(p, st) {   // ACT next to a smelter: automatically takes 5 rocks and queues one scrap
-    if (st.smelt.q >= RC.SMELT.queue) return { ok: false, msg: 'The smelter is full.' };
-    if (this.pool(p, 'stone') < RC.SMELT.cost) return { ok: false, msg: 'Need ' + RC.SMELT.cost + ' rocks to smelt (your bag plus the chests).' };
-    this.pay(p, { stone: RC.SMELT.cost }); if (st.smelt.q === 0) st.smelt.prog = 0; st.smelt.q++;
-    return { ok: true };
+  smelterLoad(p, id, n) {   // put rocks into the smelter from its menu: n batches of 5 rocks (1 scrap each). It only runs while it has rocks in it
+    const st = this.struct.find(s => s.id === id && s.k === 'smelter'), fail = msg => ({ ok: false, msg });
+    if (!st || p.down || !this.near(p, st)) return fail('Stand next to the smelter.');
+    n = Math.max(1, Math.min(RC.SMELT.queue, Math.trunc(+n) || 1));
+    const room = RC.SMELT.queue - st.smelt.q, afford = Math.floor(this.pool(p, 'stone') / RC.SMELT.cost), k = Math.min(n, room, afford);
+    if (room <= 0) return fail('The smelter is full.');
+    if (k <= 0) return fail('Need ' + RC.SMELT.cost + ' rocks to smelt (your bag plus the chests).');
+    this.pay(p, { stone: k * RC.SMELT.cost }); if (st.smelt.q === 0) st.smelt.prog = 0; st.smelt.q += k;
+    return { ok: true, msg: 'Put in ' + k * RC.SMELT.cost + ' rocks.' };
   }
   // Materials are drawn from the crafter's own bag first, then from the chests (oldest chest first). Chests are put-only.
   pool(p, res) { let n = p[res] || 0; for (const t of this.struct) if (t.items) n += t.items[res] || 0; return n; }
@@ -359,8 +367,18 @@ class Room {
     this.pend.push({ k: 'q', food: id, x: pot.x + Math.cos(a) * dd, y: pot.y + Math.sin(a) * dd, t: 0.45 });   // the dish pops out of the pot and lands on the floor to be picked up
     return { ok: true, msg: f.n + ' popped out of the pot!' };
   }
-  useSlot(p, i) {   // eat/drink what is in one of your 3 slots
-    const id = p.slots[i]; if (p.down || !id || !RC.FOOD_BY[id]) return;
+  useSlot(p, i) {   // eat/drink what is in one of your 3 slots, or set a trap down where you stand
+    const id = p.slots[i]; if (p.down || !id) return;
+    if (id === 'trap') {
+      const no = msg => send(p.ws, { t: 'toast', msg });
+      if (p.boat) return no('Not from a boat.');
+      if (Math.hypot(p.x, p.y) < RC.fireClear('trap')) return no('Too close to the fire.');
+      if (this.struct.some(st => st.k === 'trap' && Math.hypot(st.x - p.x, st.y - p.y) < RC.RADIUS.trap * 2)) return no('There is already a trap here.');
+      p.slots.splice(i, 1);
+      this.struct.push({ id: this.nid++, k: 'trap', x: p.x, y: p.y, r: STRUCT.trap.r, hp: 0, mhp: 0, rot: 0, items: null, smelt: null });
+      send(p.ws, { t: 'trapSet' }); return;
+    }
+    if (!RC.FOOD_BY[id]) return;
     p.slots.splice(i, 1);
     if (id === 'juice') p.hp = Math.min(p.mhp, p.hp + 40);
     else if (id === 'tea') p.buff.speed = 60;
@@ -381,7 +399,13 @@ class Room {
     Object.assign(r, { c: o.c, night: o.night, fire: o.fire, aliens: o.aliens || [], res: o.res, drops: (o.drops || []).filter(d => d.k !== 'q' || RC.ITEM_BY[d.food]), pend: o.pend || [], struct: o.struct || [], chargerNight: o.chargerNight || 0, raidNight: o.raidNight || 0, nid: o.nid || 1, over: 0, emptyFor: 0 });
     if (o.islands) { r.islands = o.islands; r.boats = (o.boats || []).map(b => ({ id: b.id, x: b.x, y: b.y, ang: b.ang, riders: [], drv: 0 })); r.scrapFound = !!o.scrapFound; }
     else { r.islands = genIsl; r.res = o.res.concat(genExtra); }   // rooms saved before the islands existed get the archipelago added
-    if (o.islands && o.isv !== ISL_VER) { r.islands = genIsl; r.res = o.res.filter(x => !(x.isl > 0)).concat(genExtra); }   // older island layouts: same islands (seeded by room code), new biomes and resources
+    if (o.islands && o.isv !== ISL_VER) {   // older island layouts: regenerate the outer islands (seeded by room code) and their resources
+      r.islands = genIsl; r.res = o.res.filter(x => !(x.isl > 0)).concat(genExtra);
+      for (const b of r.boats) if (!r.isWater(b.x, b.y)) {   // a boat that now sits on land is pushed out to the nearest shore
+        let best = r.islands[0], bd = 1e9; for (const s of r.islands) { const d = Math.hypot(b.x - s.x, b.y - s.y) - s.r; if (d < bd) { bd = d; best = s; } }
+        const dx = b.x - best.x, dy = b.y - best.y, L = Math.hypot(dx, dy) || 1; b.x = best.x + dx / L * (best.r + 90); b.y = best.y + dy / L * (best.r + 90);
+      }
+    }
     { let nb = 0; r.res = r.res.filter(x => x.k !== 'b' || x.isl > 0 || ++nb <= BUSHES); }   // rooms saved before the bush cut lose their extra bushes (done before anyone joins, so client indexes stay aligned)
     const now = Date.now(); r.away = new Map((o.away || []).map(([e, v]) => [e, { t: now, s: v.s }]));   // the reconnect window starts from the restart
     return r;
@@ -447,8 +471,8 @@ class Room {
         if (mate) { if (m <= 0.1) { mate.rev += dt * c.rev; mate.rv = 1; } }   // you have to stand still while reviving
         else if (actEdge && this.boatNear(p)) this.enterBoat(p, this.boatNear(p));
         else if (p.actcd <= 0) {
-          const stn = this.struct.find(st => (st.k === 'bench' || st.k === 'chest' || st.k === 'pot' || st.k === 'smelter') && Math.hypot(p.x - st.x, p.y - st.y) < st.r + REACH);
-          if (stn) { if (actEdge) { p.actcd = 0.4; if (stn.k === 'smelter') { const sr = this.smelterStart(p, stn); if (!sr.ok) send(p.ws, { t: 'toast', msg: sr.msg }); } else send(p.ws, { t: 'open', what: stn.k, id: stn.id }); } }
+          let stn = null, sd = 1e9; for (const st of this.struct) { if (st.k !== 'bench' && st.k !== 'chest' && st.k !== 'pot' && st.k !== 'smelter') continue; const dd = Math.hypot(p.x - st.x, p.y - st.y); if (dd < st.r + REACH && dd < sd) { sd = dd; stn = st; } }   // the nearest station in reach
+          if (stn) { if (actEdge) { p.actcd = 0.4; send(p.ws, { t: 'open', what: stn.k, id: stn.id }); } }   // every station opens its menu; the smelter only starts when you put rocks in
           else if (d < 80) {
             const per = 15 * c.feed, need = maxF - f.fuel;
             if (p.wood > 0 && need > per * 0.5) { const n = Math.min(p.wood, Math.ceil(need / per)); f.fuel = Math.min(maxF, f.fuel + n * per); p.wood -= n; p.actcd = 0.3; }   // only as much wood as the gauge needs
@@ -627,6 +651,10 @@ wss.on('connection', ws => {
       send(ws, { t: 'crafted', id: String(m.id || ''), ok: res.ok, msg: res.msg, gear: me.gear });
     } else if (m.t === 'chest' && me) {
       try { room.chestOp(me, +m.id, String(m.res || ''), m.n); } catch (e) { console.error('chest error:', e && e.stack || e); }
+    } else if (m.t === 'smelt' && me) {
+      const now = Date.now(); if (now - (me.lastSmelt || 0) < 150) return; me.lastSmelt = now;
+      let res; try { res = room.smelterLoad(me, m.id | 0, m.n); } catch (e) { console.error('smelt error:', e && e.stack || e); res = { ok: false, msg: 'Could not smelt that.' }; }
+      send(ws, { t: 'smelted', ok: res.ok, msg: res.msg });
     } else if (m.t === 'dismantle' && me) {
       const now = Date.now(); if (now - (me.lastDis || 0) < 300) return; me.lastDis = now;
       let res; try { res = room.dismantle(me, m.id | 0); } catch (e) { console.error('dismantle error:', e && e.stack || e); res = { ok: false, msg: 'Could not dismantle that.' }; }

@@ -311,8 +311,9 @@ $('zoomIn').addEventListener('click', () => setZoom(UZ * 1.15)); $('zoomOut').ad
 let resNodes = [], built = false, fireStones = null;
 function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 const polyOf = fn => { const p = []; for (let i = 0; i < 200; i++) { const a = i / 200 * TAU, r = fn(a); p.push(Math.cos(a) * r, Math.sin(a) * r); } return p; };
+const islandCs = [];   // outer island ground layers: big, so the ones off screen are skipped when drawing
 function buildIsland(is, idx) {   // is = [x, y, radius, biome]: the quarter facing home is forest, the rest is the biome ('d' desert)
-  const [ix, iy, R, biome] = is, s = idx * 1.7, ef = a => edgeJ(a, R, s), c = new PIXI.Container(); c.position.set(ix, iy); ground.addChild(c);
+  const [ix, iy, R, biome] = is, s = idx * 1.7, ef = a => edgeJ(a, R, s), c = new PIXI.Container(); c.position.set(ix, iy); ground.addChild(c); islandCs.push({ c, x: ix, y: iy, r: R + 80 });
   const inF = (x, y) => RC.inForestPart(ix, iy, R, ix + x, iy + y);   // local coords
   const shore = new PIXI.Graphics(); shore.beginFill(0x9d8c58, .5); shore.drawPolygon(polyOf(a => ef(a) + 10)); shore.endFill(); c.addChild(shore);
   const sand = new PIXI.TilingSprite(T_SAND, R * 2 + 120, R * 2 + 120); sand.position.set(-R - 60, -R - 60); if (biome === 'd') sand.tint = 0xf2c076;
@@ -651,7 +652,7 @@ function placeCheck(r, x, y) {   // mirrors the server's rules so the silhouette
 }
 const lastRot = {};   // remember the last rotation used for each recipe (handy when lining up walls)
 function startPlacing(r) {
-  stopPlacing(); setCraft(false); closeChest(); closePot();
+  stopPlacing(); setCraft(false); closeChest(); closePot(); closeSmelt();
   const D = SDEF[r.kind]; placingId = r.id; placeRot = (lastRot[r.id] || 0) % 8;
   ghost = new PIXI.Container(); ghostRot = new PIXI.Container();
   const sp = new PIXI.Sprite(D.tex); sp.anchor.set(.5, .5); sp.scale.set(D.base);
@@ -665,7 +666,7 @@ function rotatePlace() { if (!placingId || RC.BY[placingId].norot) return;   // 
 RC.BY.__boat = { id: '__boat', n: 'Boat', e: '⛵', kind: 'boat', norot: true, cost: { wood: 0, stone: 0 } };
 let boatSlot = -1;
 function startPlacingBoat(i) {   // tap the boat in a slot: a see-through boat follows you at the water's edge; ACT puts it down
-  stopPlacing(); setCraft(false); closeChest(); closePot(); boatSlot = i; placingId = '__boat';
+  stopPlacing(); setCraft(false); closeChest(); closePot(); closeSmelt(); boatSlot = i; placingId = '__boat';
   ghost = new PIXI.Container(); ghostRot = new PIXI.Container();
   const sp = new PIXI.Sprite(T_BOAT); sp.anchor.set(.5); sp.scale.set(.8); ghostRot.addChild(sp); ghost.addChild(ghostRot);
   ghostF = new PIXI.ColorMatrixFilter(); ghost.filters = [ghostF]; ents.addChild(ghost);
@@ -723,7 +724,7 @@ function buildCraft() {
     const co = [r.cost.wood ? '<span class="' + (iv.wood >= r.cost.wood ? '' : 'no') + '">🪵 ' + iv.wood + '/' + r.cost.wood + '</span>' : '', r.cost.stone ? '<span class="' + (iv.stone >= r.cost.stone ? '' : 'no') + '">🪨 ' + iv.stone + '/' + r.cost.stone + '</span>' : '', r.cost.scrap ? '<span class="' + (iv.scrap >= r.cost.scrap ? '' : 'no') + '">🔩 ' + iv.scrap + '/' + r.cost.scrap + '</span>' : ''].filter(Boolean).join(' &nbsp; ');
     const d = document.createElement('div'); d.className = 'rc';
     d.innerHTML = '<div class="ic">' + r.e + '</div><div class="tx"><div class="nm">' + r.n + '</div><div class="ds">' + r.d + '</div><div class="co">' + co + '</div></div>';
-    const placeable = r.kind !== 'gear' && r.kind !== 'boat';   // the whole row is the button: tap anywhere on it
+    const placeable = r.kind !== 'gear' && r.kind !== 'boat' && r.kind !== 'item';   // the whole row is the button: tap anywhere on it (items like the trap go into a slot)
     d.classList.add('pick'); if (!ok) d.classList.add('dim');
     d.onclick = () => {
       if (!ok) { const m = $('craftMsg'); m.textContent = 'Not enough materials for ' + r.n + '.'; m.style.color = '#ff8a80'; return; }
@@ -741,7 +742,7 @@ $('craftClose').onclick = () => setCraft(false);
 const BUFF = { speed: 0, regen: 0, dmg: 0 }; let buffAt = 0;
 const nearStruct = id => { const e = structE[id], me = ents2['p' + myId]; return !!(e && me && Math.hypot(me.x - e.x, me.y - e.y) < 125); };
 const anyPotNear = () => { for (const id in structE) if (structE[id].k === 'pot' && nearStruct(id)) return true; return false; };
-function openChest(id) { setCraft(false); closePot(); chestId = id; chestSig = ''; $('chest').style.display = 'flex'; armDismantle($('chestDis'), () => chestId); buildChest(); }
+function openChest(id) { setCraft(false); closePot(); closeSmelt(); chestId = id; chestSig = ''; $('chest').style.display = 'flex'; armDismantle($('chestDis'), () => chestId); buildChest(); }
 function closeChest() { chestId = null; $('chest').style.display = 'none'; }
 function buildChest() {
   const e = structE[chestId]; if (!e) { closeChest(); return; }
@@ -768,7 +769,7 @@ function armDismantle(btn, getId) {
   };
 }
 const nearestOf = kind => { const me = ents2['p' + myId]; let best = null, bd = 1e9; for (const id in structE) { const e = structE[id]; if (e.k !== kind || !me) continue; const d = Math.hypot(me.x - e.x, me.y - e.y); if (d < bd) { bd = d; best = id; } } return best == null ? null : +best; };
-function openPot() { setCraft(false); closeChest(); armDismantle($('potDis'), () => nearestOf('pot')); potOpen = true; potSig = ''; $('pot').style.display = 'flex'; $('potMsg').textContent = ''; buildPot(); }
+function openPot() { setCraft(false); closeChest(); closeSmelt(); armDismantle($('potDis'), () => nearestOf('pot')); potOpen = true; potSig = ''; $('pot').style.display = 'flex'; $('potMsg').textContent = ''; buildPot(); }
 function closePot() { potOpen = false; $('pot').style.display = 'none'; }
 function buildPot() {
   const food = pooled().food, sig = String(food); if (sig === potSig) return; potSig = sig;
@@ -784,7 +785,31 @@ function buildPot() {
     list.appendChild(d);
   }
 }
-$('chestClose').onclick = closeChest; $('potClose').onclick = closePot;
+// smelter menu: nothing happens until you put rocks in (5 rocks = 1 metal scrap); it shows what is loaded and how far along it is
+let smeltId = null, smeltSig = '';
+function openSmelt(id) { setCraft(false); closeChest(); closePot(); smeltId = id; smeltSig = ''; $('smelt').style.display = 'flex'; $('smeltMsg').textContent = ''; armDismantle($('smeltDis'), () => smeltId); buildSmelt(); }
+function closeSmelt() { smeltId = null; $('smelt').style.display = 'none'; }
+function buildSmelt() {
+  const e = structE[smeltId]; if (!e) { closeSmelt(); return; }
+  const stone = pooled().stone, q = (e.smelt || [0, 0])[0], C = RC.SMELT.cost, free = RC.SMELT.queue - q, can = Math.min(free, Math.floor(stone / C));
+  const sig = stone + '|' + q; if (sig === smeltSig) return; smeltSig = sig;
+  $('smeltInv').textContent = '🪨 ' + stone + ' (chests incl.)';
+  const list = $('smeltList'); list.innerHTML = '';
+  const d = document.createElement('div'); d.className = 'rc';
+  d.innerHTML = '<div class="ic">🔩</div><div class="tx"><div class="nm">Metal scrap</div><div class="ds">' + C + ' rocks smelt into 1 scrap in ' + RC.SMELT.time + ' s. It pops out for pickup.</div>' +
+    '<div class="co">' + (q ? 'Smelting: <b>' + q + '</b> scrap (' + q * C + ' rocks inside)' : '<span style="opacity:.8">Empty. Put rocks in to start it.</span>') + ' &nbsp; Room for ' + free + ' more</div></div>';
+  const bx = document.createElement('div'); bx.style.cssText = 'display:grid;grid-template-columns:1fr;gap:6px';
+  [['Put ' + C, 1, can >= 1], ['Put ' + Math.max(can, 1) * C, RC.SMELT.queue, can > 1]].forEach(b => {
+    const bt = document.createElement('button'); bt.textContent = b[0]; bt.disabled = !b[2]; bt.style.cssText = 'min-width:84px;padding:9px 6px;font-size:13px';
+    bt.onclick = () => { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'smelt', id: smeltId, n: b[1] })); };
+    bx.appendChild(bt);
+  });
+  if (can <= 1) bx.lastChild.style.display = 'none';   // only one batch possible: a single button is enough
+  d.appendChild(bx); list.appendChild(d);
+  if (!free) { $('smeltMsg').textContent = 'The smelter is full.'; $('smeltMsg').style.color = '#ffd000'; }
+  else if (can < 1) { $('smeltMsg').textContent = 'You need ' + C + ' rocks (your bag plus the chests).'; $('smeltMsg').style.color = '#ff8a80'; }
+}
+$('chestClose').onclick = closeChest; $('potClose').onclick = closePot; $('smeltClose').onclick = closeSmelt;
 
 // ---- teammate pointers: like the campfire one, a badge pinned to the screen edge toward each other player who is off screen ----
 const plPtrs = {}; let plPtrBox = null;
@@ -876,6 +901,7 @@ function onSnap(m) {
   syncStructs(m, !prevS); syncBoats(m); syncArrows(m);
   if (chestId !== null) { if (!nearStruct(chestId)) closeChest(); else buildChest(); }
   if (potOpen) { if (!anyPotNear()) closePot(); else buildPot(); }
+  if (smeltId !== null) { if (!nearStruct(smeltId)) closeSmelt(); else buildSmelt(); }
   if (craftOpen) { const bid = nearestOf('bench'), me2 = ents2['p' + myId], benchNear = bid != null ? nearStruct(bid) : !!(me2 && Math.hypot(me2.x, me2.y) < RC.camp(m.f[2])); if (!benchNear) setCraft(false); else if (refreshSig() !== craftSig) buildCraft(); }
   const mp = m.p.find(p => p[0] === myId);
   if (mp) {
@@ -965,6 +991,7 @@ app.ticker.add(() => {
   }
   // resources: sway + pop-in
   const cullR = Math.max(W, H) / Z / 2 + 140;
+  for (const ic of islandCs) ic.c.renderable = Math.hypot(ic.x - camX, ic.y - camY) < ic.r + cullR * 1.42;   // island ground: drawn only when any of it can be on screen
   for (const r of resNodes) {
     r.c.renderable = Math.abs(r.x - camX) < cullR && Math.abs(r.y - camY) < cullR;   // skip drawing what is off screen
     if (r.barT > 0 && r.bar) { r.barT -= dt; if (r.barT <= 0) r.bar.clear(); else if (r.barT < .4) r.bar.alpha = r.barT / .4; else r.bar.alpha = 1; }
@@ -981,7 +1008,8 @@ app.ticker.add(() => {
     if (placingId) lab = 'PLACE';
     else if (me.d[20]) lab = 'EXIT';
     else if (!me.d[10]) {
-      const dist = (x, y) => Math.hypot(x - me.x, y - me.y), st = (S.st || []).find(t => (t[1] === 'bench' || t[1] === 'chest' || t[1] === 'pot' || t[1] === 'smelter') && dist(t[2], t[3]) < RC.RADIUS[t[1]] + 62);
+      const dist = (x, y) => Math.hypot(x - me.x, y - me.y); let st = null, sd = 1e9;   // the nearest station in reach (same rule as the server)
+      for (const t of S.st || []) { if (t[1] !== 'bench' && t[1] !== 'chest' && t[1] !== 'pot' && t[1] !== 'smelter') continue; const dd = dist(t[2], t[3]); if (dd < RC.RADIUS[t[1]] + 62 && dd < sd) { sd = dd; st = t; } }
       const nb = (S.bt || []).find(b => dist(b[1], b[2]) < 125);
       if (S.p.some(q => q[10] && q[0] !== myId && dist(q[3], q[4]) < 60)) lab = 'REVIVE';
       else if (nb) lab = nb[4] >= 2 ? 'FULL' : 'ENTER';
@@ -1039,10 +1067,12 @@ app.ticker.add(() => {
   }
   lightSpr.visible = darkBase.visible;
   // fog + fireflies react to darkness
-  const nk = d / .74;
-  fogs.forEach(s => { s.visible = nk > .05; s.alpha = .13 * nk; s.scale.set(Math.max(W, H) / 128 * s.sc * 1.2); s.position.set(W / 2 + Math.sin(T * s.sp + s.ph) * W * .35 - camX * .15 % 50, H / 2 + Math.cos(T * s.sp * .8 + s.ph) * H * .3); });
+  const nk = d / .74, sailing = !!((S.p.find(p => p[0] === myId) || [])[20]);   // no night fog or fireflies while you are out on a boat
+  fogs.forEach(s => { s.visible = nk > .05 && !sailing; s.alpha = .13 * nk; s.scale.set(Math.max(W, H) / 128 * s.sc * 1.2); s.position.set(W / 2 + Math.sin(T * s.sp + s.ph) * W * .35 - camX * .15 % 50, H / 2 + Math.cos(T * s.sp * .8 + s.ph) * H * .3); });
   { const hw = W / Z / 2, hh = H / Z / 2, nf = Math.min(FLY_MAX, Math.round(4 * hw * hh * FLY_DENS));
-    flies.forEach((s, i) => { s.visible = nk > .1 && i < nf; if (!s.visible) return; s.position.set(camX + s.fx * hw + Math.sin(T * .6 + s.ph) * 40, camY + s.fy * hh + Math.cos(T * .5 + s.ph) * 30); s.alpha = nk * (.4 + .6 * Math.abs(Math.sin(T * 1.7 + s.ph))); }); }
+    flies.forEach((s, i) => { s.visible = nk > .1 && i < nf && !sailing; if (!s.visible) return; s.position.set(camX + s.fx * hw + Math.sin(T * .6 + s.ph) * 40, camY + s.fy * hh + Math.cos(T * .5 + s.ph) * 30);
+      if (isWaterC(s.x, s.y)) { s.visible = false; return; }   // fireflies only over land, never out on the sea
+      s.alpha = nk * (.4 + .6 * Math.abs(Math.sin(T * 1.7 + s.ph))); }); }
   const md = Math.hypot(me.x, me.y);
   // ocean sound: only when water is actually on screen. How far is the shore in the direction it lies, compared with how far the screen reaches that way?
   const sAng = Math.atan2(me.y, me.x), shoreDist = edge(sAng) - md, ux = Math.max(Math.abs(Math.cos(sAng)), 1e-3), uy = Math.max(Math.abs(Math.sin(sAng)), 1e-3);
@@ -1053,7 +1083,12 @@ app.ticker.add(() => {
 
 // ---------- HUD (DOM) ----------
 let slotSig = '', slotFullAt = 0, menuClosedAt = 0;
-document.querySelectorAll('#slots .slot').forEach((el, i) => el.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); { const it = ((S && S.p.find(q => q[0] === myId)) || [])[19] || []; if (it[i] === 'boat') { startPlacingBoat(i); return; } } if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'use', i })); }));
+function useSlotAt(i) {   // tap a slot (or press 1-3): the boat starts placement, anything else (food, trap) is used
+  const it = ((S && S.p.find(q => q[0] === myId)) || [])[19] || []; if (!it[i]) return;
+  if (it[i] === 'boat') { startPlacingBoat(i); return; }
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'use', i }));
+}
+document.querySelectorAll('#slots .slot').forEach((el, i) => el.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); useSlotAt(i); }));
 function hud() {
   const f = S.f, mp = S.p.find(p => p[0] === myId), PH = ['DAY', 'DUSK', 'NIGHT'][S.ph], left = Math.ceil(S.ph === 0 ? 90 - S.c : S.ph === 1 ? 120 - S.c : 180 - S.c);
   $('t1').textContent = 'Night ' + S.n + ' · ' + PH + ' ' + left + 's · 🔥 Lv' + f[2];
@@ -1232,7 +1267,9 @@ $('go').onclick = () => {
       const me = ents2['p' + myId]; if (me) floatText(me.x, me.y - 6, m.msg, 0xff8a80); SFX.pickup();
     } else if (m.t === 'open') {
       if (performance.now() - menuClosedAt < 700) return;   // you just closed it with E / Space: the server's reply to that same key press must not pop it open again
-      SFX.init(); if (m.what === 'chest') { SFX.chest(); openChest(m.id); } else if (m.what === 'bench') { if (!craftOpen) { SFX.chest(); closeChest(); closePot(); setCraft(true); } } else { SFX.chest(); openPot(); }
+      SFX.init(); if (m.what === 'chest') { SFX.chest(); openChest(m.id); } else if (m.what === 'bench') { if (!craftOpen) { SFX.chest(); closeChest(); closePot(); closeSmelt(); setCraft(true); } } else if (m.what === 'smelter') { SFX.chest(); openSmelt(m.id); } else { SFX.chest(); openPot(); }
+    } else if (m.t === 'smelted') {
+      const msg = $('smeltMsg'); msg.textContent = m.msg || ''; msg.style.color = m.ok ? '#7fe9a0' : '#ff8a80'; if (m.ok) SFX.pickup();
     } else if (m.t === 'cooked') {
       const msg = $('potMsg'); msg.textContent = m.msg || ''; msg.style.color = m.ok ? '#7fe9a0' : '#ff8a80';
       if (m.b) { for (const k in BUFF) BUFF[k] = m.b[k] || 0; buffAt = performance.now(); }
@@ -1246,7 +1283,9 @@ $('go').onclick = () => {
       else { const pm = $('placeMsg'); pm.textContent = m.msg || 'Could not place it there.'; pm.style.color = '#ff8a80'; }
     } else if (m.t === 'dism') {
       const me = ents2['p' + myId]; if (me) floatText(me.x, me.y - 12, m.msg, m.ok ? 0xffe082 : 0xff8a80);
-      if (m.ok) { SFX.levelup(); closeChest(); closePot(); setCraft(false); }
+      if (m.ok) { SFX.levelup(); closeChest(); closePot(); closeSmelt(); setCraft(false); }
+    } else if (m.t === 'trapSet') {
+      const me = ents2['p' + myId]; if (me) floatText(me.x, me.y - 10, 'Trap set!', 0xffe082);   // (the trap appearing already plays the build sound)
     } else if (m.t === 'ate') {
       if (m.b) { for (const k in BUFF) BUFF[k] = m.b[k] || 0; buffAt = performance.now(); }
       SFX.cook(); const me = ents2['p' + myId]; if (me) floatText(me.x, me.y - 10, m.msg, 0xffe082);
@@ -1277,10 +1316,11 @@ function jpos() { const dx = joy.x - joy.ox, dy = joy.y - joy.oy, m = Math.min(1
 function bind(id, set) { const b = $(id); b.addEventListener('pointerdown', e => { e.preventDefault(); set(1); b.setPointerCapture(e.pointerId); b.style.transform = 'scale(.92)'; }); ['pointerup', 'pointercancel'].forEach(t => b.addEventListener(t, () => { set(0); b.style.transform = ''; })); }
 bind('act', v => { act = v; if (v) actPress(); }); bind('hit', v => hit = v);
 addEventListener('keydown', e => { const k = e.key.toLowerCase(); if (placingId && k === 'r') rotatePlace(); if (!keys[k] && (k === ' ' || k === 'e') && !/INPUT|TEXTAREA/.test((e.target || {}).tagName || '')) {
-    if (craftOpen || chestId !== null || potOpen) { setCraft(false); closeChest(); closePot(); menuClosedAt = performance.now(); }   // E / Space closes whatever menu is open
+    if (craftOpen || chestId !== null || potOpen || smeltId !== null) { setCraft(false); closeChest(); closePot(); closeSmelt(); menuClosedAt = performance.now(); }   // E / Space closes whatever menu is open
     else actPress();
   }
-  if (k === 'escape') { if (craftOpen || chestId !== null || potOpen) { setCraft(false); closeChest(); closePot(); menuClosedAt = performance.now(); } else if (placingId) stopPlacing(); }   // Escape closes menus / cancels placing
+  if (!keys[k] && (k === '1' || k === '2' || k === '3') && $('btns').style.display !== 'none' && !/INPUT|TEXTAREA/.test((e.target || {}).tagName || '')) useSlotAt(+k - 1);   // 1-3 use the item in that slot (only in game, not while typing)
+  if (k === 'escape') { if (craftOpen || chestId !== null || potOpen || smeltId !== null) { setCraft(false); closeChest(); closePot(); closeSmelt(); menuClosedAt = performance.now(); } else if (placingId) stopPlacing(); }   // Escape closes menus / cancels placing
   keys[k] = 1; }); addEventListener('keyup', e => { keys[e.key.toLowerCase()] = 0; });
 // never let a lost touch/key leave the character walking: drop all held input whenever the page loses focus or no finger is down
 function clearInput() { joy = null; jb.style.display = jk.style.display = 'none'; act = hit = 0; for (const k in keys) keys[k] = 0; ['act', 'hit'].forEach(i => { $(i).style.transform = ''; }); }
