@@ -986,7 +986,10 @@ function updatePlayerPtrs(ox, oy) {   // (ox, oy) = where world (0,0) is on scre
 }
 const me0x = () => { const m = ents2['p' + myId]; return m ? m.x : 0; }, me0y = () => { const m = ents2['p' + myId]; return m ? m.y : 0; };
 // ---- campfire pointer: a little 🔥 icon pinned to the screen edge, in the direction of the camp (hidden while the campfire is on screen) ----
-function updateCampPtr(ox, oy) {   // (ox, oy) = where world (0,0), the campfire, is on screen right now
+function updateCampPtr(wx, wy) {   // (wx, wy) = where world (0,0) is on screen right now; the pointer aims at the campfire nearest to you (home fire or a camp)
+  let fx = 0, fy = 0, fuelOn = S && S.f && S.f[0] > 0, bd = Math.hypot(camX, camY);
+  for (const c of (S && S.cf) || []) { const d = Math.hypot(c[1] - camX, c[2] - camY); if (d < bd) { bd = d; fx = c[1]; fy = c[2]; fuelOn = c[3] > 0; } }
+  const ox = wx + fx * Z, oy = wy + fy * Z;
   const ptr = $('campPtr'), cx = W / 2, cy = H / 2, dx = ox - cx, dy = oy - cy, margin = 26;
   if (ox > margin && ox < W - margin && oy > margin && oy < H - margin) { ptr.style.display = 'none'; return; }   // you can already see it
   const L = 34, Rr = W - 34, Tp = 124, Bt = H - 56;   // keep clear of the top HUD and the screen edges
@@ -995,11 +998,11 @@ function updateCampPtr(ox, oy) {   // (ox, oy) = where world (0,0), the campfire
   if (dy > 0) t = Math.min(t, (Bt - cy) / dy); else if (dy < 0) t = Math.min(t, (Tp - cy) / dy);
   let px = cx + dx * t, py = cy + dy * t;
   if (px > W - 250) py = Math.min(py, H - 290);   // stay above the ACT / ATTACK / CRAFT buttons
-  const f = S && S.f, lit = f && f[0] > 0, dist = Math.hypot(ox - (W / 2 - 0), oy - H / 2) / Z / 10;
+  const lit = fuelOn;
   ptr.style.display = 'block'; ptr.style.transform = 'translate(' + Math.round(px) + 'px,' + Math.round(py) + 'px)';
   $('campArrow').style.transform = 'rotate(' + Math.atan2(dy, dx) + 'rad) translateX(35px)';
   $('campBadge').style.opacity = lit ? 1 : .55; $('campBadge').style.filter = lit ? '' : 'grayscale(1)';
-  const ds = Math.round(Math.hypot(camX, camY) / 10) + 'm'; if ($('campDist').textContent !== ds) $('campDist').textContent = ds;
+  const ds = Math.round(bd / 10) + 'm'; if ($('campDist').textContent !== ds) $('campDist').textContent = ds;
 }
 
 let snapDur = .066, lastSnapAt = 0;
