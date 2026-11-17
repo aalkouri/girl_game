@@ -29,6 +29,7 @@ if (process.env.MAIL_MODE) config.mailMode = process.env.MAIL_MODE;
 if (process.env.MAIL_FROM) config.mailFrom = process.env.MAIL_FROM;
 const auth = require('./auth.js')({ dir: DIR, config });
 setInterval(() => { save(); auth.save(); }, 3000);
+process.on('uncaughtException', e => console.error('uncaught:', e && e.stack || e));   // a bug in one message handler must not take the whole server (and everyone's game) down
 for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => { save(); auth.save(); saveRooms(); process.exit(0); });
 // accounts are keyed by lower-case email. Old anonymous profiles (random 16-32 char ids) can be claimed once at sign-in.
 const LEGACY = /^[A-Za-z0-9]{16,32}$/;
@@ -131,22 +132,25 @@ const STRUCT = { bench: { r: RC.RADIUS.bench }, chest: { r: RC.RADIUS.chest }, p
 const CHEST_CAP = 500, REACH = 62;   // collision radius / hit points of placed structures
 const SPILL = { t: 5, r: 3, c: 8 };   // a cactus gives more wood than a tree
 // ---------- the archipelago: island 0 is home; the others are random sizes. The nearest quarter of the distance range is forest, the rest desert ----------
-const WORLD_R = 8600, ISL_NEAR = 2800, ISL_FAR = 7800, FOREST_CUT = ISL_NEAR + 0.25 * (ISL_FAR - ISL_NEAR), BOAT_SPEED = 190, BOAT_AHEAD = 100;
+const WORLD_R = 9500, BOAT_SPEED = 190, BOAT_AHEAD = 100;
 function seeded(code) { let h = 2166136261; for (const ch of String(code)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); let a = h >>> 0; return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+// every extra island is as big as home or bigger, and sits about 1000-1200 off the home shore: far enough to need a boat, near enough to see from the beach when zoomed out
 function genIslands(code) {
-  const rnd = seeded(code), out = [{ x: 0, y: 0, r: R, b: 'f' }]; let tries = 0;
-  while (out.length < 11 && tries++ < 6000) {
-    const near = out.length <= 2, r = 260 + rnd() * 460, dist = near ? 2900 + rnd() * 700 : 3900 + rnd() * 3900, a = rnd() * 6.283, x = Math.cos(a) * dist, y = Math.sin(a) * dist;
-    if (dist < R + r + 400 || out.some(i => Math.hypot(x - i.x, y - i.y) < r + i.r + 320)) continue;   // keep water between islands
-    out.push({ x: Math.round(x), y: Math.round(y), r: Math.round(r), b: dist < FOREST_CUT ? 'f' : 'd' });
+  const rnd = seeded(code), home = { x: 0, y: 0, r: R, b: 'f' }, out = []; let tries = 0;
+  while (out.length < 7 && tries++ < 4000) {
+    const r = R + rnd() * 600, dist = R + 1000 + rnd() * 200 + r, a = rnd() * 6.283, x = Math.cos(a) * dist, y = Math.sin(a) * dist;
+    if (out.some(i => Math.hypot(x - i.x, y - i.y) < r + i.r + 320)) continue;   // keep water between islands
+    out.push({ x: Math.round(x), y: Math.round(y), r: Math.round(r), b: 'd' });
   }
-  return out;
+  out.sort((p, q) => Math.hypot(p.x, p.y) - Math.hypot(q.x, q.y));
+  const nf = Math.max(1, Math.round(out.length * 0.25)); for (let i = 0; i < nf && i < out.length; i++) out[i].b = 'f';   // about a quarter are forest (the nearest ones), the rest desert
+  return [home, ...out];
 }
 function islandRes(is, idx, code) {
   const rnd = seeded(code + '#' + idx), A = Math.PI * is.r * is.r, out = [];
   const add = (k, n) => { for (let i = 0; i < n; i++) { const a = rnd() * 6.283, d = 30 + Math.sqrt(rnd()) * (is.r - 110); out.push({ k, x: is.x + Math.cos(a) * d, y: is.y + Math.sin(a) * d, hp: HP[k], mhp: HP[k], rt: 0, isl: idx }); } };
-  if (is.b === 'f') { add('t', Math.max(3, Math.round(A * 1.3e-5))); add('b', Math.max(1, Math.round(A * 3.2e-6))); } else add('c', Math.max(3, Math.round(A * 1.1e-5)));   // forest: trees + bushes; desert: cacti
-  add('r', Math.max(2, Math.round(A * 8e-6)));
+  if (is.b === 'f') { add('t', Math.max(3, Math.round(A * 6.5e-6))); add('b', Math.max(1, Math.round(A * 1.6e-6))); } else add('c', Math.max(3, Math.round(A * 5.5e-6)));   // forest: trees + bushes; desert: cacti
+  add('r', Math.max(2, Math.round(A * 4e-6)));
   return out;
 }
 // end-of-run payout: 1 diamond per day survived up to day 20, 2 per day for days 21-60, 3 per day after that
@@ -339,13 +343,13 @@ class Room {
   }
   snapshot() {   // everything needed to rebuild this room after a server restart; connected players are saved as 'away' so they get their character back when they reconnect
     const away = [...this.away]; for (const p of this.players.values()) if (p.email) away.push([p.email, this.awayEntry(p)]);
-    return { code: this.code, c: this.c, night: this.night, fire: this.fire, aliens: this.aliens, res: this.res, islands: this.islands, boats: this.boats.map(b => ({ id: b.id, x: b.x, y: b.y, ang: b.ang })), scrapFound: this.scrapFound, drops: this.drops, pend: this.pend, struct: this.struct, chargerNight: this.chargerNight, raidNight: this.raidNight, nid: this.nid, away };
+    return { code: this.code, c: this.c, night: this.night, fire: this.fire, aliens: this.aliens, res: this.res, islands: this.islands, boats: this.boats.map(b => ({ id: b.id, x: b.x, y: b.y, ang: b.ang })), scrapFound: this.scrapFound, drops: this.drops, pend: this.pend, struct: this.struct, chargerNight: this.chargerNight, raidNight: this.raidNight, islandsV: 2, nid: this.nid, away };
   }
   static restore(o) {
     const r = new Room(o.code), genIsl = r.islands, genExtra = r.res.filter(x => x.isl > 0);
     Object.assign(r, { c: o.c, night: o.night, fire: o.fire, aliens: o.aliens || [], res: o.res, drops: (o.drops || []).filter(d => d.k !== 'q' || RC.ITEM_BY[d.food]), pend: o.pend || [], struct: o.struct || [], chargerNight: o.chargerNight || 0, raidNight: o.raidNight || 0, nid: o.nid || 1, over: 0, emptyFor: 0 });
-    if (o.islands) { r.islands = o.islands; r.boats = (o.boats || []).map(b => ({ id: b.id, x: b.x, y: b.y, ang: b.ang, riders: [], drv: 0 })); r.scrapFound = !!o.scrapFound; }
-    else { r.islands = genIsl; r.res = o.res.concat(genExtra); }   // rooms saved before the islands existed get the archipelago added
+    if (o.islands && o.islandsV === 2) { r.islands = o.islands; r.boats = (o.boats || []).map(b => ({ id: b.id, x: b.x, y: b.y, ang: b.ang, riders: [], drv: 0 })); r.scrapFound = !!o.scrapFound; }
+    else { r.islands = genIsl; r.res = o.res.filter(x => !(x.isl > 0)).concat(genExtra); }   // rooms saved before the islands existed get the archipelago added
     { let nb = 0; r.res = r.res.filter(x => x.k !== 'b' || x.isl > 0 || ++nb <= BUSHES); }   // rooms saved before the bush cut lose their extra bushes (done before anyone joins, so client indexes stay aligned)
     const now = Date.now(); r.away = new Map((o.away || []).map(([e, v]) => [e, { t: now, s: v.s }]));   // the reconnect window starts from the restart
     return r;

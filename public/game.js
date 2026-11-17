@@ -323,7 +323,7 @@ function buildIsland(is, idx) {   // is = [x, y, radius, 'f' | 'd']
     for (let i = 0; i < Math.round(R / 40); i++) { const a = rng() * TAU, d = Math.sqrt(rng()) * (R - 120); dn.drawEllipse(Math.cos(a) * d, Math.sin(a) * d, 40 + rng() * 70, 14 + rng() * 22); }
     dn.endFill(); dn.mask = sm; c.addChild(dn);
   }
-  const N = Math.round(Math.PI * R * R * 8e-5 / 1.5);
+  const N = Math.round(Math.PI * R * R * 3e-5 / 1.5);
   for (let i = 0; i < N; i++) {
     const a = rng() * TAU, d = Math.sqrt(rng()) * (R - 90), k = rng();
     const tx = biome === 'f' ? (k < .6 ? T_TUFT : k < .85 ? T_FLOWER : T_PEBBLE) : (k < .55 ? T_PEBBLE : T_TUFT);
