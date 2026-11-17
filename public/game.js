@@ -805,7 +805,7 @@ function syncPools(m) {
   for (const q of m.fp || []) {
     seen[q[0]] = 1; if (poolE[q[0]]) continue;
     const c = new PIXI.Container(), col = FISH[q[3]].col, g = new PIXI.Graphics();
-    g.beginFill(0x0f5a8a, .55); g.drawEllipse(0, 0, 54, 34); g.endFill(); g.beginFill(col, .18); g.drawEllipse(0, 0, 40, 25); g.endFill();
+    g.beginFill(0x2fa3c9, .38); g.drawEllipse(0, 0, 54, 34); g.endFill(); g.beginFill(col, .18); g.drawEllipse(0, 0, 40, 25); g.endFill();
     const r1 = new PIXI.Graphics(), r2 = new PIXI.Graphics(); for (const r of [r1, r2]) { r.lineStyle(2.5, col, .9); r.drawEllipse(0, 0, 40, 25); }
     const sh = new PIXI.Graphics(); sh.beginFill(q[3] === 3 ? 0xfff2a8 : 0x0a3550, .8); sh.drawEllipse(-10, 2, 13, 5); sh.drawPolygon([-22, 2, -32, -4, -32, 8]); sh.endFill();   // a fish shape under the surface
     c.addChild(g, r1, r2, sh); c.position.set(q[1], q[2]); c.zIndex = -5; ground.addChild(c);
@@ -851,7 +851,7 @@ function openFish(id, kind) {
     const dd = g.ft - g.fp, mv = F.fs * dt; g.fp += Math.abs(dd) < mv ? dd : Math.sign(dd) * mv;
     const inside = Math.abs(g.fp - g.zc) < zh / 2 + .02; g.prog += (inside ? F.fill : -F.drain) * dt;
     $('fgZone').style.bottom = (g.zc - zh / 2) * 100 + '%'; $('fgFish').style.bottom = 'calc(' + g.fp * 100 + '% - 13px)'; $('fgFish').textContent = F.e; $('fgProg').style.height = Math.max(0, Math.min(1, g.prog)) * 100 + '%'; $('fgProg').style.background = inside ? '#ffd54f' : '#ef6c00';
-    const me = ents2['p' + myId], q = poolE[id]; if (me && q && Math.hypot(me.x - q.x, me.y - q.y) > 160) { closeFish(false); notice('You walked away from the pool.'); return; }
+    const me = ents2['p' + myId], q = poolE[id]; if (me && q && Math.hypot(me.x - q.x, me.y - q.y) > 280) { closeFish(false); notice('You walked away from the pool.'); return; }
     if (g.prog >= 1) { closeFish(true); return; } if (g.prog <= 0 || g.t > 30) { closeFish(false); return; }
     g.raf = requestAnimationFrame(step);
   };
@@ -1375,13 +1375,13 @@ app.ticker.add(() => {
   { // the ACT button names whatever ACT would do right now (same priority and ranges as the server)
     let lab = 'ACT';
     if (placingId) lab = 'PLACE';
-    else if (me.d[20]) lab = 'EXIT';
+    else if (me.d[20]) lab = (S.fp || []).some(q => Math.hypot(q[1] - me.x, q[2] - me.y) < 150) && !fishOpen ? 'FISH' : 'EXIT';
     else if (!me.d[10]) {
       const dist = (x, y) => Math.hypot(x - me.x, y - me.y); let st = null, sd = 1e9;   // the nearest station in reach (same rule as the server)
       for (const t of S.st || []) { if (t[1] !== 'bench' && t[1] !== 'chest' && t[1] !== 'pot' && t[1] !== 'smelter') continue; const dd = dist(t[2], t[3]); if (dd < RC.RADIUS[t[1]] + 62 && dd < sd) { sd = dd; st = t; } }
       if (st && Math.hypot(me.x, me.y) < 80 && Math.hypot(me.x, me.y) < sd) st = null;   // the fire is closer than the station
       let gt = null, gd = 70; for (const t of S.st || []) if (t[1] === 'gate') { const a = (t[7] || 0) * Math.PI / 4, ux = Math.cos(a), uy = Math.sin(a), u = Math.max(-52, Math.min(52, (me.x - t[2]) * ux + (me.y - t[3]) * uy)), d = Math.hypot(me.x - (t[2] + ux * u), me.y - (t[3] + uy * u)); if (d < gd) { gd = d; gt = t; } }   // a gate in reach: ACT swings it open / shut
-      const pool = !me.d[20] && (S.fp || []).find(q => dist(q[1], q[2]) < 80);
+      const pool = (S.fp || []).find(q => dist(q[1], q[2]) < 150);
       const nb = (S.bt || []).find(b => dist(b[1], b[2]) < 125);
       if (S.p.some(q => q[10] && q[0] !== myId && dist(q[3], q[4]) < 60)) lab = 'REVIVE';
       else if (nb) lab = nb[4] >= 2 ? 'FULL' : 'ENTER';
@@ -1683,7 +1683,7 @@ $('go').onclick = () => {
     } else if (m.t === 'trapSet') {
       const me = ents2['p' + myId]; if (me) floatText(me.x, me.y - 10, 'Trap set!', 0xffe082);   // (the trap appearing already plays the build sound)
     } else if (m.t === 'fishgame') { openFish(m.id, m.kind);
-    } else if (m.t === 'fishCaught') { const F = FISH[m.kind] || FISH[1]; SFX.levelup(); const me = ents2['p' + myId]; if (me) floatText(me.x, me.y - 24, F.e + ' ' + F.n + '!', 0xffe082); notice('You caught a ' + F.n.toLowerCase() + '! Cook it in a pot.');
+    } else if (m.t === 'fishCaught') { const F = FISH[m.kind] || FISH[1]; SFX.levelup(); const me = ents2['p' + myId]; if (me) floatText(me.x, me.y - 24, F.e + ' ' + F.n + '!', 0xffe082); notice('You caught a ' + F.n.toLowerCase() + '!' + (m.left > 0 ? ' ' + m.left + ' more in this pool.' : ' That was the last fish here.') + ' Cook it in a pot.');
     } else if (m.t === 'ate') {
       if (m.b) { for (const k in BUFF) BUFF[k] = m.b[k] || 0; buffAt = performance.now(); }
       SFX.cook(); const me = ents2['p' + myId]; if (me) floatText(me.x, me.y - 10, m.msg, 0xffe082);

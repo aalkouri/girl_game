@@ -387,23 +387,31 @@ class Room {
   }
   hitWall(st, dmg) { st.hp -= dmg; if (st.hp <= 0) st.dead = 1; }
   // fishing pools: shimmering spots near the shore of any island; walk up and press ACT to fish (the minigame runs on the client, the server checks it)
-  stepPools(dt) {
-    if (!this.pools) { this.pools = []; this.poolT = 3; }
-    this.pools = this.pools.filter(q => (q.ttl -= dt) > 0);
-    if ((this.poolT -= dt) > 0) return; this.poolT = 6 + Math.random() * 6;
-    const i = Math.floor(Math.random() * this.islands.length), is = this.islands[i]; if (this.pools.filter(q => q.isl === i).length >= 3) return;
-    const a = Math.random() * 6.283, d = is.r - 95, x = is.x + Math.cos(a) * d, y = is.y + Math.sin(a) * d;
-    if (this.landAt(x, y) !== i || this.pools.some(q => Math.hypot(q.x - x, q.y - y) < 300)) return;
-    const r = Math.random(); this.pools.push({ id: this.nid++, isl: i, x: Math.round(x), y: Math.round(y), kind: r < 0.05 ? 3 : r < 0.30 ? 2 : 1, ttl: 150 + Math.random() * 150 });
+  stepPools(dt) {   // fish are in the sea: pools just off every island's shore (fish from the beach) and pools out in the open water near players (fish from a boat)
+    if (!this.pools) { this.pools = []; this.poolT = 2; }
+    this.pools = this.pools.filter(q => q.left > 0 && (q.ttl -= dt) > 0);
+    if ((this.poolT -= dt) > 0) return; this.poolT = 2 + Math.random() * 3;
+    const kind = () => { const r = Math.random(); return r < 0.06 ? 3 : r < 0.32 ? 2 : 1; }, fish = k => k === 3 ? 1 + Math.floor(Math.random() * 2) : k === 2 ? 2 + Math.floor(Math.random() * 2) : 3 + Math.floor(Math.random() * 3);   // 3-5 common, 2-3 rare, 1-2 legendary fish per pool
+    if (Math.random() < 0.6) {   // off a beach
+      const i = Math.floor(Math.random() * this.islands.length), is = this.islands[i]; if (this.pools.filter(q => q.isl === i).length >= 4) return;
+      const a = Math.random() * 6.283, d = is.r + 40 + Math.random() * 60, x = is.x + Math.cos(a) * d, y = is.y + Math.sin(a) * d;
+      if (!this.isWater(x, y) || this.pools.some(q => Math.hypot(q.x - x, q.y - y) < 250)) return;
+      const k = kind(); this.pools.push({ id: this.nid++, isl: i, x: Math.round(x), y: Math.round(y), kind: k, left: fish(k), ttl: 200 + Math.random() * 200 });
+    } else {   // deep ocean, somewhere ahead of a player
+      const P = [...this.players.values()].filter(p => !p.down); if (!P.length || this.pools.filter(q => q.isl < 0).length >= 8) return;
+      const p = P[Math.floor(Math.random() * P.length)], a = Math.random() * 6.283, d = 700 + Math.random() * 2200, x = p.x + Math.cos(a) * d, y = p.y + Math.sin(a) * d;
+      if (!this.isWater(x, y) || this.islands.some(s => Math.hypot(x - s.x, y - s.y) < s.r + 250) || this.pools.some(q => Math.hypot(q.x - x, q.y - y) < 400)) return;
+      const k = kind(); this.pools.push({ id: this.nid++, isl: -1, x: Math.round(x), y: Math.round(y), kind: k, left: fish(k), ttl: 300 + Math.random() * 200 });
+    }
   }
-  poolNear(p) { let best = null, bd = 80; for (const q of this.pools || []) { const d = Math.hypot(p.x - q.x, p.y - q.y); if (d < bd) { bd = d; best = q; } } return best; }
+  poolNear(p) { let best = null, bd = 150; for (const q of this.pools || []) { const d = Math.hypot(p.x - q.x, p.y - q.y); if (d < bd) { bd = d; best = q; } } return best; }
   fishDone(p, id, ok) {
     const f = p.fishing; p.fishing = null; if (!f || f.id !== id) return;
     const q = (this.pools || []).find(x => x.id === id), toast = msg => send(p.ws, { t: 'toast', msg });
     if (!q) return toast('The fish swam away.');
-    if (!ok || Date.now() - f.t < 2500 || Math.hypot(p.x - q.x, p.y - q.y) > 180) return toast('It got away!');
-    this.pools = this.pools.filter(x => x !== q); p['fish' + q.kind] = (p['fish' + q.kind] || 0) + 1;
-    send(p.ws, { t: 'fishCaught', kind: q.kind });
+    if (!ok || Date.now() - f.t < 2500 || Math.hypot(p.x - q.x, p.y - q.y) > 260) return toast('It got away!');
+    q.left--; p['fish' + q.kind] = (p['fish' + q.kind] || 0) + 1;   // the pool holds a few fish; it disappears when they are all caught
+    send(p.ws, { t: 'fishCaught', kind: q.kind, left: q.left });
   }
   resGrid() {   // trees, cacti, rocks and ore are solid at their base: a coarse grid so a player only checks what is right beside them
     if (!this._rg || this._rgN !== this.res.length) { this._rgN = this.res.length; const g = new Map(); for (const r of this.res) { if (!RES_R[r.k]) continue; const key = Math.floor(r.x / 200) * 100003 + Math.floor(r.y / 200); (g.get(key) || g.set(key, []).get(key)).push(r); } this._rg = g; }
@@ -929,7 +937,7 @@ class Room {
       const B = p.buff; for (const k in B) if (B[k] > 0) B[k] = Math.max(0, B[k] - dt);
       const actEdge = i.act && !p.actPrev; p.actPrev = i.act;
       if (p.boat) {   // aboard a boat: the boat carries you; ACT gets you out near land. Passengers (not the captain) can shoot projectiles with ATTACK
-        if (actEdge) this.exitBoat(p);
+        if (actEdge) { const q = (!p.fishing || Date.now() - p.fishing.t > 40000) && this.poolNear(p); if (q) { p.fishing = { id: q.id, t: Date.now() }; send(p.ws, { t: 'fishgame', id: q.id, kind: q.kind }); } else this.exitBoat(p); }   // ACT next to a fish pool fishes from the boat; otherwise it gets you out
         { const mate = P.find(q => q.down && q !== p && Math.hypot(q.x - p.x, q.y - p.y) < 110);   // revive someone floating in the water from the boat
           if (mate && i.act && Math.hypot(i.dx, i.dy) <= 0.1) { mate.rev += dt * c.rev; mate.rv = 1; } }
         const bt = this.boats.find(x => x.id === p.boat);
@@ -973,7 +981,7 @@ class Room {
         if (mate) { if (m <= 0.1) { mate.rev += dt * c.rev; mate.rv = 1; } }   // you have to stand still while reviving
         else if (actEdge && this.boatNear(p)) this.enterBoat(p, this.boatNear(p));
         else if (actEdge && this.lootNear(p, 'chest')) this.openChest(p, this.lootNear(p, 'chest'));
-        else if (actEdge && (!p.fishing || Date.now() - p.fishing.t > 40000) && this.poolNear(p) && !p.boat) { const q = this.poolNear(p); p.fishing = { id: q.id, t: Date.now() }; p.actcd = 0.5; send(p.ws, { t: 'fishgame', id: q.id, kind: q.kind }); }
+        else if (actEdge && (!p.fishing || Date.now() - p.fishing.t > 40000) && this.poolNear(p)) { const q = this.poolNear(p); p.fishing = { id: q.id, t: Date.now() }; p.actcd = 0.5; send(p.ws, { t: 'fishgame', id: q.id, kind: q.kind }); }
         else if (actEdge && this.gateNear(p)) { const g = this.gateNear(p); g.open = g.open ? 0 : 1; p.actcd = 0.3; }
         else if (actEdge && this.lootNear(p, 'trader')) { const l = this.lootNear(p, 'trader'); send(p.ws, { t: 'open', what: 'trader', id: l.id, ty: l.trader }); }
         else if (p.actcd <= 0) {
@@ -1151,7 +1159,7 @@ class Room {
       t: 's', c: Math.round(this.c * 10) / 10, n: this.night, ph: this.ph(), o: this.over > 0 ? 1 : 0,
       f: [Math.round(f.fuel), RC.fuelMax(f.lvl), f.lvl, f.fuel > 0 ? RC.camp(f.lvl) : 0],
       p: [...this.players.values()].map(p => [p.id, p.name, p.cls, Math.round(p.x), Math.round(p.y), Math.round(p.hp), p.mhp, p.wood, p.stone, p.food, p.down, Math.round(p.rev * 10) / 10, p.sw, p.swk, Math.round(p.swa * 100), p.scrap, Math.round(p.fa * 100), Math.round(p.sta), p.tired, p.slots, p.boat || 0, p.meat || 0, p.gold || 0, p.pelt || 0, slotCap(p, this), !(p.prof && p.prof.abil && p.prof.abil[p.cls]) ? 0 : p.abilCd > 0 ? Math.ceil(p.abilCd) + 1 : 1, p.apelt || 0, p.fish1 || 0, p.fish2 || 0, p.fish3 || 0]),
-      fp: (this.pools || []).map(q => [q.id, q.x, q.y, q.kind]),
+      fp: (this.pools || []).map(q => [q.id, q.x, q.y, q.kind, q.left]),
       bt: this.boats.map(b => [b.id, Math.round(b.x), Math.round(b.y), Math.round(b.ang * 100), b.riders.length, b.drv, b.type || 'boat', Math.round(100 * (b.life == null ? 1 : b.life / RC.BOATS[b.type || 'boat'].life)), b.storm || 0]), sf: this.scrapFound ? 1 : 0,
       a: this.aliens.map(a => [a.id, Math.round(a.x), Math.round(a.y), Math.round(a.hp), a.mhp, a.k, a.fa === undefined ? null : Math.round(a.fa * 100), Math.ceil(a.trapT > 0 ? a.trapT : 0), a.aim > 0 ? Math.round(Math.min(1, a.aim / 1.5) * 100) : 0, a.spit ? 1 : 0]),
       wf: (this.wolves || []).map(w => [w.id, Math.round(w.x), Math.round(w.y), Math.round(w.fa * 100), Math.round(w.hp), w.mhp, w.st, w.bite > 0 ? 1 : 0, w.alpha || 0, w.big || 0, w.vul ? (w.air ? 1 : 2) : 0]),
