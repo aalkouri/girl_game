@@ -439,19 +439,19 @@ function stepFallers(dt) {
 }
 
 // ground pickups (logs from trees, stones from rocks): hop out, bob, fly to the player that grabs them
-const dropE = {}, flyers = [], DROP_S = { w: .8, s: .85, m: .9, f: .75, d: .9 };
+const dropE = {}, flyers = [], DROP_S = { w: .8, s: .85, m: .9, f: .75, d: .9, q: 1 };
 function syncDrops(m, _d, _dx) {
   const seen = {};
   for (const d of m.dr || []) {
     seen[d[0]] = 1; let e = dropE[d[0]];
     if (!e) {
       const c = new PIXI.Container(), sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5); sh.scale.set(.6, .35); sh.y = 4;
-      const spr = new PIXI.Sprite(d[1] === 'w' ? T_LOG : d[1] === 'm' ? T_SCRAP : d[1] === 'f' ? T_BERRY : d[1] === 'd' ? T_GEM : T_STONE); spr.anchor.set(.5); spr.scale.set(DROP_S[d[1]]); spr.rotation = d[1] === 'w' ? rnd(-.8, .8) : rnd(-.4, .4);
+      const spr = d[1] === 'q' ? Object.assign(new PIXI.Text((RC.FOOD_BY[d[4]] || {}).e || '🍲', { fontSize: 30 }), { resolution: 2 }) : new PIXI.Sprite(d[1] === 'w' ? T_LOG : d[1] === 'm' ? T_SCRAP : d[1] === 'f' ? T_BERRY : d[1] === 'd' ? T_GEM : T_STONE); spr.anchor.set(.5); spr.scale.set(DROP_S[d[1]]); spr.rotation = d[1] === 'w' ? rnd(-.8, .8) : rnd(-.4, .4);
       c.addChild(sh, spr); c.position.set(d[2], d[3]); c.zIndex = d[3]; ents.addChild(c);
-      e = dropE[d[0]] = { c, spr, sh, x: d[2], y: d[3], t: 0, ph: rnd(0, TAU), k: d[1], dur: d[1] === 'm' ? .5 : .35 };
-      if (d[1] === 'm') {   // metal scrap jumps out of the nearest smelter
-        let bs = null, bd = 160; for (const id in structE) { const st = structE[id]; if (st.k !== 'smelter') continue; const dd = Math.hypot(st.x - d[2], st.y - d[3]); if (dd < bd) { bd = dd; bs = st; } }
-        if (bs) e.from = { x: bs.x, y: bs.y - 18 }; const me = ents2['p' + myId], dm = me ? Math.hypot(me.x - d[2], me.y - d[3]) : 0; SFX.smeltDone(dm, me ? d[2] - me.x : 0);
+      e = dropE[d[0]] = { c, spr, sh, x: d[2], y: d[3], t: 0, ph: rnd(0, TAU), k: d[1], dur: d[1] === 'm' || d[1] === 'q' ? .5 : .35 };
+      if (d[1] === 'm' || d[1] === 'q') {   // metal scrap jumps out of the nearest smelter; cooked food pops out of the nearest pot
+        let bs = null, bd = 160; for (const id in structE) { const st = structE[id]; if (st.k !== (d[1] === 'q' ? 'pot' : 'smelter')) continue; const dd = Math.hypot(st.x - d[2], st.y - d[3]); if (dd < bd) { bd = dd; bs = st; } }
+        if (bs) e.from = { x: bs.x, y: bs.y - 18 }; const me = ents2['p' + myId], dm = me ? Math.hypot(me.x - d[2], me.y - d[3]) : 0; if (d[1] === 'm') SFX.smeltDone(dm, me ? d[2] - me.x : 0);
       }
       overGlow(e);
     }
@@ -463,7 +463,7 @@ function syncDrops(m, _d, _dx) {
     else { e.c.destroy({ children: true }); }
   }
 }
-function overGlow(e) { /* small sparkle when a pickup appears */ emit(overL, T_GLOW, e.x, e.y - 6, 0, -20, .5, .16, .02, e.k === 'w' ? 0xffd9a0 : e.k === 'f' ? 0xffb3b3 : e.k === 'd' ? 0x7fe9ff : 0xdfe8f5, .8, true, 0); }
+function overGlow(e) { /* small sparkle when a pickup appears */ emit(overL, T_GLOW, e.x, e.y - 6, 0, -20, .5, .16, .02, e.k === 'w' ? 0xffd9a0 : e.k === 'f' ? 0xffb3b3 : e.k === 'd' ? 0x7fe9ff : e.k === 'q' ? 0xffe9a8 : 0xdfe8f5, .8, true, 0); }
 function stepDrops(dt) {
   for (const id in dropE) {
     const e = dropE[id]; e.t += dt; const u = Math.min(1, e.t / e.dur), hop = Math.sin(u * Math.PI) * (e.from ? 46 : 26) * (1 - u * .3);
@@ -547,9 +547,10 @@ function startPlacing(r) {
   const sp = new PIXI.Sprite(D.tex); sp.anchor.set(.5, .5); sp.scale.set(D.base);
   ghostRot.y = -(D.ay - .5) * D.tex.height * D.base; ghostRot.addChild(sp); ghost.addChild(ghostRot);
   ghostF = new PIXI.ColorMatrixFilter(); ghost.filters = [ghostF]; ents.addChild(ghost);
-  $('placeBar').style.display = 'flex'; $('placeName').textContent = r.e + ' ' + r.n; $('placeMsg').textContent = '';
+  $('placeRotR').style.display = r.norot ? 'none' : ''; $('placeBar').style.display = 'flex'; $('placeName').textContent = r.e + ' ' + r.n; $('placeMsg').textContent = '';
 }
-function rotatePlace() { if (!placingId) return; placeRot = (placeRot + 1) % 8;   // one tap = 45° (two taps = a quarter turn), one direction only
+function rotatePlace() { if (!placingId || RC.BY[placingId].norot) return;   // square things (cooking pot, smelter) can't be turned
+  placeRot = (placeRot + 1) % 8;   // one tap = 45° (two taps = a quarter turn), one direction only
   lastRot[placingId] = placeRot; SFX.pickup(); }
 function stopPlacing() {
   if (ghost) { ghost.destroy({ children: true }); ghost = null; } ghostRot = null;
@@ -808,6 +809,7 @@ app.ticker.add(() => {
         if (near) lab = near.k === 't' ? 'CHOP' : near.k === 'r' ? 'MINE' : 'PICK';
       }
     }
+    if (S.dr && !me.d[10] && (me.d[19] || []).length >= 3 && performance.now() - slotFullAt > 2500 && S.dr.some(q => q[1] === 'q' && Math.hypot(q[2] - me.x, q[3] - me.y) < 34)) { slotFullAt = performance.now(); floatText(me.x, me.y - 14, 'Slots full', 0xff8a80); }
     const ab = $('act'); if (ab.textContent !== lab) { ab.textContent = lab; ab.style.fontSize = lab.length > 6 ? '9.5px' : lab.length > 4 ? '11px' : ''; }
   }
   // camera
@@ -863,11 +865,14 @@ app.ticker.add(() => {
 });
 
 // ---------- HUD (DOM) ----------
+let slotSig = '', slotFullAt = 0;
+document.querySelectorAll('#slots .slot').forEach((el, i) => el.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'use', i })); }));
 function hud() {
   const f = S.f, mp = S.p.find(p => p[0] === myId), PH = ['DAY', 'DUSK', 'NIGHT'][S.ph], left = Math.ceil(S.ph === 0 ? 90 - S.c : S.ph === 1 ? 120 - S.c : 180 - S.c);
   $('t1').textContent = 'Night ' + S.n + ' · ' + PH + ' ' + left + 's · 🔥 Lv' + f[2];
   $('bar').firstElementChild.style.width = (100 * f[0] / f[1]) + '%';
   if (mp) $('inv').textContent = '🪵' + mp[7] + '  🪨' + mp[8] + '  🍓' + mp[9] + (mp[15] ? '  🔩' + mp[15] : '') + '   ❤ ' + mp[5] + '/' + mp[6];
+  if (mp) { const sl = mp[19] || [], sig = sl.join(','); if (sig !== slotSig) { slotSig = sig; document.querySelectorAll('#slots .slot').forEach((el, i) => { const f = RC.FOOD_BY[sl[i]]; el.textContent = f ? f.e : ''; el.classList.toggle('full', !!f); el.title = f ? f.n + ' - tap to use' : 'empty'; }); } }
   $('pl').textContent = S.p.length + ' player' + (S.p.length > 1 ? 's' : '');
   { const el = (performance.now() - buffAt) / 1000, bt = []; if (BUFF.speed - el > 0) bt.push('⚡' + Math.ceil(BUFF.speed - el) + 's'); if (BUFF.regen - el > 0) bt.push('💚' + Math.ceil(BUFF.regen - el) + 's'); if (BUFF.dmg - el > 0) bt.push('⚔' + Math.ceil(BUFF.dmg - el) + 's'); const bs = bt.join('  '); if ($('buffs').textContent !== bs) $('buffs').textContent = bs; }
   const now = performance.now(); let b = '';
@@ -1044,6 +1049,9 @@ $('go').onclick = () => {
       const msg = $('potMsg'); msg.textContent = m.msg || ''; msg.style.color = m.ok ? '#7fe9a0' : '#ff8a80';
       if (m.b) { for (const k in BUFF) BUFF[k] = m.b[k] || 0; buffAt = performance.now(); }
       if (m.ok) { SFX.cook(); const me = ents2['p' + myId]; if (me) floatText(me.x, me.y - 10, m.msg, 0xffe082); }
+    } else if (m.t === 'ate') {
+      if (m.b) { for (const k in BUFF) BUFF[k] = m.b[k] || 0; buffAt = performance.now(); }
+      SFX.cook(); const me = ents2['p' + myId]; if (me) floatText(me.x, me.y - 10, m.msg, 0xffe082);
     } else if (m.t === 'over') {   // everyone went down: remember the result, then back to the title screen
       runOver = true; setDia(m.total); try { sessionStorage.setItem('runres', JSON.stringify({ n: m.n, d: m.d })); sessionStorage.removeItem('rejoin'); } catch (e) { }
       $('banner').style.fontSize = '22px'; $('banner').textContent = 'Game over - you survived ' + m.n + ' day' + (m.n === 1 ? '' : 's') + ' and earned ' + m.d + ' 💎';
