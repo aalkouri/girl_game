@@ -13,7 +13,7 @@ const T_DRYB = tex(46, 38, g => { g.strokeStyle = '#a07a3c'; g.lineWidth = 2; fo
 const T_ICE = tex(48, 56, g => { [[14, 50, 9, 34], [26, 52, 11, 46], [37, 50, 8, 28]].forEach(c => { g.fillStyle = '#bfe6ff'; g.beginPath(); g.moveTo(c[0] - c[2] / 2, c[1]); g.lineTo(c[0], c[1] - c[3]); g.lineTo(c[0] + c[2] / 2, c[1]); g.closePath(); g.fill(); g.fillStyle = 'rgba(255,255,255,.6)'; g.beginPath(); g.moveTo(c[0] - 1, c[1]); g.lineTo(c[0], c[1] - c[3]); g.lineTo(c[0] + c[2] / 4, c[1]); g.closePath(); g.fill(); }); });
 const T_STUMP = tex(46, 40, g => { g.fillStyle = '#6b4a2c'; g.fillRect(10, 14, 26, 22); g.fillStyle = '#8a6540'; ell(g, 23, 14, 13, 5); g.fillStyle = '#f2f7fb'; ell(g, 23, 11, 14, 5); ell(g, 14, 15, 5, 3); g.fillStyle = '#d9a441'; g.fillRect(31, 22, 3, 12); });
 const T_SNOWM = tex(60, 36, g => { g.fillStyle = '#eef4fa'; ell(g, 30, 26, 26, 11); ell(g, 22, 20, 14, 10); ell(g, 38, 22, 12, 8); g.fillStyle = '#cfe0ee'; ell(g, 30, 30, 22, 5); });
-const DECOR = { f: [T_MUSH, T_MUSH, T_LOGF, T_CAIRN, T_FLOWER], d: [T_BONES, T_SKULL, T_PILLAR, T_DRYB, T_DRYB], s: [T_ICE, T_ICE, T_STUMP, T_SNOWM, T_CAIRN] };
+const DECOR = { f: [T_MUSH, T_MUSH, T_LOGF, T_CAIRN, T_FLOWER], d: [T_BONES, T_SKULL, T_PILLAR, T_DRYB, T_DRYB], s: [T_ICE, T_ICE, T_STUMP, T_SNOWM, T_CAIRN], l: [T_CAIRN, T_SKULL, T_BONES, T_CAIRN, T_STUMP] };
 const chestTex = (tier, open) => tex(60, 50, g => {
   const body = ['', '#8a5a2b', '#9aa3ad', '#e0b020'][tier], lid = ['', '#a8733a', '#c3cad2', '#f5cf4a'][tier], band = ['', '#4a2f14', '#5a626b', '#a67c00'][tier];
   g.fillStyle = 'rgba(0,0,0,.2)'; ell(g, 30, 44, 26, 6);
@@ -47,6 +47,17 @@ const T_VFIRE = tex(90, 60, g => {
   for (let i = 0; i < 9; i++) { const a = i / 9 * TAU, x = 45 + Math.cos(a) * 28, y = 38 + Math.sin(a) * 11; g.fillStyle = '#8a8d92'; g.beginPath(); g.ellipse(x, y, 7, 5, 0, 0, TAU); g.fill(); g.strokeStyle = 'rgba(0,0,0,.4)'; g.stroke(); }
   g.strokeStyle = '#4b2f17'; g.lineWidth = 6; g.lineCap = 'round'; g.beginPath(); g.moveTo(30, 40); g.lineTo(60, 34); g.moveTo(32, 33); g.lineTo(58, 42); g.stroke();   // two logs
 });
+// ---- lava pools (burn anyone standing in them) ----
+let LAVAP = [];
+function xLava(m) {
+  LAVAP = (m.lv || []).map(([x, y, r]) => ({ x, y, r, ph: rnd(0, TAU) }));
+  for (const L of LAVAP) {
+    const g = new PIXI.Graphics(), rr = L.r, pts = k => { const o = []; for (let i = 0; i < 24; i++) { const a = i / 24 * TAU, w = 1 + .1 * Math.sin(a * 3 + L.x) + .07 * Math.sin(a * 5 + L.y); o.push(Math.cos(a) * rr * k * w, Math.sin(a) * rr * k * w * .8); } return o; };
+    g.beginFill(0x120a0c, .9); g.drawPolygon(pts(1.14)); g.endFill(); g.beginFill(0x8a2a0c); g.drawPolygon(pts(1)); g.endFill(); g.beginFill(0xe8561a); g.drawPolygon(pts(.8)); g.endFill(); g.beginFill(0xffa23a, .9); g.drawPolygon(pts(.5)); g.endFill(); g.beginFill(0xffe08a, .7); g.drawPolygon(pts(.22)); g.endFill();
+    g.position.set(L.x, L.y); ground.addChild(g); L.g = g;
+    const gl = new PIXI.Sprite(T_GLOW); gl.anchor.set(.5); gl.tint = 0xff6a1a; gl.blendMode = BM.ADD; gl.position.set(L.x, L.y); gl.scale.set(rr / 60 * 1.8); overL.addChild(gl); L.gl = gl;   // lava glows even at night
+  }
+}
 let VILL = [];
 function xVillages(m) {
   VILL = (m.vg || []).map(v => ({ id: v[0], x: v[1], y: v[2], seed: v[3], flames: [] }));
@@ -63,11 +74,11 @@ function xVillages(m) {
   }
 }
 function xInit(m) {
-  window.mapInit && mapInit(m); xVillages(m);
+  window.mapInit && mapInit(m); xVillages(m); xLava(m);
   LOOT = (m.loot || []).map(l => ({ id: l[0], x: l[1], y: l[2], b: l[3], seed: l[4], tier: l[5], cx: l[6], cy: l[7], trader: l[8], tx: l[9], ty: l[10] }));
   for (const l of LOOT) {
     const rng = mulberry(l.seed), list = DECOR[l.b] || DECOR.f, n = 6 + Math.floor(rng() * 4);
-    const pad = new PIXI.Graphics(); pad.beginFill(l.b === 's' ? 0xcfe0ee : l.b === 'd' ? 0xb98d44 : 0x2e5a2a, .18); pad.drawEllipse(l.x, l.y + 6, 92, 62); pad.endFill(); ground.addChild(pad);
+    const pad = new PIXI.Graphics(); pad.beginFill(l.b === 's' ? 0xcfe0ee : l.b === 'd' ? 0xb98d44 : l.b === 'l' ? 0x4a2a2e : 0x2e5a2a, .18); pad.drawEllipse(l.x, l.y + 6, 92, 62); pad.endFill(); ground.addChild(pad);
     for (let i = 0; i < n; i++) {
       const a = rng() * TAU, d = Math.sqrt(rng()) * 70, sp = new PIXI.Sprite(list[Math.floor(rng() * list.length)]);
       sp.anchor.set(.5, .88); sp.position.set(l.x + Math.cos(a) * d, l.y + Math.sin(a) * d * .75); sp.scale.set(.85 + rng() * .5); sp.zIndex = sp.y; cullList.push({ c: sp, x: sp.x, y: sp.y });
@@ -119,6 +130,7 @@ function xStep(dt, me) {
   for (const id in bulletE) { const e = bulletE[id], el = Math.min(.1, (now - e.t0) / 1000), a = e.d[3] / 100, v = BSPEED[e.d[4]] || 800; e.s.position.set(e.d[1] + Math.cos(a) * v * el, e.d[2] + Math.sin(a) * v * el); e.s.rotation = a; e.s.zIndex = e.s.y + 40; }
   for (const id in zoneE) { const e = zoneE[id]; e.s.position.set(e.d[1], e.d[2]); e.s.scale.set(e.d[3] * 2 / 256 * (1 + Math.sin(T * 3) * .02)); e.s.alpha = .35 + Math.sin(T * 5) * .08; }
   for (const id in turretE) { const e = turretE[id]; e.s.position.set(e.d[1], e.d[2]); e.s.zIndex = e.d[2]; }
+  for (const L of LAVAP) { const near = Math.abs(L.x - camX) < W / Z / 2 + L.r + 200 && Math.abs(L.y - camY) < H / Z / 2 + L.r + 200; L.g.visible = L.gl.visible = near; if (!near) continue; L.gl.alpha = .45 + Math.sin(T * 2 + L.ph) * .12; L.g.scale.set(1 + Math.sin(T * 1.3 + L.ph) * .015); if (Math.random() < dt * 2.5) { const a = rnd(0, TAU), d = rnd(0, L.r * .8); emit(overL, T_GLOW, L.x + Math.cos(a) * d, L.y + Math.sin(a) * d * .8, rnd(-8, 8), rnd(-40, -20), rnd(.6, 1.1), .08, .02, 0xffb040, .9, true, -10); } }   // bubbling and sparks
   for (const v of VILL) { const fl = 1 + Math.sin(T * 14 + v.id) * .07 + Math.sin(T * 23) * .04; v.flames.forEach((f, i) => f.scale.set((.42 - i * .1) * fl, (.42 - i * .1) * fl * (1 + Math.sin(T * (10 + i * 4)) * .08))); }
   let tipCamp = null;
   for (const id in campE) {

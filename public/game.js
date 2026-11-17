@@ -56,6 +56,7 @@ const T_ROCK = tex(72, 60, g => {
   g.fillStyle = '#b5bbc4'; g.beginPath(); g.moveTo(24, 20); g.lineTo(34, 12); g.lineTo(46, 16); g.lineTo(34, 24); g.closePath(); g.fill();
   g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 2; g.beginPath(); g.moveTo(40, 30); g.lineTo(58, 52); g.stroke();
 });
+const T_BASALT = noiseTile('#2a2226', ['#352b2f', '#201a1d', '#3b3034', '#2e2428'], ['#ff6a1a', '#5a4046', '#c0451a']);   // dark volcanic ground with a few glowing embers
 const T_SNOW = noiseTile('#e8eff6', ['#f6faff', '#d6e2ee', '#ffffff', '#cbd9e6'], ['#ffffff', '#c3d3e2']);
 const T_PINE = tex(120, 170, g => {   // snowy pine: stacked dark-green tiers with snow on their tops and edges
   g.fillStyle = '#4b2f17'; g.fillRect(53, 122, 14, 34); g.fillStyle = '#6b4423'; g.fillRect(53, 122, 6, 34);
@@ -334,6 +335,47 @@ const T_APELT = tex(40, 30, g => {   // an alpha wolf pelt: near-black with a pa
   poly(g, '#2e3238', P); g.fillStyle = '#4a4f57'; ell(g, 20, 15, 11, 5); g.fillStyle = '#c62828'; ell(g, 20, 13, 7, 1.6);
   g.strokeStyle = 'rgba(0,0,0,.6)'; g.lineWidth = 1.4; g.beginPath(); g.moveTo(P[0], P[1]); for (let i = 2; i < P.length; i += 2) g.lineTo(P[i], P[i + 1]); g.closePath(); g.stroke();
 });
+const T_SCORP = tex(76, 60, g => {   // desert scorpion from above, facing right: tan armour, two claws, a curled stinger tail
+  g.strokeStyle = '#7a5a2c'; g.lineWidth = 2.5; g.lineCap = 'round'; for (let i = 0; i < 4; i++) { const x = 26 + i * 7; g.beginPath(); g.moveTo(x, 30); g.lineTo(x - 4, 12 + i); g.moveTo(x, 30); g.lineTo(x - 4, 48 - i); g.stroke(); }
+  g.fillStyle = '#b8863c'; g.beginPath(); g.ellipse(34, 30, 16, 10, 0, 0, TAU); g.fill(); g.fillStyle = '#9c6f2c'; for (let i = 0; i < 4; i++) { g.beginPath(); g.ellipse(24 + i * 6, 30, 3, 8, 0, 0, TAU); g.fill(); }
+  g.strokeStyle = '#a8742c'; g.lineWidth = 5; g.beginPath(); g.moveTo(18, 30); g.bezierCurveTo(4, 30, 2, 8, 20, 10); g.stroke(); g.fillStyle = '#6b1f10'; g.beginPath(); g.moveTo(20, 6); g.lineTo(28, 12); g.lineTo(18, 14); g.fill();   // tail and stinger
+  g.strokeStyle = '#a8742c'; g.lineWidth = 4; for (const sg of [-1, 1]) { g.beginPath(); g.moveTo(48, 30 + sg * 5); g.lineTo(62, 30 + sg * 14); g.stroke(); g.fillStyle = '#b8863c'; g.beginPath(); g.ellipse(66, 30 + sg * 14, 7, 4.5, sg * -.5, 0, TAU); g.fill(); }
+  g.fillStyle = '#111'; g.beginPath(); g.arc(50, 27, 1.6, 0, TAU); g.arc(50, 33, 1.6, 0, TAU); g.fill();
+});
+const T_PENG = tex(64, 48, g => {   // a penguin seen from above, facing right: black back, two flippers, a small head with a yellow beak
+  g.fillStyle = 'rgba(0,0,0,.0)'; g.fillStyle = '#20242b'; g.beginPath(); g.ellipse(28, 24, 20, 14, 0, 0, TAU); g.fill();
+  g.fillStyle = '#2f353f'; for (const sg of [-1, 1]) { g.beginPath(); g.ellipse(28, 24 + sg * 15, 11, 4, sg * .25, 0, TAU); g.fill(); }   // flippers
+  g.fillStyle = '#e9edf2'; g.beginPath(); g.ellipse(24, 24, 9, 7, 0, 0, TAU); g.fill();   // a pale patch showing at the sides
+  g.fillStyle = '#20242b'; g.beginPath(); g.arc(46, 24, 8, 0, TAU); g.fill(); g.fillStyle = '#f2b01e'; g.beginPath(); g.moveTo(52, 21); g.lineTo(61, 24); g.lineTo(52, 27); g.fill(); g.fillStyle = '#fff'; g.beginPath(); g.arc(47, 20, 1.5, 0, TAU); g.arc(47, 28, 1.5, 0, TAU); g.fill();
+});
+const T_SAL = tex(76, 40, g => {   // a lava salamander: orange, long, spotted with glowing yellow
+  g.strokeStyle = '#c4501a'; g.lineWidth = 4; g.lineCap = 'round'; for (const x of [24, 50]) for (const sg of [-1, 1]) { g.beginPath(); g.moveTo(x, 20); g.lineTo(x + 6, 20 + sg * 13); g.stroke(); }
+  g.fillStyle = '#e8641e'; g.beginPath(); g.moveTo(2, 20); g.quadraticCurveTo(24, 10, 52, 12); g.quadraticCurveTo(70, 12, 72, 20); g.quadraticCurveTo(70, 28, 52, 28); g.quadraticCurveTo(24, 30, 2, 20); g.fill();
+  g.fillStyle = '#2a1410'; for (let i = 0; i < 4; i++) { g.fillRect(16 + i * 11, 12 + (i % 2), 5, 16 - (i % 2) * 2); }
+  g.fillStyle = '#ffd84a'; for (let i = 0; i < 6; i++) { g.beginPath(); g.arc(14 + i * 9, 20 + (i % 2 ? 4 : -4), 2, 0, TAU); g.fill(); }
+  g.fillStyle = '#111'; g.beginPath(); g.arc(66, 16, 1.6, 0, TAU); g.arc(66, 24, 1.6, 0, TAU); g.fill();
+});
+const T_BOAR = tex(104, 64, g => {   // a wild boar from above, facing right: bristly brown, a tuft along the spine, pale tusks
+  g.fillStyle = '#4a3322'; g.beginPath(); g.ellipse(46, 32, 34, 20, 0, 0, TAU); g.fill(); g.fillStyle = '#3a281a'; g.beginPath(); g.ellipse(44, 32, 28, 6, 0, 0, TAU); g.fill();
+  g.strokeStyle = '#25180f'; g.lineWidth = 2; for (let i = 0; i < 10; i++) { const x = 24 + i * 4.5; g.beginPath(); g.moveTo(x, 28); g.lineTo(x - 2, 20); g.moveTo(x, 36); g.lineTo(x - 2, 44); g.stroke(); }
+  g.fillStyle = '#5a4130'; g.beginPath(); g.ellipse(80, 32, 17, 13, 0, 0, TAU); g.fill(); g.fillStyle = '#c8a0a0'; g.beginPath(); g.ellipse(94, 32, 7, 6, 0, 0, TAU); g.fill();
+  g.fillStyle = '#f1ead2'; for (const sg of [-1, 1]) { g.beginPath(); g.moveTo(88, 32 + sg * 5); g.lineTo(100, 32 + sg * 12); g.lineTo(92, 32 + sg * 3); g.fill(); }
+  g.fillStyle = '#3a281a'; for (const sg of [-1, 1]) { g.beginPath(); g.moveTo(74, 32 + sg * 11); g.lineTo(70, 32 + sg * 20); g.lineTo(80, 32 + sg * 14); g.fill(); }
+  g.fillStyle = '#111'; g.beginPath(); g.arc(84, 26, 1.6, 0, TAU); g.arc(84, 38, 1.6, 0, TAU); g.fill();
+});
+const T_GOLEM = tex(140, 120, g => {   // a magma golem from above, facing right: black rock with glowing orange cracks, big fists
+  g.fillStyle = 'rgba(0,0,0,.0)';
+  for (const sg of [-1, 1]) { g.fillStyle = '#2a2326'; g.beginPath(); g.ellipse(100, 60 + sg * 40, 26, 16, sg * .3, 0, TAU); g.fill(); g.strokeStyle = '#ff7a1a'; g.lineWidth = 2; g.stroke(); g.fillStyle = '#4a3a3e'; g.beginPath(); g.ellipse(82, 60 + sg * 30, 20, 11, sg * .5, 0, TAU); g.fill(); }
+  g.fillStyle = '#2b2427'; g.beginPath(); g.ellipse(58, 60, 44, 36, 0, 0, TAU); g.fill(); g.fillStyle = '#3a3034'; g.beginPath(); g.ellipse(52, 56, 30, 24, 0, 0, TAU); g.fill();
+  g.strokeStyle = '#ff8a1a'; g.lineWidth = 3; g.lineCap = 'round'; for (const p of [[28, 40, 50, 58, 36, 80], [58, 30, 62, 52, 80, 66], [40, 62, 30, 76, 50, 90], [70, 76, 84, 62, 78, 48]]) { g.beginPath(); g.moveTo(p[0], p[1]); g.lineTo(p[2], p[3]); g.lineTo(p[4], p[5]); g.stroke(); }
+  g.fillStyle = '#3a3034'; g.beginPath(); g.ellipse(104, 60, 17, 15, 0, 0, TAU); g.fill(); g.fillStyle = '#ffb02a'; g.beginPath(); g.arc(110, 53, 3.2, 0, TAU); g.arc(110, 67, 3.2, 0, TAU); g.fill();
+});
+const T_IMP = tex(70, 60, g => {   // a fire imp from above: small red body, bat wings, two horns and glowing eyes
+  g.fillStyle = '#7a1c10'; for (const sg of [-1, 1]) { g.beginPath(); g.moveTo(26, 30); g.lineTo(10, 30 + sg * 28); g.lineTo(24, 30 + sg * 20); g.lineTo(20, 30 + sg * 30); g.lineTo(34, 30 + sg * 14); g.closePath(); g.fill(); }
+  g.fillStyle = '#d63a18'; g.beginPath(); g.ellipse(34, 30, 15, 11, 0, 0, TAU); g.fill(); g.fillStyle = '#e8501e'; g.beginPath(); g.ellipse(48, 30, 9, 8, 0, 0, TAU); g.fill();
+  g.fillStyle = '#2a0c08'; for (const sg of [-1, 1]) { g.beginPath(); g.moveTo(48, 30 + sg * 6); g.lineTo(54, 30 + sg * 15); g.lineTo(52, 30 + sg * 5); g.fill(); }
+  g.fillStyle = '#ffe24a'; g.beginPath(); g.arc(53, 27, 2, 0, TAU); g.arc(53, 33, 2, 0, TAU); g.fill(); g.strokeStyle = '#d63a18'; g.lineWidth = 3; g.beginPath(); g.moveTo(20, 30); g.quadraticCurveTo(8, 26, 6, 36); g.stroke();
+});
 const T_VULF = tex(150, 120, g => {   // a vulture seen from above with its wings spread, facing right: dark body, ragged feather tips, a bald red head and a hooked beak
   g.save(); g.translate(75, 60);
   for (const sg of [-1, 1]) {
@@ -356,6 +398,13 @@ const T_VULL = tex(90, 62, g => {   // landed: wings folded, hunched
   g.restore();
 });
 function mkWolf(w) {
+  if (w[11]) {   // boar (1), magma golem (2), fire imp (3)
+    const SP = { 1: { t: T_BOAR, sc: .7, hw: 36, hy: -30, sh: [1.3, .6], sy: 8 }, 2: { t: T_GOLEM, sc: .95, hw: 70, hy: -64, sh: [2.6, 1.1], sy: 14 }, 3: { t: T_IMP, sc: .8, hw: 28, hy: -32, sh: [.9, .45], sy: 6 } }[w[11]];
+    const c = new PIXI.Container(), sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5); sh.scale.set(SP.sh[0], SP.sh[1]); sh.y = SP.sy;
+    const body = new PIXI.Sprite(SP.t); body.anchor.set(.5); body.scale.set(SP.sc); const hp = new PIXI.Graphics(); hp.visible = false; c.addChild(sh, body, hp); ents.addChild(c); c.alpha = 0;
+    const eyes = w[11] === 3 ? [0, 1].map(() => { const s = new PIXI.Sprite(T_GLOW); s.anchor.set(.5); s.tint = 0xffa020; s.blendMode = BM.ADD; s.scale.set(.2); overL.addChild(s); return s; }) : [];   // imps glow
+    return { c, body, sh, hp, eyes, al: false, big: w[11] === 2 ? 1 : 0, hpW: SP.hw, hpY: SP.hy, kind: 'w', ang: w[3] / 100, age: 0, lh: -1, flash: 0, lunge: 0, gait: 0, st: w[6], impGlow: w[11] === 3 };
+  }
   if (w[10]) {   // a vulture
     const c = new PIXI.Container(), sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5); const body = new PIXI.Sprite(w[10] === 1 ? T_VULF : T_VULL); body.anchor.set(.5); body.scale.set(.7);
     const hp = new PIXI.Graphics(); hp.visible = false; c.addChild(sh, body, hp); ents.addChild(c); c.alpha = 0;
@@ -373,10 +422,11 @@ function mkWolf(w) {
   const eyes = al ? [0, 1].map(() => { const s = new PIXI.Sprite(T_GLOW); s.anchor.set(.5); s.tint = 0xff2a2a; s.blendMode = BM.ADD; s.scale.set(.16); overL.addChild(s); return s; }) : [];   // glowing red eyes
   return { c, body, sh, hp, eyes, al, kind: 'w', ang: w[3] / 100, age: 0, lh: -1, flash: 0, lunge: 0, gait: 0, st: w[6] };
 }
-function mkRabbit(b) {
+function mkRabbit(b) {   // b[5]: 0 rabbit, 1 scorpion, 2 penguin, 3 lava salamander
   const c = new PIXI.Container(), sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5); sh.scale.set(.55, .32); sh.y = 5;
-  const body = new PIXI.Sprite(T_RABBIT); body.anchor.set(.5); body.scale.set(.8); c.addChild(sh, body); ents.addChild(c); c.alpha = 0;
-  return { c, body, sh, kind: 'r', ang: b[3] / 100, age: 0, hop: 0 };
+  const tx = [T_RABBIT, T_SCORP, T_PENG, T_SAL][b[5] || 0], sc = [.8, .62, .6, .6][b[5] || 0];
+  const body = new PIXI.Sprite(tx); body.anchor.set(.5); body.scale.set(sc); c.addChild(sh, body); ents.addChild(c); c.alpha = 0;
+  return { c, body, sh, kind: 'r', ang: b[3] / 100, age: 0, hop: 0, crit: b[5] || 0, bs: sc };
 }
 const T_ALIEN = tex(84, 84, g => {
   g.translate(42, 42);
@@ -465,7 +515,7 @@ function buildIsland(is, idx) {   // is = [x, y, radius, biome]: the quarter fac
   const [ix, iy, R, biome] = is, s = idx * 1.7, ef = a => edgeJ(a, R, s), c = new PIXI.Container(); c.position.set(ix, iy); ground.addChild(c); islandCs.push({ c, x: ix, y: iy, r: R + 80 });
   const inF = (x, y) => RC.inForestPart(ix, iy, R, ix + x, iy + y);   // local coords
   const shore = new PIXI.Graphics(); shore.beginFill(0x9d8c58, .5); shore.drawPolygon(polyOf(a => ef(a) + 10)); shore.endFill(); c.addChild(shore);
-  const sand = new PIXI.TilingSprite(biome === 's' ? T_SNOW : T_SAND, R * 2 + 120, R * 2 + 120); sand.position.set(-R - 60, -R - 60); if (biome === 'd') sand.tint = 0xf2c076;
+  const sand = new PIXI.TilingSprite(biome === 's' ? T_SNOW : biome === 'l' ? T_BASALT : T_SAND, R * 2 + 120, R * 2 + 120); sand.position.set(-R - 60, -R - 60); if (biome === 'd') sand.tint = 0xf2c076;
   const sm = new PIXI.Graphics(); sm.beginFill(0xffffff); sm.drawPolygon(polyOf(ef)); sm.endFill(); sand.mask = sm; c.addChild(sm, sand);
   if (biome === 'm') {   // a mixed island: the half away from the side facing home (w < 0 across the home direction) is snow, the other half desert
     const [hx, hy] = RC.homeDir(ix, iy), kx = -hy, ky = hx, B = R * 2.4, hp = new PIXI.Graphics(); hp.beginFill(0xffffff);
@@ -502,7 +552,7 @@ function buildIsland(is, idx) {   // is = [x, y, radius, biome]: the quarter fac
     const a = rng() * TAU, d = Math.sqrt(rng()) * (R - 90), k = rng(), x = Math.cos(a) * d, y = Math.sin(a) * d, f = inF(x, y);
     const tx = f ? (k < .6 ? T_TUFT : k < .85 ? T_FLOWER : T_PEBBLE) : (k < .55 ? T_PEBBLE : T_TUFT);
     const sp = new PIXI.Sprite(tx); sp.anchor.set(.5, .9); sp.position.set(x, y); sp.scale.set(.8 + rng() * .6); sp.rotation = (rng() - .5) * .4;
-    if (!f && biome === 'd' && tx === T_TUFT) sp.tint = 0xb59a58; else if (!f && biome === 's') sp.tint = tx === T_TUFT ? 0xdfe9f2 : 0xaab6c2; else if (tx === T_FLOWER) sp.tint = [0xffffff, 0xff8aa0, 0xffe066, 0xa0c4ff][i % 4];
+    if (!f && biome === 'l') sp.tint = tx === T_TUFT ? 0x4a3036 : 0x7a5a50; else if (!f && biome === 'd' && tx === T_TUFT) sp.tint = 0xb59a58; else if (!f && biome === 's') sp.tint = tx === T_TUFT ? 0xdfe9f2 : 0xaab6c2; else if (tx === T_FLOWER) sp.tint = [0xffffff, 0xff8aa0, 0xffe066, 0xa0c4ff][i % 4];
     c.addChild(sp);
   }
 }
@@ -571,7 +621,7 @@ function buildWorld(list) {
     if (r[0] === 'p') { s = new PIXI.Sprite(T_PINE); if (nearBiome(r[1], r[2], 'd')) s.tint = 0xe9d8ac; s.anchor.set(.5, .9); s.scale.set(.66 + (i % 5) * .03); sh.scale.set(1.6, .75); sh.y = 4; }
     else if (r[0] === 't') { s = new PIXI.Sprite(nearBiome(r[1], r[2], 's') ? T_TREE_S : T_TREE); s.anchor.set(.5, .88); s.scale.set(.62 + (i % 5) * .03); sh.scale.set(1.7, .8); sh.y = 4; }
     else if (r[0] === 'c') { s = new PIXI.Sprite(nearBiome(r[1], r[2], 's') ? T_CACTUS_S : T_CACTUS); s.anchor.set(.5, .9); s.scale.set(.62 + (i % 5) * .03); sh.scale.set(1.1, .6); sh.y = 4; }
-    else if (r[0] === 'r' || r[0] === 'g') { s = new PIXI.Sprite(r[0] === 'g' ? T_GOLDV : T_ROCK); s.anchor.set(.5, .8); s.scale.set(.6); sh.scale.set(1.1, .6); sh.y = 4; }
+    else if (r[0] === 'r' || r[0] === 'g') { s = new PIXI.Sprite(r[0] === 'g' ? T_GOLDV : T_ROCK); if (r[0] === 'r' && biomeAtPt(r[1], r[2]) === 'l') s.tint = 0x6e5a60; s.anchor.set(.5, .8); s.scale.set(.6); sh.scale.set(1.1, .6); sh.y = 4; }
     else { s = new PIXI.Sprite(T_BUSH); s.anchor.set(.5, .8); s.scale.set(.62); sh.scale.set(1, .5); sh.y = 4; }
     c.addChild(s); c.position.set(r[1], r[2]); c.zIndex = r[2];   // (attached to the scene only while near the camera: see the cull loop)
     const mhp = RHP[r[0]] || 1, bar = null;
@@ -1326,8 +1376,8 @@ app.ticker.add(() => {
       e.lunge = Math.max(0, e.lunge - dt); const lo = e.lunge > 0 ? Math.sin(e.lunge / .25 * Math.PI) * 10 : 0;
       e.body.x = Math.cos(e.ang) * lo; e.body.y = (sp > 6 ? -Math.abs(Math.sin(e.gait)) * (run ? 3 : 1.5) : 0) + Math.sin(e.ang) * lo;
       e.flash = Math.max(0, e.flash - dt); e.body.tint = e.flash > 0 ? 0xff8a80 : 0xffffff;
-      if (w[4] < w[5] && e.lh2 !== w[4]) { e.lh2 = w[4]; drawHp(e.hp, e.big === 2 ? 90 : e.big ? 60 : e.al ? 42 : 30, w[4] / w[5], 0xef5350); e.hp.y = e.big === 2 ? -78 : e.big ? -48 : e.al ? -34 : -24; e.hp.visible = true; }
-      if (e.eyes.length) { const ca = Math.cos(e.ang), sa = Math.sin(e.ang), o = 28 * 1.2 / 1, sy = 6; const bx = e.x + e.body.x, by = e.y + e.body.y;
+      if (w[4] < w[5] && e.lh2 !== w[4]) { e.lh2 = w[4]; drawHp(e.hp, e.hpW || (e.big === 2 ? 90 : e.big ? 60 : e.al ? 42 : 30), w[4] / w[5], 0xef5350); e.hp.y = e.hpY || (e.big === 2 ? -78 : e.big ? -48 : e.al ? -34 : -24); e.hp.visible = true; }
+      if (e.eyes.length) { const ca = Math.cos(e.ang), sa = Math.sin(e.ang), o = e.impGlow ? 18 : 28 * 1.2 / 1, sy = e.impGlow ? 4 : 6; const bx = e.x + e.body.x, by = e.y + e.body.y;
         e.eyes[0].position.set(bx + ca * o - sa * -sy, by + sa * o + ca * -sy); e.eyes[1].position.set(bx + ca * o - sa * sy, by + sa * o + ca * sy);
         e.eyes.forEach(s => { s.visible = e.c.renderable; s.alpha = e.c.alpha * (.75 + Math.sin(T * 7 + e.x) * .25); }); }
     } else if (e.kind === 'r') {   // rabbit: faces where it hops, bounces while moving, fast hops when it runs
@@ -1335,8 +1385,9 @@ app.ticker.add(() => {
       e.c.renderable = Math.abs(e.x - camX) < W / Z / 2 + 80 && Math.abs(e.y - camY) < H / Z / 2 + 80;
       e.ang = angLerp(e.ang, b[3] / 100, Math.min(1, dt * 10)); e.body.rotation = e.ang;
       const moving = sp > 6; e.hop = moving ? e.hop + dt * (b[4] === 1 ? 13 : 7) : 0;
-      const h = moving ? Math.abs(Math.sin(e.hop)) : 0; e.body.y = -h * (b[4] === 1 ? 6 : 3.5); e.sh.scale.set(.55 - h * .12, .32 - h * .07);
-      e.body.scale.set(.8 * (1 + h * .08), .8 * (1 - h * .05));
+      const h = moving ? Math.abs(Math.sin(e.hop)) : 0, hopK = e.crit ? .25 : 1;   // only rabbits really hop; the others scuttle / waddle (a little rocking)
+      e.body.y = -h * (b[4] === 1 ? 6 : 3.5) * hopK; e.sh.scale.set(.55 - h * .12 * hopK, .32 - h * .07 * hopK);
+      e.body.scale.set(e.bs * (1 + h * .08 * hopK), e.bs * (1 - h * .05 * hopK)); if (e.crit) e.body.rotation = e.ang + (moving ? Math.sin(e.hop * (e.crit === 2 ? .9 : 1.6)) * (e.crit === 2 ? .22 : .1) : 0);
     } else {
       const a = e.d; e.age += dt; e.c.alpha = Math.min(1, e.age * 2);
       if (a[6] != null) e.ang = angLerp(e.ang, a[6] / 100, Math.min(1, dt * (e.charger ? 14 : 10)));   // turn toward the player it is going for (works while standing still, e.g. against the fire ring)

@@ -53,7 +53,7 @@ function drawMap() {
       for (let i = 40; i >= 0; i--) { const a = a0 - Math.PI / 4 + i / 40 * Math.PI / 2, rr = RC.snowIn(a); lg.lineTo(X(Math.cos(a) * rr), Y(Math.sin(a) * rr)); }
       lg.closePath(); lg.fill();
     } else {
-      const own = b === 's' ? '#eef4fa' : '#dcb26e'; lg.fillStyle = own; lg.fillRect(0, 0, size, size);
+      const own = b === 's' ? '#eef4fa' : b === 'l' ? '#4a2a2e' : '#dcb26e'; lg.fillStyle = own; lg.fillRect(0, 0, size, size);
       if (b === 'm') { lg.fillStyle = '#eef4fa'; lg.beginPath(); const B = r * 3; [[-B, -B], [B, -B], [B, 0], [-B, 0]].forEach(([t, w], i) => { const x = X(ix + ux * t + vx * w), y = Y(iy + uy * t + vy * w); i ? lg.lineTo(x, y) : lg.moveTo(x, y); }); lg.closePath(); lg.fill(); }   // the snow half
       half(lg, '#3f8040', RC.FOREST_CUT);   // the forest quarter facing home
     }

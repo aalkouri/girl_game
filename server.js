@@ -157,8 +157,22 @@ const SPILL = { t: 5, r: 3, c: 8, p: 12 };   // a pine gives far more wood
 const SPEAR_REACH = 30;   // how much further than the normal swing the spear's poke reaches (straight ahead)
 const GOLD_P = 0.01;   // chance a rock (new or regrowing) comes up as a gold ore vein
 const WOODY = k => k === 't' || k === 'c' || k === 'p', ROCKY = k => k === 'r' || k === 'g';
-const WOLF = { aHp: 100, aDmg: 16, aRun: 150, n: 6, outer: 8, alpha: 0.20, respawn: 40, reAggro: 3, pelt: 0.15, aPelt: 0.3, hp: 45, see: 300, give: 520, leash: 1100, run: 132, walk: 30, dmg: 9, reach: 30, cd: 1.0, fireGap: 140 };
+const WOLF = { aHp: 100, aDmg: 16, aRun: 150, n: 10, outer: 14, alpha: 0.20, respawn: 40, reAggro: 3, pelt: 0.15, aPelt: 0.3, hp: 45, see: 300, give: 520, leash: 1100, run: 132, walk: 30, dmg: 9, reach: 30, cd: 1.0, fireGap: 140 };
 const BIG = { 1: { name: 'bear', hp: 1000, dmg: 35, run: 105, reach: 46, cd: 1.3, walk: 26, see: 330, meat: [3, 3], pelt: 0.7 }, 2: { name: 'mammoth', hp: 2000, dmg: 50, run: 80, reach: 64, cd: 2.0, walk: 20, see: 280, meat: [6, 4], pelt: 1 } };   // snow-island giants (player walks 150): a bear takes ~30 s to kill, a mammoth ~60 s
+// more hostile animals (they share the wolf code): forest boars on every island, golems and imps on lava islands. n = [on home, on each outer island that has the biome]
+const MOBS = {
+  boar: { b: 'f', idx: 1, hp: 70, dmg: 12, run: 125, reach: 34, cd: 1.1, see: 340, walk: 28, meat: [2, 2], n: [8, 5] },
+  golem: { b: 'l', idx: 2, hp: 360, dmg: 30, run: 70, reach: 54, cd: 1.9, see: 420, walk: 18, meat: [0, 0], ore: [1, 2], heavy: 1, n: [0, 3] },
+  imp: { b: 'l', idx: 3, hp: 45, dmg: 10, run: 150, reach: 30, cd: 0.9, see: 460, walk: 55, meat: [0, 1], n: [0, 7] },
+};
+// passive creatures (rabbit code): one kind per biome. n = [home, outer]
+const CRIT = {
+  rabbit: { b: 'f', idx: 0, n: [20, 8], run: 95, walk: 28, see: 260 },
+  scorpion: { b: 'd', idx: 1, n: [0, 14], run: 85, walk: 26, see: 220 },
+  penguin: { b: 's', idx: 2, n: [8, 10], run: 70, walk: 22, see: 200 },
+  sal: { b: 'l', idx: 3, n: [0, 10], run: 105, walk: 32, see: 250 },
+};
+const hasBiome = (is, b) => b === 'f' || is.b === b || (is.b === 'm' && (b === 's' || b === 'd'));   // does this island have that biome somewhere?
 const DIST_F = (x, y) => Math.max(0, Math.min(1, (Math.hypot(x, y) - R) / (WORLD_R - R)));   // 0 at home's shore, 1 at the far edge: out there alphas are common and bears / mammoths appear   // snow wolves: count, respawn s, hp, notice range, give-up range, max chase from home spot, speeds (players walk 150), bite   // a cactus gives more wood than a tree
 // ---------- the archipelago: island 0 is home (all forest); the others are random sizes, each 25% forest on the side facing home and 75% its own biome (b) ----------
 const WORLD_R = 30000, BOAT_SPEED = 190, BOAT_AHEAD = 100, ISL_VER = 5;   // ISL_VER: bump when island generation changes so saved rooms regenerate their outer islands
@@ -172,7 +186,7 @@ function genIslands(code) {
     const near = out.length <= 2, r = ISL_MIN + rnd() * (ISL_MAX - ISL_MIN), lo = R + r + (near ? 500 : ISL_GAP), hi = near ? lo + 600 : WORLD_R - r - 300;
     const dist = lo + rnd() * (hi - lo), a = rnd() * 6.283, x = Math.cos(a) * dist, y = Math.sin(a) * dist;
     if (out.some(i => Math.hypot(x - i.x, y - i.y) < r + i.r + ISL_GAP)) continue;   // keep water between islands
-    out.push({ x: Math.round(x), y: Math.round(y), r: Math.round(r), b: (q => q < 0.3 ? 'm' : q < 0.65 ? 's' : 'd')(rnd()) });   // the 75% biome: snow, desert, or a random mix of both ('m')
+    out.push({ x: Math.round(x), y: Math.round(y), r: Math.round(r), b: (q => q < 0.28 ? 'm' : q < 0.6 ? 's' : q < 0.92 ? 'd' : 'l')(rnd()) });   // the 75% biome: snow, desert, a mix of both ('m'), or (rarely, 8%) lava ('l')
   }
   if (out.length > 2 && !out.some(i => i.b === 's' || i.b === 'm')) out[out.length - 1].b = 's';   // always at least one snow island
   if (out.length > 2 && !out.slice(1).some(i => i.b === 'd' || i.b === 'm')) out[out.length - 1].b = 'd';   // and at least one desert
@@ -186,6 +200,7 @@ function islandRes(is, idx, code) {
   const half = is.b === 'm' ? 0.5 : 1;   // a mixed island has cacti on its desert half and pines on its snow half
   if (is.b === 'd' || is.b === 'm') add('c', Math.max(3, Math.round(A * 0.75 * half * 1.1e-5)), false, 'd');   // desert: cacti
   if (is.b === 's' || is.b === 'm') add('p', Math.max(3, Math.round(A * 0.75 * half * 1.0e-5)), false, 's');   // snow: snowy pines
+  if (is.b === 'l') { add('r', Math.max(4, Math.round(A * 0.75 * 1.6e-5)), false, 'l'); add('g', Math.max(3, Math.round(A * 0.75 * 0.9e-5)), false, 'l'); }   // lava islands: lots of dark rock and gold ore
   add('r', Math.max(2, Math.round(A * 8e-6)), null);
   return out;
 }
@@ -211,16 +226,31 @@ function genLoot(islands, code) {
   }
   return out;
 }
+// lava pools: scattered over the lava part of a lava island; standing in one burns you
+function genLava(islands, code, loot) {
+  const rnd = seeded(code + '@lava'), out = [];
+  for (let i = 1; i < islands.length; i++) {
+    const is = islands[i]; if (is.b !== 'l') continue; let n = 0;
+    for (let t = 0; t < 400 && n < 12; t++) {
+      const a = rnd() * 6.283, d = 250 + Math.sqrt(rnd()) * Math.max(100, is.r - 750), x = is.x + Math.cos(a) * d, y = is.y + Math.sin(a) * d, r = 60 + rnd() * 80;
+      if (RC.biomeAt(is.x, is.y, is.r, is.b, x, y) !== 'l' || RC.biomeAt(is.x, is.y, is.r, is.b, x + Math.cos(a) * r, y + Math.sin(a) * r) !== 'l') continue;
+      if (out.some(q => Math.hypot(q.x - x, q.y - y) < q.r + r + 160) || loot.some(l => Math.hypot(l.x - x, l.y - y) < r + 420 || Math.hypot(l.cx - x, l.cy - y) < r + 200 || Math.hypot(l.tx - x, l.ty - y) < r + 200)) continue;
+      out.push({ id: out.length + 1, isl: i, x: Math.round(x), y: Math.round(y), r: Math.round(r) }); n++;
+    }
+  }
+  return out;
+}
 // villages: one tipi camp in the desert of each desert (or mixed) island - decoration plus a home for groups of 3-6 villagers
 function genVillages(islands, code, loot) {
   const rnd = seeded(code + '@villages'), out = [];
   for (let i = 1; i < islands.length; i++) {
     const is = islands[i]; if (is.b !== 'd' && is.b !== 'm') continue;
-    for (let t = 0; t < 80; t++) {
+    let made = 0;   // two camps on each desert island
+    for (let t = 0; t < 200 && made < 2; t++) {
       const a = rnd() * 6.283, d = 400 + Math.sqrt(rnd()) * Math.max(100, is.r - 1000), x = is.x + Math.cos(a) * d, y = is.y + Math.sin(a) * d;
-      if (RC.biomeAt(is.x, is.y, is.r, is.b, x, y) !== 'd' || Math.hypot(x - is.x, y - is.y) > is.r - 500) continue;
+      if (RC.biomeAt(is.x, is.y, is.r, is.b, x, y) !== 'd' || Math.hypot(x - is.x, y - is.y) > is.r - 500 || out.some(v => v.isl === i && Math.hypot(v.x - x, v.y - y) < 1300)) continue;
       if (loot.some(l => Math.hypot(l.x - x, l.y - y) < 500 || Math.hypot(l.cx - x, l.cy - y) < 400 || Math.hypot(l.tx - x, l.ty - y) < 400)) continue;
-      out.push({ id: out.length + 1, isl: i, x: Math.round(x), y: Math.round(y), seed: Math.floor(rnd() * 1e6) }); break;
+      out.push({ id: out.length + 1, isl: i, x: Math.round(x), y: Math.round(y), seed: Math.floor(rnd() * 1e6) }); made++;
     }
   }
   return out;
@@ -254,7 +284,7 @@ class Room {
     } };
     add('t', 540, CAMP_CLEAR); add('r', 336); add('b', BUSHES);   // 4x the area of the old island, same density
     this.islands = genIslands(code); this.islands.forEach((is, i) => { if (i > 0) this.res.push(...islandRes(is, i, code)); });
-    this.loot = genLoot(this.islands, code); this.villages = genVillages(this.islands, code, this.loot);
+    this.loot = genLoot(this.islands, code); this.villages = genVillages(this.islands, code, this.loot); this.lava = genLava(this.islands, code, this.loot);
     this.reset();
   }
   endRun() {   // everyone is down: pay out by days survived, send everyone back to the title screen, and start the room fresh
@@ -675,11 +705,16 @@ class Room {
     send(p.ws, { t: 'ate', id, msg: RC.FOOD_BY[id].n, b: p.buff });
   }
   // rabbits: live in the forest (all of home, the forest quarter of the other islands), run slowly from people, slide along the coast
-  rabSpot(i) {
-    const is = this.islands[i];
+  critOk(b, x, y) {   // is this a place where that kind of creature belongs (its own biome)?
+    const C = CRIT[b.crit || 'rabbit'], is = this.islands[b.isl | 0] || this.islands[0];
+    if ((b.isl | 0) === 0) return C.b === 'f' ? true : C.b === 's' ? RC.inSnow(x, y) : false;
+    return RC.biomeAt(is.x, is.y, is.r, is.b, x, y) === C.b;
+  }
+  rabSpot(i, key = 'rabbit') {
+    const is = this.islands[i], C = CRIT[key];
     for (let k = 0; k < 30; k++) {
       const a = Math.random() * 6.283, d = Math.sqrt(Math.random()) * (is.r - RAB.edge - 20), x = is.x + Math.cos(a) * d, y = is.y + Math.sin(a) * d;
-      if (i === 0 ? Math.hypot(x, y) < RC.camp(3) + 60 : !RC.inForestPart(is.x, is.y, is.r, x, y)) continue;   // not in camp / only the forest part
+      if (i === 0 ? (C.b === 'f' ? Math.hypot(x, y) < RC.camp(3) + 60 : !RC.inSnow(x, y)) : RC.biomeAt(is.x, is.y, is.r, is.b, x, y) !== C.b) continue;   // not in camp / only in its own biome
       if ([...this.players.values()].some(p => Math.hypot(p.x - x, p.y - y) < 500)) continue;   // never pop in next to someone
       return [x, y];
     }
@@ -689,25 +724,28 @@ class Room {
     if (!this.rabbits) this.rabbits = [];
     if ((this.rabT = (this.rabT || 0) - dt) <= 0) {   // top the forests back up, one per island at a time
       this.rabT = RAB.respawn; const fill = !this.rabFull; this.rabFull = 1;   // the first time, every forest is filled at once
-      for (let i = 0; i < this.islands.length; i++) for (let k = 0; k < (fill ? 12 : 1); k++) {
-        if (this.rabbits.filter(b => b.isl === i).length >= (i === 0 ? RAB.home : RAB.outer)) break;
-        const q = this.rabSpot(i); if (q) this.rabbits.push({ id: this.nid++, rab: 1, x: q[0], y: q[1], hx: q[0], hy: q[1], isl: i, hp: 1, fa: Math.random() * 6.283, wt: 0, wa: 0, run: 0, sit: 1, side: 1 });
+      for (let i = 0; i < this.islands.length; i++) for (const key in CRIT) {
+        const C = CRIT[key], want = i === 0 ? C.n[0] : hasBiome(this.islands[i], C.b) ? C.n[1] : 0;
+        for (let k = 0; k < (fill ? 14 : 1); k++) {
+          if (this.rabbits.filter(b => b.isl === i && (b.crit || 'rabbit') === key).length >= want) break;
+          const q = this.rabSpot(i, key); if (q) this.rabbits.push({ id: this.nid++, rab: 1, crit: key, x: q[0], y: q[1], hx: q[0], hy: q[1], isl: i, hp: 1, fa: Math.random() * 6.283, wt: 0, wa: 0, run: 0, sit: 1, side: 1 });
+        }
       }
     }
     for (const b of this.rabbits) {
-      const is = this.islands[b.isl]; let near = null, nd = RAB.see;
+      const is = this.islands[b.isl], C = CRIT[b.crit || 'rabbit']; let near = null, nd = C.see;
       for (const p of P) if (!p.down && !p.boat) { const d = Math.hypot(p.x - b.x, p.y - b.y); if (d < nd) { nd = d; near = p; } }
       let dx, dy, spd;
-      if (near) { dx = b.x - near.x; dy = b.y - near.y; const L = Math.hypot(dx, dy) || 1; dx /= L; dy /= L; spd = RAB.run; b.run = 1; b.sit = 0; b.wt = 0; }
+      if (near) { dx = b.x - near.x; dy = b.y - near.y; const L = Math.hypot(dx, dy) || 1; dx /= L; dy /= L; spd = C.run; b.run = 1; b.sit = 0; b.wt = 0; }
       else {
         b.run = 0; b.wt -= dt;
         if (b.wt <= 0) {   // wander: hop a bit, sit a bit; drift back toward home turf if it strayed out of the forest
           b.wt = 1 + Math.random() * 2.5; b.sit = Math.random() < 0.45;
-          const out = b.isl !== 0 && !RC.inForestPart(is.x, is.y, is.r, b.x, b.y);
+          const out = !this.critOk(b, b.x, b.y);
           b.wa = out || Math.hypot(b.x - b.hx, b.y - b.hy) > 350 ? Math.atan2(b.hy - b.y, b.hx - b.x) + (Math.random() - 0.5) : Math.random() * 6.283;
         }
         if (b.sit) continue;
-        dx = Math.cos(b.wa); dy = Math.sin(b.wa); spd = RAB.walk;
+        dx = Math.cos(b.wa); dy = Math.sin(b.wa); spd = C.walk;
       }
       let nx = b.x + dx * spd * dt, ny = b.y + dy * spd * dt;
       const lim = is.r - RAB.edge, cx = nx - is.x, cy = ny - is.y, cd = Math.hypot(cx, cy);
@@ -721,12 +759,18 @@ class Room {
         if (!near) b.wa = Math.atan2(ty, tx);
       }
       if (b.isl === 0 && Math.hypot(nx, ny) < RC.FIRE_R + 30) continue;   // don't hop into the fire
+      if (!this.critOk(b, nx, ny) && this.critOk(b, b.x, b.y)) { b.wa = Math.atan2(b.hy - b.y, b.hx - b.x); continue; }   // never wander out of its own biome
       b.x = nx; b.y = ny; b.fa = Math.atan2(dy, dx);
     }
     if (this.rabbits.some(b => b.hp <= 0)) this.rabbits = this.rabbits.filter(b => b.hp > 0);
   }
   // snow wolves: roam the snow quarter of home; chase anyone who comes close; when the chase reaches the fire (or drags them
   // too far from home) they turn tail and run back to where they spawned. st: 0 roaming, 1 chasing, 2 running home
+  mobBiomeOk(w, wi, is, x, y) {   // wolves/bears stay on the snow, boars in the forest, lava creatures on the lava
+    const b = w.biome || 's';
+    if (wi === 0) return b === 's' ? RC.inSnow(x, y) : b === 'f' ? !RC.inSnow(x, y) : false;
+    return RC.biomeAt(is.x, is.y, is.r, is.b, x, y) === b;
+  }
   stepVulture(w, P, dt) {   // vultures: circle high up (cannot be hit), stalk a player, then land beside them and fight on the ground for a while, then fly off
     w.cd -= dt; w.bite -= dt; w.t -= dt; const is = this.islands[w.isl | 0] || this.islands[0];
     const pl = id => P.find(p => p.id === id && !p.down && !p.boat && this.onIsland(p, w.isl | 0));
@@ -755,7 +799,7 @@ class Room {
       const first = !this.wolfFull; this.wolfFull = 1; this.wolfT = WOLF.respawn;
       for (let i = 0; i < this.islands.length; i++) {
         const is = this.islands[i]; if (i > 0 && is.b !== 's' && is.b !== 'm') continue;
-        const want = i === 0 ? WOLF.n : WOLF.outer; let have = this.wolves.filter(w => w.isl === i && !w.vul).length;
+        const want = i === 0 ? WOLF.n : WOLF.outer; let have = this.wolves.filter(w => w.isl === i && !w.vul && !w.sp).length;
         for (let k = 0; k < (first ? want : 1) && have < want; k++) {
           let q = null;
           for (let t = 0; t < 40 && !q; t++) {
@@ -777,10 +821,31 @@ class Room {
       for (let i = 1; i < this.islands.length; i++) {
         const is = this.islands[i]; if (is.b !== 'd' && is.b !== 'm') continue;
         let have = this.wolves.filter(w => w.vul && w.isl === i).length;
-        for (let k = 0; k < 2 && have < 2; k++) for (let t = 0; t < 30; t++) {
+        for (let k = 0; k < 3 && have < 4; k++) for (let t = 0; t < 30; t++) {
           const a = Math.random() * 6.283, d = Math.sqrt(Math.random()) * (is.r - 300), x = is.x + Math.cos(a) * d, y = is.y + Math.sin(a) * d;
           if (RC.biomeAt(is.x, is.y, is.r, is.b, x, y) !== 'd' || P.some(p => Math.hypot(p.x - x, p.y - y) < 900)) continue;
           this.wolves.push({ id: this.nid++, wolf: 1, vul: 1, air: 1, vs: 0, isl: i, x, y, hx: x, hy: y, hp: 40, mhp: 40, dmg: 8, fa: Math.random() * 6.283, st: 0, tg: 0, cd: 0, wt: 0, wa: 0, bite: 0, oa: Math.random() * 6.283, t: 0 }); have++; break;
+        }
+      }
+    }
+    if (this.wolfT === WOLF.respawn) {   // forest boars and the lava creatures (golems, imps) - hostile animals on the same timer, each kept to its own biome
+      const firstM = !this.mobFull; this.mobFull = 1;
+      for (let i = 0; i < this.islands.length; i++) {
+        const is = this.islands[i];
+        for (const key in MOBS) {
+          const M = MOBS[key], want = i === 0 ? M.n[0] : hasBiome(is, M.b) && (M.b !== 'l' || is.b === 'l') ? M.n[1] : 0; if (!want) continue;
+          let have = this.wolves.filter(w => w.isl === i && w.sp === key).length;
+          for (let k = 0; k < (firstM ? want : 1) && have < want; k++) {
+            let q = null;
+            for (let t = 0; t < 40 && !q; t++) {
+              let x, y;
+              if (i === 0) { const a = Math.random() * 6.283, d = RC.camp(3) + 700 + Math.random() * (R - RC.camp(3) - 1100); x = Math.cos(a) * d; y = Math.sin(a) * d; if (RC.inSnow(x, y)) continue; }
+              else { const a = Math.random() * 6.283, d = Math.sqrt(Math.random()) * (is.r - 220); x = is.x + Math.cos(a) * d; y = is.y + Math.sin(a) * d; if (RC.biomeAt(is.x, is.y, is.r, is.b, x, y) !== M.b) continue; }
+              if (!P.some(p => Math.hypot(p.x - x, p.y - y) < 600) && !this.inFire(x, y, 80) && !(this.lava || []).some(l => l.isl === i && Math.hypot(l.x - x, l.y - y) < l.r + 40)) q = [x, y];
+            }
+            if (!q) continue; have++;
+            this.wolves.push({ id: this.nid++, wolf: 1, sp: key, biome: M.b, heavy: M.heavy ? 1 : 0, isl: i, alpha: 0, x: q[0], y: q[1], hx: q[0], hy: q[1], hp: M.hp, mhp: M.hp, run: M.run, dmg: M.dmg, reach: M.reach, bcd: M.cd, see: M.see, walk: M.walk, fa: Math.random() * 6.283, st: 0, tg: 0, cd: 0, wt: 0, wa: 0, bite: 0 });
+          }
         }
       }
     }
@@ -798,6 +863,7 @@ class Room {
         }
       }
     }
+    const rnd2 = (a, b) => a + Math.random() * (b - a);
     const nearFire = () => false;   // wolves, bears and mammoths are no longer scared of fire: they chase until the target is out of range (give-up distance) or they are too far from home (leash)
     for (const w of this.wolves) {
       if (w.vul) { this.stepVulture(w, P, dt); continue; }
@@ -826,21 +892,23 @@ class Room {
       }
       if (!spd) { if (dx || dy) w.fa = Math.atan2(dy, dx); continue; }
       let nx = w.x + dx * spd * dt, ny = w.y + dy * spd * dt;
-      if (w.st !== 2 && !(wi === 0 ? RC.inSnow(nx, ny) : RC.biomeAt(is.x, is.y, is.r, is.b, nx, ny) === 's')) { if (w.st === 1) { w.st = 2; w.rt = 0; } else { w.sit = 1; } continue; }   // wolves, bears and mammoths never leave the snow: a chase ends at its edge and they head home
+      if (w.st !== 2 && !this.mobBiomeOk(w, wi, is, nx, ny)) { if (w.st === 1) { w.st = 2; w.rt = 0; } else { w.sit = 1; } continue; }   // wolves, bears and mammoths never leave the snow: a chase ends at its edge and they head home
       if (w.st !== 2 && (nearFire(nx, ny) || Math.hypot(nx - w.hx, ny - w.hy) > WOLF.leash)) { w.st = 2; w.rt = 0; continue; }   // got near the fire / too far from home: back it goes
       { const ex = nx - is.x, ey = ny - is.y, L = Math.hypot(ex, ey); if (L > is.r - 45) { nx = is.x + ex * (is.r - 45) / L; ny = is.y + ey * (is.r - 45) / L; } }   // stays on its island
       for (const st of this.struct) { if (st.k === 'trap' || st.k === 'spike' || (st.k === 'gate' && st.open)) continue; const [qx, qy, qr] = solidPt(st, nx, ny), sd = Math.hypot(nx - qx, ny - qy), mn = qr + (w.big ? 26 : 12); if (sd < mn && sd > 0.01) { nx = qx + (nx - qx) / sd * mn; ny = qy + (ny - qy) / sd * mn; } }   // walls and gates are solid for wolves too
       w.x = nx; w.y = ny; w.fa = Math.atan2(dy, dx);
     }
-    for (const w of this.wolves) if (w.hp <= 0 && !w.dropped) { w.dropped = 1; const BG = BIG[w.big], AL = w.alpha || w.big === 2, n = BG ? BG.meat[0] + (Math.random() * (BG.meat[1] + 1) | 0) : 1 + (Math.random() < 0.5 ? 1 : 0); for (let i = 0; i < n; i++) { const a = Math.random() * 6.283, d = 8 + Math.random() * (BG ? 40 : 18); this.pend.push({ k: 'n', x: w.x + Math.cos(a) * d, y: w.y + Math.sin(a) * d, t: 0.15 }); }
-      if (BG) { for (let i = 0; i < (w.big === 2 ? 3 : 1); i++) if (Math.random() < BG.pelt) this.pend.push({ k: 'h', x: w.x + 10 + i * 14, y: w.y - 6, t: 0.2 }); } else if (!w.vul && Math.random() < WOLF.pelt) this.pend.push({ k: 'h', x: w.x + 10, y: w.y - 6, t: 0.2 });
+    for (const w of this.wolves) if (w.hp <= 0 && !w.dropped) { w.dropped = 1; const BG = BIG[w.big], MB = MOBS[w.sp], AL = w.alpha || w.big === 2, n = BG ? BG.meat[0] + (Math.random() * (BG.meat[1] + 1) | 0) : MB ? MB.meat[0] + (Math.random() * (MB.meat[1] + 1) | 0) : 1 + (Math.random() < 0.5 ? 1 : 0); for (let i = 0; i < n; i++) { const a = Math.random() * 6.283, d = 8 + Math.random() * (BG ? 40 : 18); this.pend.push({ k: 'n', x: w.x + Math.cos(a) * d, y: w.y + Math.sin(a) * d, t: 0.15 }); }
+      if (MB && MB.ore) { const no = MB.ore[0] + (Math.random() * (MB.ore[1] - MB.ore[0] + 1) | 0); for (let i = 0; i < no; i++) this.pend.push({ k: 'o', x: w.x + rnd2(-30, 30), y: w.y + rnd2(-30, 30), t: 0.2 }); }   // golems crumble into gold ore
+      if (BG) { for (let i = 0; i < (w.big === 2 ? 3 : 1); i++) if (Math.random() < BG.pelt) this.pend.push({ k: 'h', x: w.x + 10 + i * 14, y: w.y - 6, t: 0.2 }); } else if (!w.vul && !MB && Math.random() < WOLF.pelt) this.pend.push({ k: 'h', x: w.x + 10, y: w.y - 6, t: 0.2 });
       if (AL && Math.random() < (w.big === 2 ? 1 : WOLF.aPelt)) this.pend.push({ k: 'H', x: w.x - 12, y: w.y + 8, t: 0.25 }); }   // alpha wolves (and mammoths) can drop an alpha pelt   // 1-2 meat scraps, and a 10% chance of a wolf pelt
     if (this.wolves.some(w => w.hp <= 0)) this.wolves = this.wolves.filter(w => w.hp > 0);
   }
   killRabbit(b) {   // one hit: 1-2 meat scraps, and a 10% chance of a lucky rabbit's foot
     b.hp = 0; const n = 1 + (Math.random() < 0.5 ? 1 : 0), drops = [];
     for (let i = 0; i < n; i++) drops.push({ k: 'n' });
-    if (Math.random() < RAB.foot) drops.push({ k: 'q', food: 'foot' });
+    if ((b.crit || 'rabbit') === 'rabbit' && Math.random() < RAB.foot) drops.push({ k: 'q', food: 'foot' });
+    if (b.crit === 'sal' && Math.random() < 0.25) drops.push({ k: 'o' });   // a salamander sometimes leaves a bit of gold ore
     for (const q of drops) { const a = Math.random() * 6.283, d = 8 + Math.random() * 18; q.x = b.x + Math.cos(a) * d; q.y = b.y + Math.sin(a) * d; q.t = 0.15; this.pend.push(q); }
   }
   ph() { return this.c < DAY ? 0 : this.c < DAY + DUSK ? 1 : 2; }
@@ -866,8 +934,8 @@ class Room {
     o.aliens = (o.aliens || []).map(a => ({ id: a.id, isl: a.isl, k: a.k, x: rd(a.x), y: rd(a.y), hp: rd(a.hp), mhp: a.mhp, sp: a.sp, dmg: a.dmg, cd: 0, atkCd: a.atkCd, reach: a.reach, stop: a.stop, range: a.range, rad: a.rad, aim: 0, shotCd: 0, vil: a.vil, hx: a.hx, hy: a.hy, spit: a.spit, spitCd: a.spit ? 3 : undefined }));
     // wolves, bears, mammoths, vultures, rabbits and fish pools: just where they are and how hurt they are (their moods reset when the game loads)
     const pick = (w, keys) => { const q = {}; for (const k of keys) if (w[k] !== undefined) q[k] = typeof w[k] === 'number' ? rd(w[k]) : w[k]; return q; };
-    o.wolves = (o.wolves || []).map(w => pick(w, ['id', 'wolf', 'isl', 'alpha', 'big', 'heavy', 'vul', 'air', 'vs', 'x', 'y', 'hx', 'hy', 'hp', 'mhp', 'run', 'dmg', 'reach', 'bcd', 'see', 'walk', 'fa', 'oa']));
-    o.rabbits = (o.rabbits || []).map(w => pick(w, ['id', 'rab', 'isl', 'x', 'y', 'hx', 'hy', 'hp', 'fa']));
+    o.wolves = (o.wolves || []).map(w => pick(w, ['id', 'wolf', 'sp', 'biome', 'isl', 'alpha', 'big', 'heavy', 'vul', 'air', 'vs', 'x', 'y', 'hx', 'hy', 'hp', 'mhp', 'run', 'dmg', 'reach', 'bcd', 'see', 'walk', 'fa', 'oa']));
+    o.rabbits = (o.rabbits || []).map(w => pick(w, ['id', 'rab', 'crit', 'isl', 'x', 'y', 'hx', 'hy', 'hp', 'fa']));
     o.pools = (o.pools || []).map(w => pick(w, ['id', 'isl', 'x', 'y', 'kind', 'left', 'ttl']));
     return o;
   }
@@ -891,7 +959,7 @@ class Room {
         const dx = b.x - best.x, dy = b.y - best.y, L = Math.hypot(dx, dy) || 1; b.x = best.x + dx / L * (best.r + 90); b.y = best.y + dy / L * (best.r + 90);
       }
     }
-    r.loot = genLoot(r.islands, o.code); r.villages = genVillages(r.islands, o.code, r.loot);   // loot areas are derived from the islands; only which chests were opened and the campfires are saved
+    r.loot = genLoot(r.islands, o.code); r.villages = genVillages(r.islands, o.code, r.loot); r.lava = genLava(r.islands, o.code, r.loot);   // loot areas are derived from the islands; only which chests were opened and the campfires are saved
     if (o.islands && o.isv === ISL_VER) { r.camps = o.camps || []; const op = new Set(o.lootOpen || []); for (const l of r.loot) if (op.has(l.id)) l.open = 1; }
     { let nb = 0; r.res = r.res.filter(x => x.k !== 'b' || x.isl > 0 || ++nb <= BUSHES); }   // rooms saved before the bush cut lose their extra bushes (done before anyone joins, so client indexes stay aligned)
     const now = Date.now(); r.away = new Map((o.away || []).map(([e, v]) => [e, { t: now, s: v.s }]));   // the reconnect window starts from the restart
@@ -979,6 +1047,7 @@ class Room {
       { const g = this.resGrid(), cx = Math.floor(p.x / 200), cy = Math.floor(p.y / 200);   // trunks and boulders are obstacles
         for (let ax = -1; ax <= 1; ax++) for (let ay = -1; ay <= 1; ay++) { const arr = g.get((cx + ax) * 100003 + cy + ay); if (!arr) continue;
           for (const r of arr) { if (r.hp <= 0) continue; const sd = Math.hypot(p.x - r.x, p.y - r.y), mn = RES_R[r.k] + 14; if (sd < mn && sd > 0.01) { p.x = r.x + (p.x - r.x) / sd * mn; p.y = r.y + (p.y - r.y) / sd * mn; } } } }
+      if (this.lava && this.lava.length) { for (const L of this.lava) if (Math.hypot(p.x - L.x, p.y - L.y) < L.r - 6) { this.hurt(p, 15 * dt); if (!p.burnT || p.burnT <= 0) { p.burnT = 2; send(p.ws, { t: 'toast', msg: '🔥 Lava! Get out!' }); } break; } if (p.burnT > 0) p.burnT -= dt; }   // standing in lava burns (15 HP a second)
       if (this.landAt(p.x, p.y) < 0) { const q = this.landPoint(p.x, p.y); p.x = q[0]; p.y = q[1]; }   // stay on land (any island); only boats go on water
       const d = Math.hypot(p.x, p.y);
 
@@ -1168,8 +1237,8 @@ class Room {
       fp: (this.pools || []).map(q => [q.id, q.x, q.y, q.kind, q.left]),
       bt: this.boats.map(b => [b.id, Math.round(b.x), Math.round(b.y), Math.round(b.ang * 100), b.riders.length, b.drv, b.type || 'boat', Math.round(100 * (b.life == null ? 1 : b.life / RC.BOATS[b.type || 'boat'].life)), b.storm || 0]), sf: this.scrapFound ? 1 : 0,
       a: this.aliens.map(a => [a.id, Math.round(a.x), Math.round(a.y), Math.round(a.hp), a.mhp, a.k, a.fa === undefined ? null : Math.round(a.fa * 100), Math.ceil(a.trapT > 0 ? a.trapT : 0), a.aim > 0 ? Math.round(Math.min(1, a.aim / 1.5) * 100) : 0, a.spit ? 1 : 0]),
-      wf: (this.wolves || []).map(w => [w.id, Math.round(w.x), Math.round(w.y), Math.round(w.fa * 100), Math.round(w.hp), w.mhp, w.st, w.bite > 0 ? 1 : 0, w.alpha || 0, w.big || 0, w.vul ? (w.air ? 1 : 2) : 0]),
-      rb: this.rabbits.map(b => [b.id, Math.round(b.x), Math.round(b.y), Math.round(b.fa * 100), b.run ? 1 : b.sit ? 0 : 2]),
+      wf: (this.wolves || []).map(w => [w.id, Math.round(w.x), Math.round(w.y), Math.round(w.fa * 100), Math.round(w.hp), w.mhp, w.st, w.bite > 0 ? 1 : 0, w.alpha || 0, w.big || 0, w.vul ? (w.air ? 1 : 2) : 0, w.sp ? MOBS[w.sp].idx : 0]),
+      rb: this.rabbits.map(b => [b.id, Math.round(b.x), Math.round(b.y), Math.round(b.fa * 100), b.run ? 1 : b.sit ? 0 : 2, CRIT[b.crit || 'rabbit'].idx]),
       cf: this.camps.map(c => [c.id, Math.round(c.x), Math.round(c.y), Math.round(c.fuel), RC.fuelMax(c.lvl), c.lvl, c.fuel > 0 ? RC.camp(c.lvl) : 0]),
       lo: this.loot.filter(l => l.open).map(l => l.id),
       bl: this.bullets.map(b => [b.id, Math.round(b.x), Math.round(b.y), Math.round(Math.atan2(b.vy, b.vx) * 100), b.kind]),
@@ -1217,7 +1286,7 @@ wss.on('connection', ws => {
       room = rooms.get(rc);
       if (room.players.size >= MAXP) { send(ws, { t: 'err', m: 'Room is full' }); return; }
       me = room.add(ws, name, cls, pf, email);
-      send(ws, { t: 'init', id: me.id, room: rc, R, cls, gear: me.gear, prof: view(pf), res: room.res.map(r => [r.k, Math.round(r.x), Math.round(r.y)]), isl: room.islands.map(i => [i.x, i.y, i.r, i.b]), loot: room.loot.map(l => [l.id, l.x, l.y, l.b, l.seed, l.tier, l.cx, l.cy, l.trader, l.tx, l.ty]), vg: (room.villages || []).map(v => [v.id, v.x, v.y, v.seed]) });
+      send(ws, { t: 'init', id: me.id, room: rc, R, cls, gear: me.gear, prof: view(pf), res: room.res.map(r => [r.k, Math.round(r.x), Math.round(r.y)]), isl: room.islands.map(i => [i.x, i.y, i.r, i.b]), loot: room.loot.map(l => [l.id, l.x, l.y, l.b, l.seed, l.tier, l.cx, l.cy, l.trader, l.tx, l.ty]), vg: (room.villages || []).map(v => [v.id, v.x, v.y, v.seed]), lv: (room.lava || []).map(l => [l.x, l.y, l.r]) });
     } else if (m.t === 'craft' && me) {
       const now = Date.now(); if (now - (me.lastCraft || 0) < 200) { send(ws, { t: 'crafted', id: String(m.id || ''), ok: false, msg: 'Slow down a little.', gear: me.gear }); return; } me.lastCraft = now;
       let res; try { res = room.craft(me, String(m.id || ''), m.rot); } catch (e) { console.error('craft error:', e && e.stack || e); res = { ok: false, msg: 'Could not craft that.' }; }
