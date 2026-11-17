@@ -296,7 +296,7 @@ class Room {
       const by = p.runBy || {}, all = Object.values(by).reduce((s, v) => s + v, 0), total = p.prof ? p.prof.d : 0;
       send(p.ws, { t: 'over', n: days, d: got, total, before: total - all, kills: p.runK || {}, gems: { days: by.run || 0, kills: by.kills || 0, chest: by.chest || 0, other: all - (by.run || 0) - (by.kills || 0) - (by.chest || 0) } });
     }
-    this.players.clear(); this.away.clear(); this.reset();
+    this.players.clear(); this.away.clear(); this.reset(); this.ended = 1;
   }
   reset() {
     this.c = +process.env.START_C || 0; this.night = +process.env.START_N || 1; this.fire = { fuel: 150, lvl: 1 }; this.aliens = []; this.over = 0;
@@ -1353,6 +1353,7 @@ setInterval(() => {
     try { r.tick(1 / 30); } catch (e) { console.error('tick error:', e && e.stack || e); }
     if (tk % 2 === 0 && r.players.size) { const s = r.snap(); for (const p of r.players.values()) if (p.ws.readyState === 1) p.ws.send(s); }
     if (r.emptyFor > ROOM_IDLE_SEC) rooms.delete(c);   // nobody joined for the whole window: destroy the session
+    if (r.ended) rooms.delete(c);   // everyone died and the game-over screens were sent: the session is gone (the same code starts a brand-new game)
   }
 }, 1000 / 30);
 
