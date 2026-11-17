@@ -1069,16 +1069,11 @@ function buildSmelt() {
   $('smeltInv').textContent = '🪨 ' + stone + ' (chests incl.)';
   const list = $('smeltList'); list.innerHTML = '';
   const d = document.createElement('div'); d.className = 'rc';
-  d.innerHTML = '<div class="ic">🔩</div><div class="tx"><div class="nm">Metal scrap</div><div class="ds">' + C + ' rocks smelt into 1 scrap in ' + RC.SMELT.time + ' s. It pops out for pickup.</div>' +
+  d.innerHTML = '<div class="ic">🔩</div><div class="tx"><div class="nm">Metal scrap</div><div class="ds">' + C + ' rocks smelt into 1 scrap in ' + RC.SMELT.time + ' s. Tap here to put in ' + C + ' rocks (1 scrap) each time.</div>' +
     '<div class="co">' + (q ? 'Smelting: <b>' + q + '</b> scrap (' + q * C + ' rocks inside)' : '<span style="opacity:.8">Empty. Put rocks in to start it.</span>') + ' &nbsp; Room for ' + free + ' more</div></div>';
-  const bx = document.createElement('div'); bx.style.cssText = 'display:grid;grid-template-columns:1fr;gap:6px';
-  [['Put ' + C, 1, can >= 1], ['Put ' + Math.max(can, 1) * C, RC.SMELT.queue, can > 1]].forEach(b => {
-    const bt = document.createElement('button'); bt.textContent = b[0]; bt.disabled = !b[2]; bt.style.cssText = 'min-width:84px;padding:9px 6px;font-size:13px';
-    bt.onclick = () => { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'smelt', id: smeltId, n: b[1] })); };
-    bx.appendChild(bt);
-  });
-  if (can <= 1) bx.lastChild.style.display = 'none';   // only one batch possible: a single button is enough
-  d.appendChild(bx); list.appendChild(d);
+  d.classList.add('pick'); if (can < 1) d.classList.add('dim');   // the whole row is the button: each tap puts in 5 rocks = 1 metal scrap
+  d.onclick = () => { if (can < 1) { $('smeltMsg').textContent = free ? 'You need ' + C + ' rocks (your bag plus the chests).' : 'The smelter is full.'; $('smeltMsg').style.color = '#ff8a80'; return; } if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'smelt', id: smeltId, n: 1 })); };
+  list.appendChild(d);
   if (!free) { $('smeltMsg').textContent = 'The smelter is full.'; $('smeltMsg').style.color = '#ffd000'; }
   else if (can < 1) { $('smeltMsg').textContent = 'You need ' + C + ' rocks (your bag plus the chests).'; $('smeltMsg').style.color = '#ff8a80'; }
 }
