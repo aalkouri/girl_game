@@ -34,7 +34,32 @@
     { id: 'phantom', n: 'Phantom', e: '🥷', price: 400, d: 'Blazing fast, deadly crits', hp: 80, spd: 205, dmg: 24, cd: .35, crit: .3, look: ['#424242', '#111111', '#000000', 'twindagger'] },
     { id: 'legend', n: 'Legend', e: '👑', price: 400, d: 'The best at almost everything', hp: 150, spd: 165, dmg: 26, cd: .35, regen: .8, wood: 1.2, light: 150, look: ['#ffd54f', '#c79100', '#ffffff', 'blade'] },
   ];
+  // Hidden abilities: one per class, locked until an Ability Unlocker trader (found on the outer islands) is paid. { id (server effect), n, e, d (shown in class select), cd seconds }
+  const ABIL = {
+    forester: { id: 'timber', n: 'Timber!', e: '🌲', cd: 60, d: 'Fells every tree and cactus within 260 at once, dropping all their wood.' },
+    marine: { id: 'grenade', n: 'Grenade', e: '💣', cd: 40, d: 'Lobs a grenade ahead: 60 damage and a stun to everything in a wide blast.' },
+    tech: { id: 'signal', n: 'Signal Boost', e: '📡', cd: 90, d: 'Refuels the nearest campfire to full and makes its light burn brighter for a minute.' },
+    medic: { id: 'massrevive', n: 'Mass Revive', e: '✨', cd: 120, d: 'Revives every downed player anywhere on the map and heals everyone 30%.' },
+    scout: { id: 'sprint', n: 'Pathfinder Sprint', e: '💨', cd: 30, d: 'Doubles your speed for 6 seconds.' },
+    miner: { id: 'quake', n: 'Seismic Slam', e: '🪨', cd: 60, d: 'Shatters every rock within 260, dropping all their stone.' },
+    forager: { id: 'harvest', n: 'Bountiful Harvest', e: '🧺', cd: 60, d: 'Regrows every bush near you and hands you 8 berries.' },
+    pyro: { id: 'inferno', n: 'Inferno', e: '🔥', cd: 50, d: 'A ring of flame: 50 damage and a 2 second stun to aliens within 220.' },
+    guard: { id: 'bulwark', n: 'Bulwark', e: '🛡️', cd: 60, d: 'You and allies within 220 take 70% less damage for 8 seconds.' },
+    hunter: { id: 'volley', n: 'Arrow Storm', e: '🏹', cd: 45, d: 'Looses 16 arrows in every direction, each hitting for 25.' },
+    duelist: { id: 'flurry', n: 'Flurry', e: '⚔️', cd: 40, d: 'Attack twice as fast with 50% more damage for 6 seconds.' },
+    engineer: { id: 'turret', n: 'Deploy Turret', e: '🗼', cd: 60, d: 'Builds a turret where you stand that shoots the nearest alien for 20 seconds.' },
+    shaman: { id: 'totem', n: 'Spirit Totem', e: '🪘', cd: 70, d: 'Plants a totem: allies nearby heal 8 HP/s and aliens are slowed for 8 seconds.' },
+    berserker: { id: 'rage', n: 'Blood Rage', e: '😡', cd: 50, d: 'Double damage and +40% speed for 8 seconds, but you take 50% more damage.' },
+    sentinel: { id: 'beacon', n: 'Beacon', e: '🏮', cd: 80, d: 'A blinding light that pushes aliens out of a 260 circle for 10 seconds.' },
+    lucky: { id: 'jackpot', n: 'Jackpot', e: '🎰', cd: 120, d: 'Pays out a big random haul of wood, stone, berries and scrap, with a chance of diamonds.' },
+    pyromancer: { id: 'meteor', n: 'Meteor Strike', e: '☄️', cd: 60, d: 'Calls a meteor down ahead: 120 damage in a big blast.' },
+    warden: { id: 'rally', n: 'Rally Cry', e: '📯', cd: 90, d: 'Heals all allies on your island 40% and speeds them up for 8 seconds.' },
+    phantom: { id: 'shadowstep', n: 'Shadowstep', e: '🌑', cd: 25, d: 'Vanish and reappear 380 ahead; your next hit is a triple-damage crit.' },
+    legend: { id: 'legendary', n: 'Legendary', e: '👑', cd: 120, d: 'Full heal, plus 8 seconds of double damage and +40% speed.' },
+  };
+  // what the Ability Unlocker charges (by class price tier)
+  const abilCost = c => ({ 0: { scrap: 6, stone: 20 }, 50: { scrap: 10, stone: 30, wood: 20 }, 120: { scrap: 16, stone: 40, wood: 30, pelt: 2 }, 250: { scrap: 24, stone: 60, wood: 40, pelt: 4 }, 400: { scrap: 32, stone: 80, wood: 60, pelt: 6 } })[c.price];
   const LIST = RAW.map(c => Object.assign({}, DEF, c));
   const BY = {}; LIST.forEach(c => BY[c.id] = c);
-  return { LIST, BY, DEF, DEFAULT_OWNED: LIST.filter(c => c.price === 0).map(c => c.id) };
+  return { ABIL, abilCost, LIST, BY, DEF, DEFAULT_OWNED: LIST.filter(c => c.price === 0).map(c => c.id) };
 });

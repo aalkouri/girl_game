@@ -17,6 +17,7 @@
     { id: 'smelter', n: 'Smelter', e: '⚒️', kind: 'smelter', norot: true, cost: { wood: 10, stone: 25 }, max: 1, d: 'Press ACT next to it and put rocks in: every 5 rocks smelt into 1 metal scrap, which pops out for pickup.' },
     { id: 'boat', n: 'Boat', e: '⛵', kind: 'boat', scrap: true, cost: { wood: 20, stone: 0, scrap: 4 }, d: 'Carries two players across the sea to other islands. It goes into one of your slots - use it, then put it in the water at the shore.' },
     { id: 'trap', n: 'Trap', e: '🪤', kind: 'item', item: 'trap', scrap: true, cost: { wood: 0, stone: 0, scrap: 2 }, d: 'Goes into one of your slots. Tap it there to set it down where you stand. When the big monster runs over it he is stuck for 20 seconds. One use.' },
+    { id: 'campfire', n: 'Campfire', e: '🔥', kind: 'item', item: 'campfire', cost: { wood: 25, stone: 10 }, d: 'Goes into one of your slots. Tap it to light a campfire where you stand on an outer island (not near the shore). It burns, protects and can be upgraded just like the main fire.' },
     { id: 'wall', n: 'Spike Wall', e: '🚧', kind: 'wall', cost: { wood: 6, stone: 0 }, max: 24, d: 'A solid, indestructible barricade that blocks aliens. Placed in front of you, near camp.' },
   ];
   // things you can cook at a cooking pot (cost is in berries)
@@ -26,7 +27,7 @@
   ];
   const BY = {}; LIST.forEach(r => BY[r.id] = r);
   const FOOD_BY = {}; FOOD.forEach(f => FOOD_BY[f.id] = f);
-  const ITEM_BY = Object.assign({ boat: { id: 'boat', n: 'Boat', e: '⛵' }, trap: { id: 'trap', n: 'Trap', e: '🪤' }, foot: { id: 'foot', n: "Lucky Rabbit's Foot", e: '🐾' } }, FOOD_BY);   // everything that can sit in a slot
+  const ITEM_BY = Object.assign({ boat: { id: 'boat', n: 'Boat', e: '⛵' }, trap: { id: 'trap', n: 'Trap', e: '🪤' }, foot: { id: 'foot', n: "Lucky Rabbit's Foot", e: '🐾' }, campfire: { id: 'campfire', n: 'Campfire', e: '🔥' }, sloop: { id: 'sloop', n: 'Sloop', e: '🚤' }, galleon: { id: 'galleon', n: 'Galleon', e: '🛳️' } }, FOOD_BY);   // everything that can sit in a slot
   // the camp (safe ring + build area) grows a little with every fire level
   const FIRE_MAX = 20;   // the fire can be levelled up to 20 (it used to stop at 5)
   const camp = lvl => lvl <= 5 ? 140 + lvl * 40 : 340 + (lvl - 5) * 12;   // safe ring / build area: +40 per level up to 5, then +12 per level (520 at level 20)
@@ -54,5 +55,32 @@
     const d = Math.hypot(x, y), a = Math.atan2(y, x); if (d < snowIn(a)) return false;
     const da = ((a - SNOW_A + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI; return Math.abs(da) < snowHalf(d);
   }
-  return { FIRE_MAX, fuelMax, LIST, BY, FOOD, FOOD_BY, ITEM_BY, camp, SMELT, RADIUS, FIRE_R, fireClear, STATION_GAP: 120, WALL_GAP: 80, FOREST_CUT, homeDir, forestEdge, inForestPart, SNOW_A, snowIn, snowHalf, inSnow };
+  // biome at a point of an outer island: forest on the quarter facing home, else the island's own biome; 'm' (mixed) islands are snow on one side and desert on the other
+  function biomeAt(ix, iy, r, b, x, y) {
+    if (inForestPart(ix, iy, r, x, y)) return 'f';
+    if (b !== 'm') return b;
+    const [ux, uy] = homeDir(ix, iy); return ((x - ix) * -uy + (y - iy) * ux) < 0 ? 's' : 'd';
+  }
+  // boat types (what the Boat Dealer sells): speed, riders, extra carry slots while aboard
+  const BOATS = { boat: { speed: 190, riders: 2, slots: 0, sc: .8 }, sloop: { speed: 250, riders: 3, slots: 2, sc: 1 }, galleon: { speed: 320, riders: 4, slots: 4, sc: 1.25 } };
+  const ARMOR = [0, .15, .30, .45];   // damage reduction by armor level
+  const GUNS = { pistol: { dmg: 18, cd: .6, speed: 900, ttl: .55 }, rifle: { dmg: 40, cd: 1.1, speed: 1200, ttl: .9 } };
+  // The five traders found on the outer islands. offers: cost is paid from your own bag.
+  const TRADERS = {
+    1: { n: 'Pelt Trader', e: '🐺', d: 'Trades wolf pelts for armor.', offers: [
+      { id: 'pelt1', n: 'Pelt Cloak', e: '🧥', cost: { pelt: 3 }, armor: 1, d: 'Take 15% less damage.' },
+      { id: 'pelt2', n: 'Pelt Armor', e: '🦺', cost: { pelt: 6 }, armor: 2, d: 'Take 30% less damage.' },
+      { id: 'pelt3', n: 'Frost Plate', e: '🛡️', cost: { pelt: 12 }, armor: 3, d: 'Take 45% less damage.' }] },
+    2: { n: 'Fisherman', e: '🎣', d: 'Sells a fishing rod for plain resources.', offers: [
+      { id: 'rod', n: 'Fishing Rod', e: '🎣', cost: { wood: 20, stone: 10 }, gear: 'rod', d: 'Press ACT at the shore to fish: you reel in berries from the sea.' }] },
+    3: { n: 'Blacksmith', e: '⚒️', d: 'Trades scrap for weapons, guns included.', offers: [
+      { id: 'sword', n: 'Iron Sword', e: '🗡️', cost: { scrap: 6 }, gear: 'sword', d: '+8 melee damage.' },
+      { id: 'pistol', n: 'Pistol', e: '🔫', cost: { scrap: 10 }, gear: 'pistol', d: 'ATTACK fires bullets: 18 damage, fast, long range.' },
+      { id: 'rifle', n: 'Rifle', e: '🎯', cost: { scrap: 18 }, gear: 'rifle', d: 'ATTACK fires a slow, heavy shot: 40 damage, very long range.' }] },
+    4: { n: 'Boat Dealer', e: '⚓', d: 'Sells bigger, faster boats that carry more loot.', offers: [
+      { id: 'sloop', n: 'Sloop', e: '🚤', cost: { wood: 40, scrap: 8 }, item: 'sloop', d: 'Speed 250, 3 riders, +2 item slots while aboard. Goes into a slot; use it at the shore.' },
+      { id: 'galleon', n: 'Galleon', e: '🛳️', cost: { wood: 80, stone: 40, scrap: 20 }, item: 'galleon', d: 'Speed 320, 4 riders, +4 item slots while aboard. Goes into a slot; use it at the shore.' }] },
+    5: { n: 'Ability Unlocker', e: '🔮', d: 'Unlocks the hidden ability of any class you own, for the right resources.', offers: [] },
+  };
+  return { BOATS, ARMOR, GUNS, TRADERS, biomeAt, FIRE_MAX, fuelMax, LIST, BY, FOOD, FOOD_BY, ITEM_BY, camp, SMELT, RADIUS, FIRE_R, fireClear, STATION_GAP: 120, WALL_GAP: 80, FOREST_CUT, homeDir, forestEdge, inForestPart, SNOW_A, snowIn, snowHalf, inSnow };
 });

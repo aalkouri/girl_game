@@ -684,7 +684,7 @@ function syncBoats(m) {
     seen[b[0]] = 1; let e = boatE[b[0]];
     if (!e) {
       const c = new PIXI.Container(), sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5); sh.scale.set(2.2, 1); sh.alpha = .5;
-      const sp = new PIXI.Sprite(T_BOAT); sp.anchor.set(.5); sp.scale.set(.8); c.addChild(sh, sp); ents.addChild(c);
+      const bty = RC.BOATS[b[6]] || RC.BOATS.boat, sp = new PIXI.Sprite(T_BOAT); sp.anchor.set(.5); sp.scale.set(bty.sc); if (b[6] === 'sloop') sp.tint = 0xb8d4f0; else if (b[6] === 'galleon') sp.tint = 0xf0d48a; sh.scale.set(2.2 * bty.sc / .8, 1); c.addChild(sh, sp); ents.addChild(c);
       e = boatE[b[0]] = { c, sp, x: b[1], y: b[2], tx: b[1], ty: b[2], ang: b[3] / 100, ta: b[3] / 100, ph: rnd(0, TAU) }; c.position.set(e.x, e.y);
     }
     e.tx = b[1]; e.ty = b[2]; e.ta = b[3] / 100; e.riders = b[4]; e.drv = b[5];
@@ -1021,7 +1021,7 @@ function onSnap(m) {
     r.hp = hp;
   }
   syncDrops(m, _d, _dx);
-  syncStructs(m, !prevS); syncBoats(m); syncArrows(m);
+  syncStructs(m, !prevS); syncBoats(m); syncArrows(m); window.xSnap && xSnap(m);
   if (chestId !== null) { if (!nearStruct(chestId)) closeChest(); else buildChest(); }
   if (potOpen) { if (!anyPotNear()) closePot(); else buildPot(); }
   if (smeltId !== null) { if (!nearStruct(smeltId)) closeSmelt(); else buildSmelt(); }
@@ -1162,6 +1162,7 @@ app.ticker.add(() => {
       const nb = (S.bt || []).find(b => dist(b[1], b[2]) < 125);
       if (S.p.some(q => q[10] && q[0] !== myId && dist(q[3], q[4]) < 60)) lab = 'REVIVE';
       else if (nb) lab = nb[4] >= 2 ? 'FULL' : 'ENTER';
+      else if (window.xActLabel && xActLabel(me)) lab = xActLabel(me);
       else if (st) lab = st[1] === 'bench' ? 'CRAFT' : st[1] === 'chest' ? 'OPEN' : st[1] === 'pot' ? 'COOK' : 'SMELT';
       else if (Math.hypot(me.x, me.y) < 80) {
         const feed = (GC.BY[me.d[2]] || GC.BY.forester).feed || 1;
@@ -1200,7 +1201,7 @@ app.ticker.add(() => {
   ring.visible = alive; ring.scale.set(ringR * 2 / 256 * 1.0); ring.alpha = .35 + Math.sin(T * 2) * .08;
   if (alive) { fireTick += dt * (20 + 40 * fuelK); while (fireTick > 1) { fireTick--; emit(overL, T_GLOW, rnd(-8, 8), -2, rnd(-14, 14), rnd(-70, -35), rnd(.6, 1.3), .08, .01, Math.random() < .5 ? 0xffb347 : 0xffe08a, 1, true, -10); } }
   smokeTick += dt * (alive ? 4 : 9); while (smokeTick > 1) { smokeTick--; emit(pfx, T_GLOW, rnd(-6, 6), -14, rnd(-6, 6), rnd(-26, -14), 2.2, .25, .9, alive ? 0x555555 : 0x444444, alive ? .22 : .35, false, 0); }
-  stepParts(dt); stepFallers(dt); stepDrops(dt); stepStructs(dt); stepBoats(dt); stepArrows();
+  stepParts(dt); stepFallers(dt); stepDrops(dt); stepStructs(dt); stepBoats(dt); stepArrows(); window.xStep && xStep(dt, me);
   for (let i = ftexts.length - 1; i >= 0; i--) { const q = ftexts[i]; q.life -= dt; q.t.y -= dt * 34; q.t.alpha = clamp(q.life * 2, 0, 1); if (q.life <= 0) { q.t.destroy(); ftexts.splice(i, 1); } }
   // lighting
   const d = darkness(S.c);
@@ -1209,6 +1210,7 @@ app.ticker.add(() => {
   darkBase.visible = d > .005; darkBase.width = rt.width; darkBase.height = rt.height; darkBase.tint = rgb(col); darkBase.alpha = al;
   if (darkBase.visible) {
     let li = 0;
+    if (window.xLights) li = xLights(li, sx, sy2);
     if (alive) { const L = getLight(li++); L.visible = true; L.position.set((W / 2 + (0 - camX) * Z + sx) * LS, (H / 2 + (0 - camY) * Z + sy2) * LS); const r = f[3] * 1.25 * Z * (1 + Math.sin(T * 13) * .012); L.scale.set(r * 2 * LS / 128); }
     for (const p of S.p) { const e = ents2['p' + p[0]]; if (!e) continue; const L = getLight(li++); L.visible = true; L.position.set((W / 2 + (e.x - camX) * Z + sx) * LS, (H / 2 + (e.y - camY) * Z + sy2) * LS); L.scale.set(((GC.BY[p[2]] || GC.BY.forester).light) * Z * 2 * LS / 128); L.alpha = p[10] ? .3 : 1; }
     for (let j = li; j < lightPool.length; j++) lightPool[j].visible = false;
@@ -1234,7 +1236,7 @@ app.ticker.add(() => {
 let slotSig = '', slotFullAt = 0, menuClosedAt = 0;
 function useSlotAt(i) {   // tap a slot (or press 1-3): the boat starts placement, anything else (food, trap) is used
   const it = ((S && S.p.find(q => q[0] === myId)) || [])[19] || []; if (!it[i]) return;
-  if (it[i] === 'boat') { startPlacingBoat(i); return; }
+  if (RC.BOATS[it[i]]) { startPlacingBoat(i); return; }
   if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'use', i }));
 }
 document.querySelectorAll('#slots .slot').forEach((el, i) => el.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); useSlotAt(i); }));
@@ -1243,7 +1245,8 @@ function hud() {
   $('t1').textContent = 'Night ' + S.n + ' · ' + PH + ' ' + left + 's · 🔥 Lv' + f[2];
   $('bar').firstElementChild.style.width = (100 * f[0] / f[1]) + '%';
   if (mp) $('inv').textContent = '🪵' + mp[7] + '  🪨' + mp[8] + '  🍓' + mp[9] + (mp[15] ? '  🔩' + mp[15] : '') + (mp[21] ? '  🍖' + mp[21] : '') + (mp[22] ? '  🪙' + mp[22] : '') + (mp[23] ? '  🐺' + mp[23] : '') + '   ❤ ' + mp[5] + '/' + mp[6];
-  if (mp) { const sl = mp[19] || [], sig = sl.join(','); if (sig !== slotSig) { slotSig = sig; document.querySelectorAll('#slots .slot').forEach((el, i) => { const f = RC.ITEM_BY[sl[i]]; el.textContent = f ? f.e : ''; el.classList.toggle('full', !!f); el.title = f ? f.n + ' - tap to use' : 'empty'; }); } }
+  if (window.xHud) xHud(mp);
+  if (mp && !window.xHud) { const sl = mp[19] || [], sig = sl.join(','); if (sig !== slotSig) { slotSig = sig; document.querySelectorAll('#slots .slot').forEach((el, i) => { const f = RC.ITEM_BY[sl[i]]; el.textContent = f ? f.e : ''; el.classList.toggle('full', !!f); el.title = f ? f.n + ' - tap to use' : 'empty'; }); } }
   $('pl').textContent = S.p.length + ' player' + (S.p.length > 1 ? 's' : '');
   { const el = (performance.now() - buffAt) / 1000, bt = []; if (BUFF.speed - el > 0) bt.push('⚡' + Math.ceil(BUFF.speed - el) + 's'); if (BUFF.regen - el > 0) bt.push('💚' + Math.ceil(BUFF.regen - el) + 's'); if (BUFF.dmg - el > 0) bt.push('⚔' + Math.ceil(BUFF.dmg - el) + 's'); const bs = bt.join('  '); if ($('buffs').textContent !== bs) $('buffs').textContent = bs; }
   const now = performance.now(); let b = '';
@@ -1291,6 +1294,7 @@ function buildPicker() {
       const cvs = document.createElement('canvas'); cvs.width = cvs.height = 64; cvs.getContext('2d').drawImage(PCAN[c.id], 0, 0); d.appendChild(cvs);
       const st = '❤' + c.hp + '  ⚔' + c.dmg + '  👟' + c.spd;
       d.insertAdjacentHTML('beforeend', '<div class="cn">' + c.e + ' ' + c.n + '</div><div class="cd">' + c.d + '</div><div class="cs">' + st + '</div><div class="cb">' + (c.id === sel ? '✔ Selected' : owned ? 'Tap to select' : '🔒 ' + c.price + ' 💎') + '</div>');
+      window.xCard && xCard(c, d);
       d.onclick = () => owned ? pick(c.id) : askBuy(c.id);
       row.appendChild(d);
     }
@@ -1404,7 +1408,7 @@ $('go').onclick = () => {
     const m = JSON.parse(e.data);
     if (m.t === 'err') { if (m.m === 'auth') logoutUI('Your session expired. Please sign in again.'); else { $('err').textContent = m.m; ws.close(); ws = null; } }
     else if (m.t === 'init') {
-      myId = m.id; RR = m.R; ISL = m.isl ? m.isl.slice(1) : []; roomCode = m.room; GEAR = m.gear || {}; buildWorld(m.res); if (m.prof) { PF.owned = m.prof.owned; setDia(m.prof.d); }
+      myId = m.id; RR = m.R; ISL = m.isl ? m.isl.slice(1) : []; roomCode = m.room; GEAR = m.gear || {}; buildWorld(m.res); if (m.prof) { PF.owned = m.prof.owned; PF.abil = m.prof.abil || []; setDia(m.prof.d); } window.xInit && xInit(m);
       $('lobby').style.display = 'none'; $('hud').style.display = 'block'; $('btns').style.display = 'block';
       $('rm').textContent = 'Room ' + roomCode + ' (tap to copy link)'; tipUntil = performance.now() + 14000; history.replaceState(null, '', '?room=' + roomCode);
     } else if (m.t === 'crafted') {
@@ -1416,6 +1420,7 @@ $('go').onclick = () => {
       const me = ents2['p' + myId]; if (me) floatText(me.x, me.y - 6, m.msg, 0xff8a80); SFX.pickup();
     } else if (m.t === 'open') {
       if (performance.now() - menuClosedAt < 700) return;   // you just closed it with E / Space: the server's reply to that same key press must not pop it open again
+      if (m.what === 'trader') { window.xOpenTrader && xOpenTrader(m); return; }
       SFX.init(); if (m.what === 'chest') { SFX.chest(); openChest(m.id); } else if (m.what === 'bench') { if (!craftOpen) { SFX.chest(); closeChest(); closePot(); closeSmelt(); setCraft(true); } } else if (m.what === 'smelter') { SFX.chest(); openSmelt(m.id); } else { SFX.chest(); openPot(); }
     } else if (m.t === 'smelted') {
       const msg = $('smeltMsg'); msg.textContent = m.msg || ''; msg.style.color = m.ok ? '#7fe9a0' : '#ff8a80'; if (m.ok) SFX.pickup();
@@ -1444,6 +1449,7 @@ $('go').onclick = () => {
       runOver = true; setDia(m.total); try { sessionStorage.setItem('runres', JSON.stringify({ n: m.n, d: m.d })); sessionStorage.removeItem('rejoin'); } catch (e) { }
       $('banner').style.fontSize = '22px'; $('banner').textContent = 'Game over - you survived ' + m.n + ' day' + (m.n === 1 ? '' : 's') + ' and earned ' + m.d + ' 💎';
       setTimeout(() => { try { ws.close(); } catch (e) { } location.reload(); }, 3500);
+    } else if (window.xMsg && ['loot', 'camped', 'fish', 'fx', 'abilUsed', 'traded'].includes(m.t)) { xMsg(m);
     } else if (m.t === 'dia') {
       setDia(m.d); const me = ents2['p' + myId];
       if (me) floatText(me.x, me.y - 24, '+' + m.n + ' 💎' + (m.why === 'milestone' ? ' milestone!' : ''), 0x7fe9ff);
@@ -1466,12 +1472,12 @@ app.view.addEventListener('pointerup', jend); app.view.addEventListener('pointer
 function jpos() { const dx = joy.x - joy.ox, dy = joy.y - joy.oy, m = Math.min(100, Math.hypot(dx, dy)), a = Math.atan2(dy, dx); jk.style.background = m > 63 ? '#ffb74dd0' : ''; jb.style.left = joy.ox + 'px'; jb.style.top = joy.oy + 'px'; jk.style.left = (joy.ox + Math.cos(a) * m) + 'px'; jk.style.top = (joy.oy + Math.sin(a) * m) + 'px'; }
 function bind(id, set) { const b = $(id); b.addEventListener('pointerdown', e => { e.preventDefault(); set(1); b.setPointerCapture(e.pointerId); b.style.transform = 'scale(.92)'; }); ['pointerup', 'pointercancel'].forEach(t => b.addEventListener(t, () => { set(0); b.style.transform = ''; })); }
 bind('act', v => { act = v; if (v) actPress(); }); bind('hit', v => hit = v);
-addEventListener('keydown', e => { const k = e.key.toLowerCase(); if (placingId && k === 'r') rotatePlace(); if (!keys[k] && (k === ' ' || k === 'e') && !/INPUT|TEXTAREA/.test((e.target || {}).tagName || '')) {
-    if (craftOpen || chestId !== null || potOpen || smeltId !== null) { setCraft(false); closeChest(); closePot(); closeSmelt(); menuClosedAt = performance.now(); }   // E / Space closes whatever menu is open
+addEventListener('keydown', e => { const k = e.key.toLowerCase(); if (placingId && k === 'r') rotatePlace(); else if (k === 'r' && !keys[k] && window.useAbility && $('btns').style.display !== 'none' && !/INPUT|TEXTAREA/.test((e.target || {}).tagName || '')) useAbility(); if (!keys[k] && (k === ' ' || k === 'e') && !/INPUT|TEXTAREA/.test((e.target || {}).tagName || '')) {
+    if (craftOpen || chestId !== null || potOpen || smeltId !== null || (typeof trOpen !== 'undefined' && trOpen)) { setCraft(false); closeChest(); closePot(); closeSmelt(); window.closeTrader && closeTrader(); menuClosedAt = performance.now(); }   // E / Space closes whatever menu is open
     else actPress();
   }
-  if (!keys[k] && (k === '1' || k === '2' || k === '3') && $('btns').style.display !== 'none' && !/INPUT|TEXTAREA/.test((e.target || {}).tagName || '')) useSlotAt(+k - 1);   // 1-3 use the item in that slot (only in game, not while typing)
-  if (k === 'escape') { if (craftOpen || chestId !== null || potOpen || smeltId !== null) { setCraft(false); closeChest(); closePot(); closeSmelt(); menuClosedAt = performance.now(); } else if (placingId) stopPlacing(); }   // Escape closes menus / cancels placing
+  if (!keys[k] && /^[1-7]$/.test(k) && $('btns').style.display !== 'none' && !/INPUT|TEXTAREA/.test((e.target || {}).tagName || '')) useSlotAt(+k - 1);   // 1-3 use the item in that slot (only in game, not while typing)
+  if (k === 'escape') { if (craftOpen || chestId !== null || potOpen || smeltId !== null || (typeof trOpen !== 'undefined' && trOpen)) { setCraft(false); closeChest(); closePot(); closeSmelt(); window.closeTrader && closeTrader(); menuClosedAt = performance.now(); } else if (placingId) stopPlacing(); }   // Escape closes menus / cancels placing
   keys[k] = 1; }); addEventListener('keyup', e => { keys[e.key.toLowerCase()] = 0; });
 // never let a lost touch/key leave the character walking: drop all held input whenever the page loses focus or no finger is down
 function clearInput() { joy = null; jb.style.display = jk.style.display = 'none'; act = hit = 0; for (const k in keys) keys[k] = 0; ['act', 'hit'].forEach(i => { $(i).style.transform = ''; }); }
