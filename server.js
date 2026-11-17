@@ -129,6 +129,7 @@ const HP = { t: 4, r: 3, b: 1 };            // hits to break: tree 4, rock 3, be
 const STRUCT = { bench: { r: RC.RADIUS.bench }, chest: { r: RC.RADIUS.chest }, pot: { r: RC.RADIUS.pot }, smelter: { r: RC.RADIUS.smelter }, wall: { r: RC.RADIUS.wall, hp: 60 } };
 const CHEST_CAP = 500, REACH = 62;   // collision radius / hit points of placed structures
 const SPILL = { t: 5, r: 3 };
+const REVIVE = { sec: 10, hp: .5, decay: 1 };   // a downed player is revived by a teammate standing still next to them and holding ACT for 10 s (Medic-type classes are faster); they come back with half health
 const STA = { max: 100, drain: 16, regen: 22, delay: 1, tiredDelay: 1.6, resume: 25, sprint: 1.7 };   // stamina: a full-stick run drains 16/s (~6 s), refills 22/s after a 1 s rest; at 0 you are winded until it climbs back to 25
 // the Charger: from night 4 on, one huge, very fast enemy per night that hammers players far backwards and vanishes at dawn
 const CHARGER = { firstNight: 4, sp0: 175, spPerNight: 12, spMax: 320, dmg: 25, rad: 36, reach: 62, stop: 44, knock: 300, stunSec: 0.6 };               // logs per tree / stones per rock (before class bonus)
@@ -285,7 +286,7 @@ class Room {
 
       if (i.act) {
         const mate = P.find(q => q.down && dist(p, q) < 60);
-        if (mate) { mate.rev += dt * c.rev; mate.rv = 1; }
+        if (mate) { if (m <= 0.1) { mate.rev += dt * c.rev; mate.rv = 1; } }   // you have to stand still while reviving
         else if (p.actcd <= 0) {
           const stn = this.struct.find(st => (st.k === 'chest' || st.k === 'pot' || st.k === 'smelter') && Math.hypot(p.x - st.x, p.y - st.y) < st.r + REACH);
           if (stn) { if (actEdge) { p.actcd = 0.4; if (stn.k === 'smelter') { const sr = this.smelterStart(p, stn); if (!sr.ok) send(p.ws, { t: 'toast', msg: sr.msg }); } else send(p.ws, { t: 'open', what: stn.k, id: stn.id }); } }
@@ -324,8 +325,8 @@ class Room {
       if (c.heal) for (const q of P) if (!q.down && q.hp < q.mhp && dist(p, q) < 90) q.hp = Math.min(q.mhp, q.hp + c.heal * dt);
     }
     for (const p of P) if (p.down) {
-      if (!p.rv) p.rev = Math.max(0, p.rev - 0.5 * dt);
-      if (p.rev >= 3) { p.down = 0; p.rev = 0; p.hp = p.mhp * 0.4; }
+      if (!p.rv) p.rev = Math.max(0, p.rev - REVIVE.decay * dt);
+      if (p.rev >= REVIVE.sec) { p.down = 0; p.rev = 0; p.hp = p.mhp * REVIVE.hp; }
     }
 
     // smelters: one scrap per SMELT.time seconds, then it hops out onto the ground

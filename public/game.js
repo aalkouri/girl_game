@@ -643,7 +643,7 @@ function updateCampPtr(ox, oy) {   // (ox, oy) = where world (0,0), the campfire
   if (dx > 0) t = Math.min(t, (Rr - cx) / dx); else if (dx < 0) t = Math.min(t, (L - cx) / dx);
   if (dy > 0) t = Math.min(t, (Bt - cy) / dy); else if (dy < 0) t = Math.min(t, (Tp - cy) / dy);
   let px = cx + dx * t, py = cy + dy * t;
-  if (px > W - 250) py = Math.min(py, H - 290);   // stay above the ACT / HIT / CRAFT buttons
+  if (px > W - 250) py = Math.min(py, H - 290);   // stay above the ACT / ATTACK / CRAFT buttons
   const f = S && S.f, lit = f && f[0] > 0, dist = Math.hypot(ox - (W / 2 - 0), oy - H / 2) / Z / 10;
   ptr.style.display = 'block'; ptr.style.transform = 'translate(' + Math.round(px) + 'px,' + Math.round(py) + 'px)';
   $('campArrow').style.transform = 'rotate(' + Math.atan2(dy, dx) + 'rad) translateX(35px)';
@@ -748,14 +748,17 @@ app.ticker.add(() => {
           if (!sw.hit && sw.t >= .2) { sw.hit = true; const sl = new PIXI.Sprite(T_SLASH); sl.anchor.set(.1, .5); sl.rotation = sw.ang; sl.position.set(e.x + Math.cos(sw.ang) * 16, e.y + Math.sin(sw.ang) * 16); sl.blendMode = BM.ADD; sl.scale.set(.75); overL.addChild(sl); parts.push({ s: sl, vx: 0, vy: 0, life: .16, max: .16, s0: .75, s1: 1, a0: .75, g: 0 }); }
         }
       }
-      e.body.rotation = down ? 1.2 : e.ang; e.body.tint = down ? 0x777777 : 0xffffff;
-      e.body.y = down ? 0 : Math.sin(T * 16 + e.ph) * (sp > 12 ? 1.8 : .4); e.body.scale.y = (down ? .6 : .85) * (1 + (sp > 12 ? Math.sin(T * 16) * .04 : 0));
+      e.fall = Math.max(0, Math.min(1, (e.fall === undefined ? (down ? 1 : 0) : e.fall) + (down ? dt * 2.2 : -dt * 3)));   // 0 = standing, 1 = lying on the ground: tips over with a little stumble
+      if (down && !e.wasDown) { burst(e.x, e.y + 6, 8, 0xd9c79a, 70, false, .12); } e.wasDown = down;
+      const fu = ease(e.fall), tint = Math.round(255 - (255 - 0x77) * fu) & 255;
+      e.body.rotation = e.ang + (((1.2 - e.ang + Math.PI) % TAU + TAU) % TAU - Math.PI) * fu; e.body.tint = (tint << 16) | (tint << 8) | tint;
+      e.body.y = down || e.fall > 0 ? -Math.sin(fu * Math.PI) * 7 : Math.sin(T * 16 + e.ph) * (sp > 12 ? 1.8 : .4); e.body.scale.y = (.85 - .25 * fu) * (1 + (sp > 12 && !down ? Math.sin(T * 16) * .04 : 0));
       if (k === 'p' + myId) {   // stamina bar over your own character: shown while it's below full, red when winded
         const tgt = p[17] === undefined ? 100 : p[17]; e.stv += (tgt - e.stv) * Math.min(1, dt * 14);
         const show = e.stv < 99 || p[18]; e.sta.visible = !!show && !down;
         if (e.sta.visible) { const f = Math.max(0, e.stv / 100), tired = !!p[18], col = tired ? (Math.sin(T * 12) > 0 ? 0xff5252 : 0xb71c1c) : f < .3 ? 0xffb74d : 0xffee58; if (e.stDraw !== col + ':' + Math.round(f * 60)) { e.stDraw = col + ':' + Math.round(f * 60); drawHp(e.sta, 34, f, col); } }
       }
-      if (e.lh !== p[5] || e.ld !== p[10] || e.lr !== p[11]) { e.lh = p[5]; e.ld = p[10]; e.lr = p[11]; if (p[10]) drawHp(e.hp, 40, Math.min(1, p[11] / 3), 0x4caf50); else drawHp(e.hp, 34, p[5] / p[6], 0xef5350); }
+      if (e.lh !== p[5] || e.ld !== p[10] || e.lr !== p[11]) { e.lh = p[5]; e.ld = p[10]; e.lr = p[11]; if (p[10]) drawHp(e.hp, 40, Math.min(1, p[11] / 10), 0x4caf50); else drawHp(e.hp, 34, p[5] / p[6], 0xef5350); }
       if (sp > 30 && !down) { e.st = (e.st || 0) - dt; if (e.st <= 0) { e.st = .3; SFX.step(Math.hypot(e.x - me.x, e.y - me.y), e.x - me.x); } e.dust -= dt; if (e.dust <= 0) { e.dust = .14; emit(pfx, T_GLOW, e.x, e.y + 8, rnd(-8, 8), rnd(-8, 4), .5, .12, .3, 0xd9c79a, .35, false, 0); } }
     } else {
       const a = e.d; e.age += dt; e.c.alpha = Math.min(1, e.age * 2);
@@ -783,6 +786,10 @@ app.ticker.add(() => {
     if (r.shake <= 0) { if (r.k === 't') r.s.skew.x = Math.sin(T * 1.3 + r.ph) * .035 + Math.sin(T * 3.1 + r.ph) * .01; else if (r.k === 'b') r.s.skew.x = Math.sin(T * 2 + r.ph) * .02; }
   }
   updateGhost(me);
+  { // the ACT button becomes REVIVE while a downed teammate is within reach (same 60 px the server uses)
+    const near = !me.d[10] && S.p.some(q => q[10] && q[0] !== myId && Math.hypot(q[3] - me.x, q[4] - me.y) < 60), ab = $('act'), lab = near ? 'REVIVE' : 'ACT';
+    if (ab.textContent !== lab) { ab.textContent = lab; ab.style.fontSize = near ? '11px' : ''; }
+  }
   // camera
   camX += (me.x - camX) * Math.min(1, dt * 10); camY += (me.y - camY) * Math.min(1, dt * 10);
   if (T < 1) { camX = me.x; camY = me.y; }
@@ -846,11 +853,11 @@ function hud() {
   const now = performance.now(); let b = '';
   if (S.o) b = 'Everyone is down... restarting';
   else if (now < warnUntil) b = '⚠ A CHARGER is hunting! It cannot be killed - stay inside the fire ring until dawn!';
-  else if (mp && mp[10]) b = 'You are down - a teammate can revive you (hold ACT)';
+  else if (mp && mp[10]) b = 'You are down - a teammate can revive you (they stand next to you and hold ACT for 10 s)';
   else if (S.ph === 1) b = (Math.floor(now / 500) % 2 ? '🌆 ' : '') + 'DUSK - get back to the fire!';
   else if (S.ph === 2 && f[0] <= 0) b = '⚠ The fire is out!';
   else if (f[0] > 0 && f[0] < 25) b = 'Fire is low - bring wood!';
-  else if (now < tipUntil) b = 'Hold ACT by a tree (4 hits) or rock (3 hits), pick berries, then run over the logs, stones and berries. Push the stick past the ring to run (uses stamina). At the fire, ACT adds wood or upgrades it (stone). HIT: fight aliens.';
+  else if (now < tipUntil) b = 'Hold ACT by a tree (4 hits) or rock (3 hits), pick berries, then run over the logs, stones and berries. Push the stick past the ring to run (uses stamina). At the fire, ACT adds wood or upgrades it (stone). ATTACK: fight aliens.';
   const bn = $('banner'); if (bn.textContent !== b) { bn.textContent = b; bn.style.fontSize = b.length > 60 ? '15px' : '22px'; }
 }
 
