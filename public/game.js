@@ -605,7 +605,7 @@ const AK = {
 const T_VIL = { 3: PIXI.Texture.from(mkPlayerCanvas(['#b0432f', '#7a2a1c', '#3e2723', 'sword'])), 4: PIXI.Texture.from(mkPlayerCanvas(['#5d8f3a', '#33691e', '#3e2723', 'bow'])) };
 const T_ARROW = tex(40, 8, g => { g.fillStyle = '#c9a66b'; g.fillRect(2, 3, 28, 2); g.fillStyle = '#e0e0e0'; poly(g, '#e0e0e0', [38, 4, 29, 0, 29, 8]); g.fillStyle = '#d32f2f'; g.fillRect(0, 1, 6, 2); g.fillRect(0, 5, 6, 2); });
 function mkAlien(a) {
-  const ak = AK[a[5]] || AK[0], c = new PIXI.Container(), sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5); sh.scale.set(ak.shX, ak.shY); sh.y = a[5] === 2 ? 14 : 6;
+  const ak = a[9] ? Object.assign({}, AK[0], { sc: .6, tint: 0x8dff7a, eyeCol: 0xffe600, eye: .3, hpW: 30 }) : (AK[a[5]] || AK[0]), c = new PIXI.Container(), sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5); sh.scale.set(ak.shX, ak.shY); sh.y = a[5] === 2 ? 14 : 6;
   const body = new PIXI.Sprite(ak.human ? T_VIL[a[5]] : T_ALIEN); body.anchor.set(.5); body.scale.set(ak.sc); body.tint = ak.tint;
   const hp = new PIXI.Graphics(); c.addChild(sh, body, hp); ents.addChild(c); c.alpha = 0;
   const eyes = (ak.human ? [] : [0, 1]).map(() => { const s = new PIXI.Sprite(T_GLOW); s.anchor.set(.5); s.tint = ak.eyeCol; s.blendMode = BM.ADD; s.scale.set(ak.eye); overL.addChild(s); return s; });
@@ -730,14 +730,14 @@ function syncArrows(m) {
   const seen = {}, now = performance.now();
   for (const w of m.ar || []) {
     seen[w[0]] = 1; let e = arrowE[w[0]];
-    if (!e) { const s = new PIXI.Sprite(T_ARROW); s.anchor.set(.9, .5); s.scale.set(.9); ents.addChild(s); e = arrowE[w[0]] = { s }; }
-    e.x = w[1]; e.y = w[2]; e.a = w[3] / 100; e.t0 = now; e.s.rotation = e.a;
+    if (!e) { const slow = !!w[4], s = new PIXI.Sprite(slow ? T_GLOW : T_ARROW); if (slow) { s.anchor.set(.5); s.scale.set(.42); s.tint = 0x9dff4a; s.blendMode = BM.ADD; } else { s.anchor.set(.9, .5); s.scale.set(.9); } ents.addChild(s); e = arrowE[w[0]] = { s, slow }; }
+    e.x = w[1]; e.y = w[2]; e.a = w[3] / 100; e.t0 = now; if (!e.slow) e.s.rotation = e.a;
   }
   for (const id in arrowE) if (!seen[id]) { arrowE[id].s.destroy(); delete arrowE[id]; }
 }
 function stepArrows() {
   const now = performance.now();
-  for (const id in arrowE) { const e = arrowE[id], el = Math.min(.12, (now - e.t0) / 1000); e.s.position.set(e.x + Math.cos(e.a) * 520 * el, e.y + Math.sin(e.a) * 520 * el); e.s.zIndex = e.s.y; }   // keep flying between snapshots
+  for (const id in arrowE) { const e = arrowE[id], el = Math.min(.12, (now - e.t0) / 1000); { const v = e.slow ? 150 : 520; e.s.position.set(e.x + Math.cos(e.a) * v * el, e.y + Math.sin(e.a) * v * el); if (e.slow) e.s.alpha = .75 + Math.sin(performance.now() / 70) * .25; } e.s.zIndex = e.s.y; }   // keep flying between snapshots
   aimG.clear();
   for (const k in ents2) { const e = ents2[k]; if (e.kind !== 'a' || !e.d || !(e.d[8] > 0)) continue; const f = e.d[8] / 100, a = e.d[6] != null ? e.d[6] / 100 : e.ang; aimG.lineStyle(1.5 + f * 2.5, 0xff5252, .25 + f * .55); aimG.moveTo(e.x, e.y); aimG.lineTo(e.x + Math.cos(a) * 300, e.y + Math.sin(a) * 300); }
 }
