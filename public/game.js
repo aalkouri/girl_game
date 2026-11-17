@@ -734,7 +734,18 @@ function stepBoats(dt) {
 }
 // ---- placed structures (crafting bench, spike walls) ----
 const structE = {}; let GEAR = {}, craftOpen = false, craftSig = '', chestId = null, chestSig = '', potOpen = false, potSig = '';
-const SDEF = { bench: { tex: T_BENCH, ay: .8, base: .72, sh: 2, hy: 14 }, wall: { tex: T_WALL, ay: .85, base: .62, sh: 1.6, hy: 12 }, chest: { tex: T_CHEST, ay: .8, base: .62, sh: 1.7, hy: 12 }, pot: { tex: T_POT, ay: .8, base: .62, sh: 1.5, hy: 12 }, smelter: { tex: T_SMELTER, ay: .84, base: .62, sh: 1.9, hy: 12 } , trap: { tex: T_TRAP, ay: .5, base: .8, sh: 1, hy: 10 }};
+const T_GATE = tex(168, 72, g => {   // a double-width gate, closed: a post at each end and planks between
+  const post = x => { poly(g, '#5a3a1c', [x, 66, x + 14, 66, x + 14, 14, x + 7, 6, x, 14]); poly(g, '#7a4a22', [x + 1, 64, x + 6, 64, x + 6, 14, x + 7, 8, x + 1, 15]); g.strokeStyle = 'rgba(0,0,0,.5)'; g.lineWidth = 1.5; g.strokeRect(x, 14, 14, 52); };
+  for (let i = 0; i < 9; i++) { const x = 18 + i * 14; g.fillStyle = i % 2 ? '#8a5a2b' : '#a56b34'; g.fillRect(x, 28, 13, 38); g.strokeStyle = 'rgba(0,0,0,.4)'; g.lineWidth = 1.2; g.strokeRect(x, 28, 13, 38); }
+  g.fillStyle = '#5a3a1c'; g.fillRect(16, 36, 136, 7); g.fillRect(16, 54, 136, 7); g.strokeStyle = 'rgba(0,0,0,.5)'; g.strokeRect(16, 36, 136, 7); g.strokeRect(16, 54, 136, 7);
+  post(2); post(152);
+});
+const T_GATEO = tex(168, 72, g => {   // the same gate swung open: just the posts and the leaf folded back against the left one
+  const post = x => { poly(g, '#5a3a1c', [x, 66, x + 14, 66, x + 14, 14, x + 7, 6, x, 14]); poly(g, '#7a4a22', [x + 1, 64, x + 6, 64, x + 6, 14, x + 7, 8, x + 1, 15]); g.strokeStyle = 'rgba(0,0,0,.5)'; g.lineWidth = 1.5; g.strokeRect(x, 14, 14, 52); };
+  g.fillStyle = '#8a5a2b'; g.fillRect(16, 8, 8, 56); g.strokeStyle = 'rgba(0,0,0,.5)'; g.strokeRect(16, 8, 8, 56); g.fillStyle = '#5a3a1c'; g.fillRect(14, 20, 12, 5); g.fillRect(14, 46, 12, 5);
+  post(2); post(152);
+});
+const SDEF = { gate: { tex: T_GATE, ay: .85, base: .62, sh: 3.4, hy: 12 }, bench: { tex: T_BENCH, ay: .8, base: .72, sh: 2, hy: 14 }, wall: { tex: T_WALL, ay: .85, base: .62, sh: 1.6, hy: 12 }, chest: { tex: T_CHEST, ay: .8, base: .62, sh: 1.7, hy: 12 }, pot: { tex: T_POT, ay: .8, base: .62, sh: 1.5, hy: 12 }, smelter: { tex: T_SMELTER, ay: .84, base: .62, sh: 1.9, hy: 12 } , trap: { tex: T_TRAP, ay: .5, base: .8, sh: 1, hy: 10 }};
 function syncStructs(m, first) {
   const seen = {}, me = ents2['p' + myId];
   for (const t of m.st || []) {
@@ -748,6 +759,7 @@ function syncStructs(m, first) {
       e = structE[t[0]] = { c, spr, rotc, rot: t[7] || 0, hp, k: t[1], x: t[2], y: t[3], base, mhp: t[5], hpv: t[4], t: first ? 1 : 0, flash: 0, barT: 0 };
       if (!first) { const d = me ? Math.hypot(me.x - t[2], me.y - t[3]) : 0; SFX.build(d, me ? t[2] - me.x : 0); burst(t[2], t[3], 10, 0xd9c79a, 80, false, .16); }
     } else if (t[4] < e.hpv) { e.flash = .12; e.barT = 2; const d = me ? Math.hypot(me.x - t[2], me.y - t[3]) : 0; SFX.hit(d, me ? t[2] - me.x : 0); burst(t[2], t[3] - 14, 4, 0xb98349, 80, false, .1); }
+    if ((t[8] || 0) !== e.op) { e.op = t[8] || 0; if (t[1] === 'gate') e.spr.texture = e.op ? T_GATEO : T_GATE; }
     if ((t[7] || 0) !== e.rot) { e.rot = t[7] || 0; e.rotc.rotation = e.rot * Math.PI / 4; }
     if (t[1] === 'smelter') { const pq = e.smelt ? e.smelt[0] : t[6][0]; if (t[6][0] > pq) { const d = me ? Math.hypot(me.x - t[2], me.y - t[3]) : 0; SFX.smelterStart(d, me ? t[2] - me.x : 0); } e.smelt = t[6]; }
     else e.items = t[6];
@@ -780,14 +792,14 @@ function stepStructs(dt) {
 let placingId = null, ghost = null, ghostRot = null, ghostF = null, placeRot = 0, lastPlaceAt = 0;
 const PLACE_AHEAD = 58;   // must match the server
 function placeCheck(r, x, y) {   // mirrors the server's rules so the silhouette can show green/red; the server stays in charge
-  const CF = curCamp({ x, y }) || curCamp(ents2['p' + myId]) || { x: 0, y: 0, r: RC.camp(S.f[2]), isl: 0 }, d = Math.hypot(x - CF.x, y - CF.y), campR = CF.r, sr = RC.RADIUS[r.kind], station = r.kind !== 'wall' && r.kind !== 'trap';
+  const CF = curCamp({ x, y }) || curCamp(ents2['p' + myId]) || { x: 0, y: 0, r: RC.camp(S.f[2]), isl: 0 }, d = Math.hypot(x - CF.x, y - CF.y), campR = CF.r, sr = RC.RADIUS[r.kind], station = r.kind !== 'wall' && r.kind !== 'trap' && r.kind !== 'gate';
   if (d < RC.fireClear(r.kind)) return 'Too close to the fire';
   if (station && d > campR) return 'Must be inside the camp (the fire ring)';
   if (!station && d > campR + 200) return 'Too far from camp';
   { const is = CF.isl === 0 ? [0, 0, RR] : ISL.find(q => Math.hypot(CF.x - q[0], CF.y - q[1]) < q[2]) || [0, 0, RR]; if (Math.hypot(x - is[0], y - is[1]) > is[2] - 50) return 'Too close to the water'; }
   if ((S.st || []).filter(t => t[1] === r.kind && Math.hypot(t[2] - CF.x, t[3] - CF.y) < CF.r).length >= (r.max || 99)) return 'You built the maximum of these';
   for (const t of S.st || []) {
-    const stWall = t[1] === 'wall', dd = Math.hypot(t[2] - x, t[3] - y), need = station && !stWall ? RC.STATION_GAP : (station || !stWall) ? RC.WALL_GAP : RC.RADIUS[t[1]] + sr - 4;
+    const stWall = t[1] === 'wall' || t[1] === 'gate', dd = Math.hypot(t[2] - x, t[3] - y), need = station && !stWall ? RC.STATION_GAP : (station || !stWall) ? RC.WALL_GAP : RC.RADIUS[t[1]] + sr - 4;
     if (dd < need) return need > 60 ? 'Too close to another structure' : 'Something is already there';
   }
   const pl = pooled(); if (pl.wood < r.cost.wood || pl.stone < r.cost.stone || pl.scrap < (r.cost.scrap || 0)) return 'Not enough materials';
@@ -812,13 +824,14 @@ function startPlacingBoat(i) {   // tap the boat in a slot: a see-through boat f
   stopPlacing(); setCraft(false); closeChest(); closePot(); closeSmelt(); boatSlot = i; placingId = '__boat';
   ghost = new PIXI.Container(); ghostRot = new PIXI.Container();
   const sp = new PIXI.Sprite(T_BOAT); sp.anchor.set(.5); sp.scale.set(.8); ghostRot.addChild(sp); ghost.addChild(ghostRot);
-  ghostF = new PIXI.ColorMatrixFilter(); ghost.filters = [ghostF]; ents.addChild(ghost);
+  ghostF = new PIXI.ColorMatrixFilter(); ghost.filters = [ghostF]; ents.addChild(ghost); markSlot();
   $('placeRotR').style.display = 'none'; $('placeBar').style.display = 'flex'; $('placeName').textContent = '⛵ Boat'; $('placeMsg').textContent = '';
 }
+function markSlot() { document.querySelectorAll('#slots .slot').forEach((el, i) => el.classList.toggle('sel', placingId === '__boat' && boatSlot === i)); }   // the equipped boat's slot is highlighted
 function stopPlacing() {
   boatSlot = -1;
   if (ghost) { ghost.destroy({ children: true }); ghost = null; } ghostRot = null;
-  ghostF = null; placingId = null; $('placeBar').style.display = 'none';
+  ghostF = null; placingId = null; $('placeBar').style.display = 'none'; markSlot();
 }
 function updateGhost(me) {
   if (!placingId || !ghost) return;
@@ -1211,10 +1224,12 @@ app.ticker.add(() => {
       const dist = (x, y) => Math.hypot(x - me.x, y - me.y); let st = null, sd = 1e9;   // the nearest station in reach (same rule as the server)
       for (const t of S.st || []) { if (t[1] !== 'bench' && t[1] !== 'chest' && t[1] !== 'pot' && t[1] !== 'smelter') continue; const dd = dist(t[2], t[3]); if (dd < RC.RADIUS[t[1]] + 62 && dd < sd) { sd = dd; st = t; } }
       if (st && Math.hypot(me.x, me.y) < 80 && Math.hypot(me.x, me.y) < sd) st = null;   // the fire is closer than the station
+      let gt = null, gd = 70; for (const t of S.st || []) if (t[1] === 'gate') { const a = (t[7] || 0) * Math.PI / 4, ux = Math.cos(a), uy = Math.sin(a), u = Math.max(-52, Math.min(52, (me.x - t[2]) * ux + (me.y - t[3]) * uy)), d = Math.hypot(me.x - (t[2] + ux * u), me.y - (t[3] + uy * u)); if (d < gd) { gd = d; gt = t; } }   // a gate in reach: ACT swings it open / shut
       const nb = (S.bt || []).find(b => dist(b[1], b[2]) < 125);
       if (S.p.some(q => q[10] && q[0] !== myId && dist(q[3], q[4]) < 60)) lab = 'REVIVE';
       else if (nb) lab = nb[4] >= 2 ? 'FULL' : 'ENTER';
       else if (window.xActLabel && xActLabel(me)) lab = xActLabel(me);
+      else if (gt) lab = gt[8] ? 'CLOSE' : 'OPEN';
       else if (st) lab = st[1] === 'bench' ? 'CRAFT' : st[1] === 'chest' ? 'OPEN' : st[1] === 'pot' ? 'COOK' : 'SMELT';
       else if (Math.hypot(me.x, me.y) < 80) {
         const feed = (GC.BY[me.d[2]] || GC.BY.forester).feed || 1;
@@ -1288,7 +1303,7 @@ app.ticker.add(() => {
 let slotSig = '', slotFullAt = 0, menuClosedAt = 0;
 function useSlotAt(i) {   // tap a slot (or press 1-3): the boat starts placement, anything else (food, trap) is used
   const it = ((S && S.p.find(q => q[0] === myId)) || [])[19] || []; if (!it[i]) return;
-  if (RC.BOATS[it[i]]) { startPlacingBoat(i); return; }
+  if (RC.BOATS[it[i]]) { if (placingId === '__boat' && boatSlot === i) stopPlacing(); else startPlacingBoat(i); return; }   // tap the same boat again: put it away (unequip)
   if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'use', i }));
 }
 document.querySelectorAll('#slots .slot').forEach((el, i) => el.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); useSlotAt(i); }));
@@ -1473,7 +1488,7 @@ $('go').onclick = () => {
       $('rm').textContent = 'Room ' + roomCode + ' (tap to copy link)'; tipUntil = performance.now() + 14000; history.replaceState(null, '', '?room=' + roomCode);
     } else if (m.t === 'crafted') {
       GEAR = m.gear || GEAR; const msg = $('craftMsg'); msg.textContent = m.msg || ''; msg.style.color = m.ok ? '#7fe9a0' : '#ff8a80';
-      if (placingId && m.id === placingId) { if (m.ok) { const r = RC.BY[placingId], pl = pooled(); if ((r.kind !== 'wall' && r.kind !== 'trap') || pl.wood < r.cost.wood || pl.stone < r.cost.stone || pl.scrap < (r.cost.scrap || 0)) stopPlacing(); } else { const me0 = ents2['p' + myId]; if (me0) floatText(me0.x, me0.y - 6, m.msg || 'Cannot place here', 0xff8a80); } }
+      if (placingId && m.id === placingId) { if (m.ok) { const r = RC.BY[placingId], pl = pooled(); if ((r.kind !== 'wall' && r.kind !== 'trap' && r.kind !== 'gate') || pl.wood < r.cost.wood || pl.stone < r.cost.stone || pl.scrap < (r.cost.scrap || 0)) stopPlacing(); } else { const me0 = ents2['p' + myId]; if (me0) floatText(me0.x, me0.y - 6, m.msg || 'Cannot place here', 0xff8a80); } }
       if (m.ok) { SFX.levelup(); const me = ents2['p' + myId]; if (me) floatText(me.x, me.y - 10, m.msg, 0xffe082); }
       if (craftOpen) buildCraft();
     } else if (m.t === 'toast') {

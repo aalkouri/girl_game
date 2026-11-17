@@ -18,7 +18,8 @@
     { id: 'boat', n: 'Boat', e: '⛵', kind: 'boat', scrap: true, cost: { wood: 20, stone: 0, scrap: 4 }, d: 'Carries two players across the sea to other islands. It goes into one of your slots - use it, then put it in the water at the shore.' },
     { id: 'trap', n: 'Trap', e: '🪤', kind: 'item', item: 'trap', scrap: true, cost: { wood: 0, stone: 0, scrap: 2 }, d: 'Goes into one of your slots. Tap it there to set it down where you stand. When the big monster runs over it he is stuck for 20 seconds. One use.' },
     { id: 'campfire', n: 'Campfire', e: '🔥', kind: 'item', item: 'campfire', cost: { wood: 25, stone: 10 }, d: 'Goes into one of your slots. Tap it to light a campfire where you stand on an outer island (not near the shore). Only one campfire per island. It burns, protects and can be upgraded just like the main fire.' },
-    { id: 'wall', n: 'Spike Wall', e: '🚧', kind: 'wall', cost: { wood: 6, stone: 0 }, max: 24, d: 'A solid, indestructible barricade that blocks aliens. Placed in front of you, near camp.' },
+    { id: 'wall', n: 'Wood Wall', e: '🚧', kind: 'wall', cost: { wood: 6, stone: 0 }, max: 24, d: 'A solid, indestructible barricade that blocks aliens. Placed in front of you, near camp.' },
+    { id: 'gate', n: 'Gate', e: '🚪', kind: 'gate', cost: { wood: 12, stone: 0 }, max: 8, d: 'About two walls wide. Press ACT / E next to it to swing it open so you can walk through, and again to close it. Closed, it blocks aliens like a wall.' },
   ];
   // things you can cook at a cooking pot (cost is in berries)
   const FOOD = [
@@ -35,8 +36,8 @@
   const fuelMax = lvl => lvl <= 5 ? 150 + (lvl - 1) * 75 : 450 + (lvl - 5) * 40;
   const SMELT = { cost: 5, time: 10, queue: 5 };   // rocks per scrap, seconds per scrap, jobs a smelter can hold
   const FIRE_R = 46;   // footprint of the fire pit (flames + stone ring)
-  const fireClear = kind => FIRE_R + (({ bench: 30, chest: 26, pot: 24, smelter: 30, wall: 24, trap: 18 })[kind] || 24) + 10;   // closest an item's centre may be to the fire: its whole body stays off the pit
-  const RADIUS = { bench: 30, chest: 26, pot: 24, smelter: 30, wall: 24, trap: 18 };   // collision radius of each placeable (shared by server and the placement ghost)
+  const fireClear = kind => FIRE_R + (({ bench: 30, chest: 26, pot: 24, smelter: 30, wall: 24, gate: 52, trap: 18 })[kind] || 24) + 10;   // closest an item's centre may be to the fire: its whole body stays off the pit
+  const RADIUS = { bench: 30, chest: 26, pot: 24, smelter: 30, wall: 24, gate: 52, trap: 18 };   // collision radius of each placeable (shared by server and the placement ghost)
   // Every island except home is split by biome: the quarter facing the home island (at 0,0) is forest, the other three
   // quarters are that island's own biome (island.b, e.g. 'd' desert). A chord at 0.404 r from the centre cuts off 25% of
   // a circle's area; the edge wobbles a little so it doesn't look ruled. Shared so the server's trees and the client's grass line up.
