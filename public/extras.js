@@ -43,7 +43,7 @@ function xInit(m) {
       const a = rng() * TAU, d = Math.sqrt(rng()) * 70, sp = new PIXI.Sprite(list[Math.floor(rng() * list.length)]);
       sp.anchor.set(.5, .88); sp.position.set(l.x + Math.cos(a) * d, l.y + Math.sin(a) * d * .75); sp.scale.set(.85 + rng() * .5); sp.zIndex = sp.y; cullList.push({ c: sp, x: sp.x, y: sp.y });
     }
-    if (l.tier) { const c = new PIXI.Container(), sp = new PIXI.Sprite(T_LCHEST[l.tier][0]); sp.anchor.set(.5, .85); c.addChild(sp); c.position.set(l.cx, l.cy); c.zIndex = l.cy; cullList.push({ c, x: l.cx, y: l.cy }); lootE[l.id] = { sp, tier: l.tier, open: 0 }; }
+    if (l.tier) { const c = new PIXI.Container(), sp = new PIXI.Sprite(T_LCHEST[l.tier][0]); sp.anchor.set(.5, .85); c.addChild(sp); c.position.set(l.cx, l.cy); c.zIndex = l.cy; cullList.push({ c, x: l.cx, y: l.cy }); lootE[l.id] = { sp, c, tier: l.tier, open: 0 }; }
     if (l.trader) {
       const c = new PIXI.Container(), sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5); sh.scale.set(.8, .5); sh.y = 8;
       const body = new PIXI.Sprite(T_TRADER[l.trader]); body.anchor.set(.5); body.scale.set(.95); body.rotation = Math.atan2(l.y - l.ty, l.x - l.tx) + 0;
@@ -54,7 +54,13 @@ function xInit(m) {
 }
 function xSnap(m) {
   const op = new Set(m.lo || []);
-  for (const id in lootE) { const e = lootE[id]; if (!e.open && op.has(+id)) { e.open = 1; e.sp.texture = T_LCHEST[e.tier][1]; } }
+  const firstLoot = !window._lootSeen; window._lootSeen = 1;
+  for (const id in lootE) { const e = lootE[id]; if (!e.open && op.has(+id)) { e.open = 1; e.openAt = firstLoot ? -1e9 : Date.now(); e.sp.texture = T_LCHEST[e.tier][1]; }
+    if (e.open && !e.gone) {   // an opened chest stays a few seconds, fades, then is gone (the ones opened before you joined are already gone)
+      const age = (Date.now() - e.openAt) / 1000;
+      if (age > 6.5) { e.gone = 1; const k = cullList.findIndex(o => o.c === e.c); if (k >= 0) cullList.splice(k, 1); e.c.destroy({ children: true }); }
+      else e.c.alpha = age < 5 ? 1 : 1 - (age - 5) / 1.5;
+    } }
   // campfires
   const seen = {};
   for (const c of m.cf || []) {
