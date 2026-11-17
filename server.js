@@ -329,7 +329,7 @@ class Room {
         const mate = P.find(q => q.down && dist(p, q) < 60);
         if (mate) { if (m <= 0.1) { mate.rev += dt * c.rev; mate.rv = 1; } }   // you have to stand still while reviving
         else if (p.actcd <= 0) {
-          const stn = this.struct.find(st => (st.k === 'chest' || st.k === 'pot' || st.k === 'smelter') && Math.hypot(p.x - st.x, p.y - st.y) < st.r + REACH);
+          const stn = this.struct.find(st => (st.k === 'bench' || st.k === 'chest' || st.k === 'pot' || st.k === 'smelter') && Math.hypot(p.x - st.x, p.y - st.y) < st.r + REACH);
           if (stn) { if (actEdge) { p.actcd = 0.4; if (stn.k === 'smelter') { const sr = this.smelterStart(p, stn); if (!sr.ok) send(p.ws, { t: 'toast', msg: sr.msg }); } else send(p.ws, { t: 'open', what: stn.k, id: stn.id }); } }
           else if (d < 80) {
             const per = 15 * c.feed, need = maxF - f.fuel;
@@ -346,7 +346,8 @@ class Room {
                 if (best.k === 'b') this.spill(best, Math.max(1, Math.round(2 * c.food)));   // little strawberries pop out around the bush
                 else this.spill(best, Math.max(1, Math.round(SPILL[best.k] * (best.k === 't' ? c.wood : c.stone))));
               }
-            } else { p.actcd = 0.55; p.sw = (p.sw + 1) & 255; p.swk = 1; p.swa = p.fa; }   // nothing to chop: still swing
+            } else if (!this.struct.some(st => st.k === 'bench') && d < RC.camp(this.fire.lvl)) { if (actEdge) { p.actcd = 0.4; send(p.ws, { t: 'open', what: 'bench', id: 0 }); } }   // no bench yet: ACT in camp opens the build menu so you can place the first one
+            else { p.actcd = 0.55; p.sw = (p.sw + 1) & 255; p.swk = 1; p.swa = p.fa; }   // nothing to chop: still swing
           }
         }
       }

@@ -599,7 +599,6 @@ function buildCraft() {
 }
 const refreshSig = () => { const iv = inv(); return iv.wood + ',' + iv.stone + ',' + hasBench() + ',' + JSON.stringify(GEAR); };
 function setCraft(open) { if (open) { if ((S && S.st || []).some(t => t[1] === 'bench')) armDismantle($('craftDis'), () => nearestOf('bench')); else $('craftDis').style.display = 'none'; } craftOpen = open; $('craft').style.display = open ? 'flex' : 'none'; if (open) { $('craftMsg').textContent = ''; buildCraft(); } }
-$('craftBtn').addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); SFX.init(); setCraft(!craftOpen); });
 $('craftClose').onclick = () => setCraft(false);
 
 // ---- shared chest + cooking pot menus ----
@@ -708,7 +707,7 @@ function onSnap(m) {
   syncStructs(m, !prevS);
   if (chestId !== null) { if (!nearStruct(chestId)) closeChest(); else buildChest(); }
   if (potOpen) { if (!anyPotNear()) closePot(); else buildPot(); }
-  if (craftOpen && refreshSig() !== craftSig) buildCraft();
+  if (craftOpen) { const bid = nearestOf('bench'), me2 = ents2['p' + myId], benchNear = bid != null ? nearStruct(bid) : !!(me2 && Math.hypot(me2.x, me2.y) < RC.camp(m.f[2])); if (!benchNear) setCraft(false); else if (refreshSig() !== craftSig) buildCraft(); }
   const mp = m.p.find(p => p[0] === myId);
   if (mp) {
     if (lastInv) { const dw = mp[7] - lastInv[0], ds = mp[8] - lastInv[1], df = mp[9] - lastInv[2], e = ents2['p' + myId];
@@ -807,15 +806,16 @@ app.ticker.add(() => {
     let lab = 'ACT';
     if (placingId) lab = 'PLACE';
     else if (!me.d[10]) {
-      const dist = (x, y) => Math.hypot(x - me.x, y - me.y), st = (S.st || []).find(t => (t[1] === 'chest' || t[1] === 'pot' || t[1] === 'smelter') && dist(t[2], t[3]) < RC.RADIUS[t[1]] + 62);
+      const dist = (x, y) => Math.hypot(x - me.x, y - me.y), st = (S.st || []).find(t => (t[1] === 'bench' || t[1] === 'chest' || t[1] === 'pot' || t[1] === 'smelter') && dist(t[2], t[3]) < RC.RADIUS[t[1]] + 62);
       if (S.p.some(q => q[10] && q[0] !== myId && dist(q[3], q[4]) < 60)) lab = 'REVIVE';
-      else if (st) lab = st[1] === 'chest' ? 'OPEN' : st[1] === 'pot' ? 'COOK' : 'SMELT';
+      else if (st) lab = st[1] === 'bench' ? 'CRAFT' : st[1] === 'chest' ? 'OPEN' : st[1] === 'pot' ? 'COOK' : 'SMELT';
       else if (Math.hypot(me.x, me.y) < 80) {
         const feed = (GC.BY[me.d[2]] || GC.BY.forester).feed || 1;
         lab = S.f[1] - S.f[0] > 15 * feed * .5 ? 'REFUEL' : S.f[2] < 5 ? 'UPGRADE' : 'ACT';
       } else {
         let bd = 55, near = null; for (const r of resNodes) if (r.hp > 0) { const dd = dist(r.x, r.y); if (dd < bd) { bd = dd; near = r; } }
         if (near) lab = near.k === 't' ? 'CHOP' : near.k === 'r' ? 'MINE' : 'PICK';
+        else if (!(S.st || []).some(t => t[1] === 'bench') && Math.hypot(me.x, me.y) < RC.camp(S.f[2])) lab = 'BUILD';   // no bench yet: ACT in camp opens the build menu
       }
     }
     if (S.dr && !me.d[10] && (me.d[19] || []).length >= 3 && performance.now() - slotFullAt > 2500 && S.dr.some(q => q[1] === 'q' && Math.hypot(q[2] - me.x, q[3] - me.y) < 34)) { slotFullAt = performance.now(); floatText(me.x, me.y - 14, 'Slots full', 0xff8a80); }
@@ -1053,7 +1053,7 @@ $('go').onclick = () => {
     } else if (m.t === 'toast') {
       const me = ents2['p' + myId]; if (me) floatText(me.x, me.y - 6, m.msg, 0xff8a80); SFX.pickup();
     } else if (m.t === 'open') {
-      SFX.init(); if (m.what === 'chest') { SFX.chest(); openChest(m.id); } else { SFX.chest(); openPot(); }
+      SFX.init(); if (m.what === 'chest') { SFX.chest(); openChest(m.id); } else if (m.what === 'bench') { if (!craftOpen) { SFX.chest(); closeChest(); closePot(); setCraft(true); } } else { SFX.chest(); openPot(); }
     } else if (m.t === 'cooked') {
       const msg = $('potMsg'); msg.textContent = m.msg || ''; msg.style.color = m.ok ? '#7fe9a0' : '#ff8a80';
       if (m.b) { for (const k in BUFF) BUFF[k] = m.b[k] || 0; buffAt = performance.now(); }
