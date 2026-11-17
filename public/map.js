@@ -16,7 +16,7 @@ function mapInit(m) {
     b.style.cssText = 'bottom:max(152px,calc(env(safe-area-inset-bottom) + 142px));font-size:18px'; $('btns').appendChild(b);
     b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); toggleMap(); });
     const d = document.createElement('div'); d.id = 'mapView'; d.className = 'ov'; d.style.cssText = 'display:none;align-items:center;justify-content:center;z-index:55;background:#030a14ee';
-    d.innerHTML = '<div style="position:relative"><canvas id="mapCv" style="border:2px solid #ffd000;border-radius:12px;background:#0b1623;display:block"></canvas><button class="mini gray" id="mapClose" style="position:absolute;right:8px;top:8px">Close</button><div id="mapLeg" style="position:absolute;left:10px;bottom:8px;font-size:12px;font-weight:700;text-shadow:0 1px 3px #000;opacity:.9">🔥 camp  ⛵ boat  🔮 trader  · fog clears as you explore</div></div>';
+    d.innerHTML = '<div style="position:relative"><canvas id="mapCv" style="border:2px solid #ffd000;border-radius:12px;background:#0b1623;display:block"></canvas><button class="mini gray" id="mapClose" style="position:absolute;right:8px;top:8px">Close</button><div id="mapLeg" style="position:absolute;left:10px;bottom:8px;font-size:12px;font-weight:700;text-shadow:0 1px 3px #000;opacity:.9">🔥 camp  ⛵ boat  🐺🎣⚒️⚓🔮 traders  · fog clears as you explore</div></div>';
     document.body.appendChild(d); d.querySelector('#mapClose').onclick = () => toggleMap(false);
     d.addEventListener('pointerdown', e => { if (e.target === d) toggleMap(false); });
   }
@@ -74,7 +74,9 @@ function drawMap() {
   g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = '16px system-ui,sans-serif';
   g.fillText('🔥', X(0), Y(0));
   for (const c of S.cf || []) g.fillText('🔥', X(c[1]), Y(c[2]));
-  for (const l of (typeof LOOT !== 'undefined' ? LOOT : [])) if (l.trader && revealed(l.tx, l.ty)) g.fillText('🔮', X(l.tx), Y(l.ty));
+  for (const l of (typeof LOOT !== 'undefined' ? LOOT : [])) if (l.trader && revealed(l.tx, l.ty)) {   // a discovered trader stays on the map, each kind with its own icon
+    const T = RC.TRADERS[l.trader]; g.beginPath(); g.arc(X(l.tx), Y(l.ty), 11, 0, TAU); g.fillStyle = '#14304acc'; g.fill(); g.lineWidth = 2; g.strokeStyle = '#ffd000'; g.stroke(); g.font = '14px system-ui,sans-serif'; g.fillStyle = '#fff'; g.fillText(T.e, X(l.tx), Y(l.ty) + 1); g.font = '16px system-ui,sans-serif';
+  }
   for (const b of S.bt || []) g.fillText('⛵', X(b[1]), Y(b[2]));
   for (const p of S.p) { const me = p[0] === myId, e = ents2['p' + p[0]], x = e ? e.x : p[3], y = e ? e.y : p[4]; g.beginPath(); g.arc(X(x), Y(y), me ? 7 : 5, 0, TAU); g.fillStyle = me ? '#ffeb3b' : '#4fc3f7'; g.fill(); g.lineWidth = 2; g.strokeStyle = '#000'; g.stroke(); if (!me) { g.font = '11px system-ui,sans-serif'; g.fillStyle = '#fff'; g.fillText((p[1] || '').slice(0, 9), X(x), Y(y) - 12); g.font = '16px system-ui,sans-serif'; } }
 }

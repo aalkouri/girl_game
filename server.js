@@ -189,12 +189,14 @@ function genLoot(islands, code) {
     for (let k = 0, tries = 0; k < n && tries < 800; tries++) {
       const a = rnd() * 6.283, d = 160 + Math.sqrt(rnd()) * Math.max(100, is.r - 520), x = is.x + Math.cos(a) * d, y = is.y + Math.sin(a) * d;
       if (out.some(l => l.isl === i && Math.hypot(l.x - x, l.y - y) < 500)) continue;
-      const q = rnd(), tier = q < 0.30 ? 1 : q < 0.50 ? 2 : q < 0.58 ? 3 : 0, trader = rnd() < 0.18 ? 1 + Math.floor(rnd() * 5) : 0, seed = Math.floor(rnd() * 1e6), ca = (seed % 628) / 100;
+      const q = rnd(), tier = q < 0.30 ? 1 : q < 0.50 ? 2 : q < 0.58 ? 3 : 0, trader = 0, seed = Math.floor(rnd() * 1e6), ca = (seed % 628) / 100;
       out.push({ id: id++, isl: i, x: Math.round(x), y: Math.round(y), b: RC.biomeAt(is.x, is.y, is.r, is.b, x, y), seed, tier, cx: Math.round(x + Math.cos(ca) * 90), cy: Math.round(y + Math.sin(ca) * 90), trader, tx: Math.round(x + Math.cos(ca + 3.14159) * 105), ty: Math.round(y + Math.sin(ca + 3.14159) * 105), open: 0 }); k++;
     }
   }
-  const have = new Set(out.map(l => l.trader)), rnd = seeded(code + '@traders');   // every kind of trader exists somewhere in the world
-  for (let t = 1; t <= 5; t++) if (!have.has(t)) { const c = out.filter(l => !l.trader); if (c.length) c[Math.floor(rnd() * c.length)].trader = t; }
+  const rnd = seeded(code + '@traders');   // every outer island gets at least one trader, and a 35% chance of a second
+  for (let i = 1; i < islands.length; i++) { const here = out.filter(l => l.isl === i); if (!here.length) continue; const n = rnd() < 0.35 && here.length > 1 ? 2 : 1; for (let k = 0; k < n; k++) { const c = here.filter(l => !l.trader); if (!c.length) break; c[Math.floor(rnd() * c.length)].trader = 1 + Math.floor(rnd() * 5); } }
+  const have = new Set(out.map(l => l.trader));   // every kind of trader exists somewhere in the world
+  for (let t = 1; t <= 5; t++) if (!out.some(l => l.trader === t)) { const c = out.filter(l => l.trader && out.filter(q => q.trader === l.trader).length > 1); if (c.length) c[Math.floor(rnd() * c.length)].trader = t; }   // retype a duplicate so every kind exists (still 1-2 per island)
   return out;
 }
 const SLOTS = 3, TRAP_SEC = 20, ARROW_SPEED = 520;
