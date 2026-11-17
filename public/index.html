@@ -3,6 +3,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>Island Night</title>
+<link rel="icon" type="image/png" href="ui/favicon.png">
+<link rel="apple-touch-icon" href="ui/apple-touch-icon.png">
 <style>
 html,body{margin:0;height:100%;overflow:hidden;background:#0b1a2a;color:#fff;font-family:system-ui,sans-serif;touch-action:none;user-select:none;-webkit-user-select:none}
 #vig{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.35) 100%)}
@@ -36,16 +38,28 @@ html,body{margin:0;height:100%;overflow:hidden;background:#0b1a2a;color:#fff;fon
 #jbase,#jknob{position:fixed;display:none;pointer-events:none;border-radius:50%;transform:translate(-50%,-50%)}
 #jbase{width:110px;height:110px;border:3px solid #fff6;background:#ffffff12;box-shadow:0 0 0 46px #ffb74d14,0 0 0 48px #ffb74d33}
 #jknob{width:44px;height:44px;background:#fff8}
-#lobby{position:fixed;inset:0;background:#0b1a2af2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:16px;overflow:auto}
-#lobby h1{margin:0;font-size:32px}
-#lobby input{font-size:18px;padding:12px;border-radius:10px;border:0;width:min(300px,80vw);text-align:center}
-#go{font-size:20px;padding:14px 40px;border-radius:12px;border:0;background:#1e9e6a;color:#fff;font-weight:700}
-#err{color:#ff8a80;min-height:20px}
-#chooseBtn{display:flex;align-items:center;gap:10px;width:min(300px,80vw);padding:10px 14px;border-radius:12px;border:2px solid #ffd000;background:#274a6d;color:#fff;font-size:16px;text-align:left}
+/* main menu: forest/campfire scene with a hanging scroll; frames are 9-slice border-images so they stretch cleanly */
+#lobby{position:fixed;inset:0;background:#0b1a2a url(ui/bg.webp) center bottom/cover no-repeat;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px 16px max(18vh,110px);box-sizing:border-box;overflow:auto;text-shadow:0 1px 3px #000a}
+#scroll{display:flex;flex-direction:column;align-items:center;gap:10px;width:min(340px,100%);box-sizing:border-box;border-style:solid;border-width:22px 16px 24px;border-image:url(ui/panel.webp) 44 30 46 30 fill/22px 16px 24px stretch;padding:14px 12px 8px;filter:drop-shadow(0 10px 24px #000b)}
+#lobby h1{margin:0;font-size:28px;display:flex;align-items:center;gap:8px;letter-spacing:.01em}
+#lobby h1 img{height:30px}
+#lobby .tag{opacity:.8;text-align:center;font-size:13px;line-height:1.35;margin-top:-4px}
+#lobby .field{font:600 17px system-ui,sans-serif;padding:9px 12px;width:100%;box-sizing:border-box;text-align:center;color:#fff;background:none;outline:none;border-style:solid;border-width:10px 22px;border-image:url(ui/field.webp) 40 82 fill/10px 22px stretch;text-shadow:0 1px 2px #000}
+#lobby .field::placeholder{color:#fff8}
+#lobby .field:focus{filter:brightness(1.25)}
+#go{font-size:20px;letter-spacing:.06em;width:150px;height:54px;padding:0 0 4px;border:0;background:url(ui/play.webp) center/100% 100% no-repeat;color:#fff;font-weight:800;text-shadow:0 2px 3px #0008;cursor:pointer;transition:transform .06s,filter .15s}
+#go:hover{filter:brightness(1.1)}#go:active{transform:scale(.96)}
+#err{color:#ff8a80;min-height:18px;font-size:13px;text-align:center}
+#runres{color:#ffe082;font-weight:700;font-size:14px;text-align:center}
+#runres:empty{display:none}
+#lobby .who{font-size:11px;opacity:.75;text-align:center}
+#chooseBtn{display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;padding:4px 10px;border-style:solid;border-width:9px 12px;border-image:url(ui/classbtn.webp) 32 40 fill/9px 12px stretch;background:none;color:#fff;font-size:16px;text-align:left;cursor:pointer;text-shadow:0 1px 2px #000}
+#chooseBtn:active{filter:brightness(1.15)}
 #chooseBtn #cIcon{font-size:26px}
 #chooseBtn b{display:block;font-size:16px}
-#chooseBtn small{display:block;opacity:.85;font-size:12px;color:#ffd000}
+#chooseBtn small{display:block;opacity:.9;font-size:12px;color:#ffd54f}
 .diaBar{font-size:15px;color:#7fe9ff;font-weight:700}
+.diaBar img{height:18px;vertical-align:-3px}
 .link{font-size:13px;opacity:.75;text-decoration:underline;cursor:pointer}
 .ov{position:fixed;inset:0;background:#06101cf5;display:none;flex-direction:column;z-index:20}
 #picker .top{display:flex;align-items:center;justify-content:space-between;padding:max(12px,env(safe-area-inset-top)) 14px 10px;font-size:18px;font-weight:800;border-bottom:1px solid #fff2}
@@ -77,25 +91,28 @@ html,body{margin:0;height:100%;overflow:hidden;background:#0b1a2a;color:#fff;fon
   <div class="row"><div><div id="t1"></div><div id="bar"><i></i></div><div id="inv"></div><div id="buffs" style="font-size:13px;min-height:16px;color:#ffe082"></div></div><div style="text-align:right"><div id="rm" style="pointer-events:auto"></div><div id="pl"></div><div style="color:#7fe9ff;font-weight:700">💎 <span class="diaN">0</span></div></div></div>
 </div>
 <div id="banner"></div>
-<div id="snd" style="position:fixed;left:max(10px,env(safe-area-inset-left));bottom:max(12px,env(safe-area-inset-bottom));width:44px;height:44px;border-radius:50%;background:#0007;border:2px solid #fff4;display:flex;align-items:center;justify-content:center;font-size:20px;z-index:5">🔊</div>
+<div id="snd" role="button" aria-label="Sound" style="position:fixed;left:max(10px,env(safe-area-inset-left));bottom:max(12px,env(safe-area-inset-bottom));width:46px;height:46px;border-radius:50%;background:url(ui/sound.webp) center/100% 100% no-repeat;cursor:pointer;z-index:5"></div>
 <div id="campPtr" style="position:fixed;left:0;top:0;width:0;height:0;display:none;pointer-events:none;z-index:6"><div id="campBadge" style="position:absolute;left:-23px;top:-23px;width:46px;height:46px;border-radius:50%;background:#0b1a2acc;border:2px solid #ffb74d;display:flex;align-items:center;justify-content:center;font-size:26px;box-shadow:0 0 14px #ff8a1c88">🔥</div><div id="campArrow" style="position:absolute;left:-9px;top:-11px;width:18px;line-height:22px;font-size:20px;text-align:center;color:#ffd54f;text-shadow:0 1px 3px #000">▶</div><div id="campDist" style="position:absolute;left:-32px;top:26px;width:64px;text-align:center;font-size:12px;font-weight:700;text-shadow:0 1px 3px #000"></div></div>
 <div id="placeBar" style="position:fixed;left:50%;transform:translateX(-50%);top:max(116px,calc(env(safe-area-inset-top) + 108px));display:none;flex-direction:column;align-items:center;gap:6px;pointer-events:none;z-index:12;max-width:86vw"><div style="background:#0b1a2af0;border:2px solid #fff4;border-radius:14px;padding:8px 14px;text-align:center;box-shadow:0 4px 14px #0008"><div id="placeName" style="font-weight:800;font-size:15px"></div><div id="placeMsg" style="font-size:13px;min-height:17px"></div><div style="font-size:11px;opacity:.7;margin-top:2px">Walk to aim · ↻ turns it · ACT places it</div></div><div style="display:flex;gap:8px;pointer-events:auto"><button class="mini gray" id="placeRotR" aria-label="Rotate" style="width:40px;height:40px;padding:0;border-radius:50%;font-size:22px;line-height:1">↻</button><button class="mini gray" id="placeCancel" style="padding:8px 14px">Cancel</button></div></div>
 <div id="jbase"></div><div id="jknob"></div>
 <div id="btns"><div id="slots"><div class="slot"></div><div class="slot"></div><div class="slot"></div></div><div class="btn" id="act">ACT</div><div class="btn" id="hit">ATTACK</div><button class="zb" id="zoomIn" aria-label="Zoom in">+</button><button class="zb" id="zoomOut" aria-label="Zoom out">−</button></div>
 <div class="ov" id="chest" style="pointer-events:none;background:transparent;justify-content:flex-end;z-index:16"><div id="craftSheet"><div class="ch"><span>📦 Storage Chest</span><span style="font-weight:600;font-size:11px;opacity:.8;text-align:center">put-only · shared · used automatically when anyone crafts</span><button class="mini red" id="chestDis" style="display:none">Dismantle</button><button class="mini gray" id="chestClose">Close</button></div><div id="chestList" style="overflow-y:auto;padding:4px 12px 16px"></div></div></div>
 <div class="ov" id="pot" style="pointer-events:none;background:transparent;justify-content:flex-end;z-index:16"><div class="sheet"><div class="ch"><span>🍲 Cooking Pot</span><span id="potInv" style="font-weight:700;font-size:14px"></span><button class="mini red" id="potDis" style="display:none">Dismantle</button><button class="mini gray" id="potClose">Close</button></div><div id="potMsg" style="min-height:18px;padding:0 14px 4px;font-size:13px"></div><div id="potList" style="overflow-y:auto;padding:4px 12px 16px"></div></div></div>
-<div class="ov" id="craft" style="pointer-events:none;background:transparent;justify-content:flex-end;z-index:15"><div class="sheet"><div class="ch"><span>🛠️ Craft</span><span id="craftInv" style="font-weight:700;font-size:14px"></span><button class="mini red" id="craftDis" style="display:none">Dismantle</button><button class="mini gray" id="craftClose">Close</button></div><div id="craftMsg"></div><div id="craftList"></div></div></div>
+<div class="ov" id="smelt" style="pointer-events:none;background:transparent;justify-content:flex-end;z-index:16"><div class="sheet"><div class="ch"><span>⚒️ Smelter</span><span id="smeltInv" style="font-weight:700;font-size:14px"></span><button class="mini red" id="smeltDis" style="display:none">Dismantle</button><button class="mini gray" id="smeltClose">Close</button></div><div id="smeltMsg" style="min-height:18px;padding:0 14px 4px;font-size:13px"></div><div id="smeltList" style="overflow-y:auto;padding:4px 12px 16px"></div></div></div>
+<div class="ov" id="craft"style="pointer-events:none;background:transparent;justify-content:flex-end;z-index:15"><div class="sheet"><div class="ch"><span>🛠️ Craft</span><span id="craftInv" style="font-weight:700;font-size:14px"></span><button class="mini red" id="craftDis" style="display:none">Dismantle</button><button class="mini gray" id="craftClose">Close</button></div><div id="craftMsg"></div><div id="craftList"></div></div></div>
 <div id="lobby">
-  <h1>🌙 Island Night</h1>
-  <div style="opacity:.8;text-align:center;max-width:320px;font-size:14px">Gather wood, keep the fire alive, survive the alien nights together.</div>
-  <input id="name" placeholder="Your name" maxlength="12">
-  <button id="chooseBtn"><span id="cIcon">🪓</span><span><b id="cName">Forester</b><small>Choose Classes ▸</small></span></button>
-  <div class="diaBar">💎 <span class="diaN">0</span> Diamonds</div>
-  <div id="runres" style="color:#ffe082;font-weight:700;font-size:15px;min-height:0;text-align:center"></div>
-  <input id="room" placeholder="Room code (optional)" maxlength="4" style="text-transform:uppercase">
+ <div id="scroll">
+  <h1><img src="ui/moon.webp" alt=""> Island Night</h1>
+  <div class="tag">Gather wood, keep the fire alive, survive the alien nights together.</div>
+  <input id="name" class="field" placeholder="Your name" maxlength="12">
+  <button id="chooseBtn"><span id="cIcon">🪓</span><span><b id="cName">Forester</b><small>Change Classes ▸</small></span></button>
+  <div class="diaBar"><img src="ui/diamond.webp" alt=""> <span class="diaN">0</span> Diamonds</div>
+  <div id="runres"></div>
+  <input id="room" class="field" placeholder="Room code (optional)" maxlength="4" style="text-transform:uppercase">
   <button id="go">PLAY</button>
   <div id="err"></div>
-  <div style="font-size:12px;opacity:.75">Signed in as <span id="who"></span> · <span class="link" id="signout">Sign out</span></div>
+  <div class="who">Signed in as <span id="who"></span> · <span class="link" id="signout">Sign out</span></div>
+ </div>
   <div id="credit">Game by Amelia Alkouri</div>
 </div>
 <div class="ov" id="picker">
