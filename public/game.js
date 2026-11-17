@@ -334,7 +334,33 @@ const T_APELT = tex(40, 30, g => {   // an alpha wolf pelt: near-black with a pa
   poly(g, '#2e3238', P); g.fillStyle = '#4a4f57'; ell(g, 20, 15, 11, 5); g.fillStyle = '#c62828'; ell(g, 20, 13, 7, 1.6);
   g.strokeStyle = 'rgba(0,0,0,.6)'; g.lineWidth = 1.4; g.beginPath(); g.moveTo(P[0], P[1]); for (let i = 2; i < P.length; i += 2) g.lineTo(P[i], P[i + 1]); g.closePath(); g.stroke();
 });
+const T_VULF = tex(150, 120, g => {   // a vulture seen from above with its wings spread, facing right: dark body, ragged feather tips, a bald red head and a hooked beak
+  g.save(); g.translate(75, 60);
+  for (const sg of [-1, 1]) {
+    g.fillStyle = '#2d2119'; g.beginPath(); g.moveTo(-6, 0); g.lineTo(-30, sg * 54); g.lineTo(-10, sg * 50); g.lineTo(-18, sg * 58); g.lineTo(4, sg * 46); g.lineTo(0, sg * 56); g.lineTo(14, sg * 40); g.lineTo(26, sg * 8); g.closePath(); g.fill();
+    g.fillStyle = '#44322a'; g.beginPath(); g.moveTo(-4, sg * 2); g.lineTo(-20, sg * 32); g.lineTo(10, sg * 26); g.lineTo(20, sg * 6); g.closePath(); g.fill();
+  }
+  g.fillStyle = '#2d2119'; g.beginPath(); g.moveTo(-24, -6); g.lineTo(-46, -12); g.lineTo(-44, 0); g.lineTo(-46, 12); g.lineTo(-24, 6); g.closePath(); g.fill();   // tail
+  g.fillStyle = '#3a2a20'; g.beginPath(); g.ellipse(0, 0, 30, 13, 0, 0, TAU); g.fill(); g.fillStyle = '#d9d2c4'; g.beginPath(); g.ellipse(26, 0, 7, 9, 0, 0, TAU); g.fill();   // body and a pale ruff
+  g.fillStyle = '#c4524a'; g.beginPath(); g.ellipse(36, 0, 8, 6, 0, 0, TAU); g.fill(); g.fillStyle = '#e0c060'; g.beginPath(); g.moveTo(42, -3); g.lineTo(52, 1); g.lineTo(42, 4); g.closePath(); g.fill();
+  g.fillStyle = '#111'; g.beginPath(); g.arc(38, -3, 1.4, 0, TAU); g.fill(); g.beginPath(); g.arc(38, 3, 1.4, 0, TAU); g.fill();
+  g.restore();
+});
+const T_VULL = tex(90, 62, g => {   // landed: wings folded, hunched
+  g.save(); g.translate(45, 31);
+  g.fillStyle = '#2d2119'; g.beginPath(); g.moveTo(-34, -4); g.lineTo(-18, -14); g.lineTo(14, -12); g.lineTo(20, 0); g.lineTo(14, 12); g.lineTo(-18, 14); g.lineTo(-34, 4); g.closePath(); g.fill();
+  g.strokeStyle = '#4b382d'; g.lineWidth = 2; g.beginPath(); g.moveTo(-26, -6); g.lineTo(8, -8); g.moveTo(-26, 6); g.lineTo(8, 8); g.stroke();
+  g.fillStyle = '#d9d2c4'; g.beginPath(); g.ellipse(18, 0, 6, 9, 0, 0, TAU); g.fill();
+  g.fillStyle = '#c4524a'; g.beginPath(); g.ellipse(28, 0, 8, 6, 0, 0, TAU); g.fill(); g.fillStyle = '#e0c060'; g.beginPath(); g.moveTo(34, -3); g.lineTo(43, 2); g.lineTo(34, 4); g.closePath(); g.fill();
+  g.fillStyle = '#111'; g.beginPath(); g.arc(30, -3, 1.3, 0, TAU); g.fill(); g.beginPath(); g.arc(30, 3, 1.3, 0, TAU); g.fill();
+  g.restore();
+});
 function mkWolf(w) {
+  if (w[10]) {   // a vulture
+    const c = new PIXI.Container(), sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5); const body = new PIXI.Sprite(w[10] === 1 ? T_VULF : T_VULL); body.anchor.set(.5); body.scale.set(.7);
+    const hp = new PIXI.Graphics(); hp.visible = false; c.addChild(sh, body, hp); ents.addChild(c); c.alpha = 0;
+    return { c, body, sh, hp, eyes: [], al: false, vul: 1, air: w[10] === 1, kind: 'w', ang: w[3] / 100, age: 0, lh: -1, flash: 0, lunge: 0, gait: 0, st: w[6], lift: w[10] === 1 ? 1 : 0 };
+  }
   if (w[9]) {   // bear (1) or woolly mammoth (2)
     const mm = w[9] === 2, c = new PIXI.Container(), sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5); sh.scale.set(mm ? 3 : 1.7, mm ? 1.3 : .8); sh.y = mm ? 20 : 12;
     const body = new PIXI.Sprite(mm ? T_MAMMOTH : T_BEAR); body.anchor.set(.5); body.scale.set(mm ? 1.15 : .95); const hp = new PIXI.Graphics(); hp.visible = false;
@@ -1159,6 +1185,7 @@ function onSnap(m) {
     if (e.lh >= 0 && w[4] < e.lh) { e.flash = .12; burst(e.x, e.y, 6, 0xffffff, 110, false, .1); SFX.hit(_d(e.x, e.y), _dx(e.x)); }
     if (w[6] === 1 && e.st !== 1) SFX.growl(_d(e.x, e.y), _dx(e.x));   // it noticed you
     if (w[7] && !(e.d && e.d[7])) e.lunge = .25;   // bite
+    if (e.vul) e.air = w[10] === 1;
     e.st = w[6]; e.lh = w[4]; aim(e, w[1], w[2], nowS); e.d = w;
   }
   for (const b of m.rb || []) {   // rabbits
@@ -1271,6 +1298,15 @@ app.ticker.add(() => {
       }
       if (e.lh !== p[5] || e.ld !== p[10] || e.lr !== p[11]) { e.lh = p[5]; e.ld = p[10]; e.lr = p[11]; if (p[10]) drawHp(e.hp, 40, Math.min(1, p[11] / 10), 0x4caf50); else drawHp(e.hp, 34, p[5] / p[6], 0xef5350); }
       if (sp > 30 && !down && !p[20]) { e.st = (e.st || 0) - dt; if (e.st <= 0) { e.st = .3; SFX.step(Math.hypot(e.x - me.x, e.y - me.y), e.x - me.x); } e.dust -= dt; if (e.dust <= 0) { e.dust = .14; emit(pfx, T_GLOW, e.x, e.y + 8, rnd(-8, 8), rnd(-8, 4), .5, .12, .3, 0xd9c79a, .35, false, 0); } }
+    } else if (e.kind === 'w' && e.vul) {   // vulture: wings beating high above the ground (its shadow stays on the ground), folded up when it has landed
+      const w = e.d; e.age += dt; e.c.alpha = Math.min(1, e.age * 2); e.lift += ((e.air ? 1 : 0) - e.lift) * Math.min(1, dt * 3);
+      e.c.renderable = Math.abs(e.x - camX) < W / Z / 2 + 120 && Math.abs(e.y - camY) < H / Z / 2 + 120;
+      e.ang = angLerp(e.ang, w[3] / 100, Math.min(1, dt * 6)); e.body.rotation = e.ang; e.c.zIndex = e.y + (e.lift > .5 ? 4000 : 0);
+      const tex2 = e.air ? T_VULF : T_VULL; if (e.body.texture !== tex2) e.body.texture = tex2;
+      const flap = e.air ? 1 + Math.sin(T * 9 + e.x * .01) * .18 : 1; e.body.scale.set(.7, .7 * flap); e.body.y = -e.lift * 46; e.sh.scale.set(1.5 - e.lift * .3, .6 - e.lift * .15); e.sh.alpha = .55 - e.lift * .25; e.sh.y = 8;
+      e.lunge = Math.max(0, e.lunge - dt); if (e.lunge > 0 && !e.air) { const lo = Math.sin(e.lunge / .25 * Math.PI) * 9; e.body.x = Math.cos(e.ang) * lo; e.body.y += Math.sin(e.ang) * lo; } else e.body.x = 0;
+      e.flash = Math.max(0, e.flash - dt); e.body.tint = e.flash > 0 ? 0xff8a80 : 0xffffff;
+      if (w[4] < w[5] && e.lh2 !== w[4]) { e.lh2 = w[4]; drawHp(e.hp, 34, w[4] / w[5], 0xef5350); e.hp.y = -34; e.hp.visible = true; } e.hp.alpha = e.air ? 0 : 1;
     } else if (e.kind === 'w') {   // wolf: trots when roaming, gallops when chasing or running home, lunges when it bites
       const w = e.d; e.age += dt; e.c.alpha = Math.min(1, e.age * 2);
       e.c.renderable = Math.abs(e.x - camX) < W / Z / 2 + (e.big ? 160 : 90) && Math.abs(e.y - camY) < H / Z / 2 + (e.big ? 160 : 90);

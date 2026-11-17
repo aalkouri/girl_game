@@ -480,7 +480,7 @@ class Room {
   killCredit(p, a) { if (a.hp <= 0 && !a.cred) { a.cred = 1; if (p.prof) { p.prof.k++; dirty = true; if (p.prof.k % 10 === 0) award(p, 1, 'kills'); } } }
   aoe(p, x, y, r, dmg, stun) {   // damage (and stun) every alien and wolf in a circle; the Charger cannot be hurt
     for (const a of this.aliens) if (a.hp > 0 && a.k !== 2 && Math.hypot(a.x - x, a.y - y) < r) { a.hp -= dmg; if (stun) a.stunT = stun; this.killCredit(p, a); }
-    for (const w of this.wolves || []) if (w.hp > 0 && Math.hypot(w.x - x, w.y - y) < r) { w.hp -= dmg; w.st = 1; w.tg = p.id; this.killCredit(p, w); }
+    for (const w of this.wolves || []) if (w.hp > 0 && !w.air && Math.hypot(w.x - x, w.y - y) < r) { w.hp -= dmg; w.st = 1; w.tg = p.id; this.killCredit(p, w); }
     for (const q of this.players.values()) send(q.ws, { t: 'fx', k: 'boom', x, y, r });
   }
   shoot(p, ang, dmg, speed, ttl, kind) { this.bullets.push({ id: this.nid++, x: p.x, y: p.y, vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed, dmg, ttl, owner: p.id, kind: kind || 0 }); }
@@ -520,7 +520,7 @@ class Room {
     for (let i = this.bullets.length - 1; i >= 0; i--) {
       const b = this.bullets[i]; b.x += b.vx * dt; b.y += b.vy * dt; b.ttl -= dt; let dead = b.ttl <= 0; const owner = this.players.get(b.owner);
       if (!dead) for (const a of this.aliens) if (a.hp > 0 && a.k !== 2 && Math.hypot(a.x - b.x, a.y - b.y) < (a.rad || 22)) { a.hp -= b.dmg; if (owner) this.killCredit(owner, a); dead = true; break; }
-      if (!dead) for (const w of this.wolves || []) if (w.hp > 0 && Math.hypot(w.x - b.x, w.y - b.y) < 24) { w.hp -= b.dmg; w.st = 1; w.tg = b.owner; if (owner) this.killCredit(owner, w); dead = true; break; }
+      if (!dead) for (const w of this.wolves || []) if (w.hp > 0 && !w.air && Math.hypot(w.x - b.x, w.y - b.y) < 24) { w.hp -= b.dmg; w.st = 1; w.tg = b.owner; if (owner) this.killCredit(owner, w); dead = true; break; }
       if (dead) this.bullets.splice(i, 1);
     }
     for (let i = this.turrets.length - 1; i >= 0; i--) {
@@ -705,13 +705,35 @@ class Room {
   }
   // snow wolves: roam the snow quarter of home; chase anyone who comes close; when the chase reaches the fire (or drags them
   // too far from home) they turn tail and run back to where they spawned. st: 0 roaming, 1 chasing, 2 running home
+  stepVulture(w, P, dt) {   // vultures: circle high up (cannot be hit), stalk a player, then land beside them and fight on the ground for a while, then fly off
+    w.cd -= dt; w.bite -= dt; w.t -= dt; const is = this.islands[w.isl | 0] || this.islands[0];
+    const pl = id => P.find(p => p.id === id && !p.down && !p.boat && this.onIsland(p, w.isl | 0));
+    const go = (tx, ty, sp) => { const dx = tx - w.x, dy = ty - w.y, d = Math.hypot(dx, dy) || 1; if (d > 4) { const m = Math.min(d, sp * dt); w.x += dx / d * m; w.y += dy / d * m; w.fa = Math.atan2(dy, dx); } return d; };
+    if (w.vs === 0) {   // circling over its home patch of desert
+      w.oa += dt * 0.35; go(w.hx + Math.cos(w.oa) * 260, w.hy + Math.sin(w.oa) * 260, 100);
+      let best = null, bd = 650; for (const p of P) if (!p.down && !p.boat && this.onIsland(p, w.isl | 0)) { const d = Math.hypot(p.x - w.x, p.y - w.y); if (d < bd) { bd = d; best = p; } }
+      if (best) { w.vs = 1; w.tg = best.id; w.t = 8 + Math.random() * 7; w.oa = Math.atan2(w.y - best.y, w.x - best.x); }
+    } else if (w.vs === 1) {   // circling above the player it picked, for 8-15 s
+      const p = pl(w.tg); if (!p || Math.hypot(p.x - w.x, p.y - w.y) > 1000) { w.vs = 0; w.air = 1; return; }
+      w.oa += dt * 0.9; go(p.x + Math.cos(w.oa) * 210, p.y + Math.sin(w.oa) * 210, 135);
+      if (w.t <= 0) { w.vs = 2; w.la = Math.random() * 6.283; }
+    } else if (w.vs === 2) {   // swooping down to a spot beside the player
+      const p = pl(w.tg); if (!p) { w.vs = 0; return; }
+      if (go(p.x + Math.cos(w.la) * 55, p.y + Math.sin(w.la) * 55, 230) < 22) { w.vs = 3; w.air = 0; w.t = 22; w.cd = 0.7; }
+    } else {   // on the ground: hop after the nearest player and peck; after a while it takes off again
+      let tg = null, bd = 520; for (const p of P) if (!p.down && !p.boat && this.onIsland(p, w.isl | 0)) { const d = Math.hypot(p.x - w.x, p.y - w.y); if (d < bd) { bd = d; tg = p; } }
+      if (tg) { const d = go(tg.x, tg.y, 115); if (d < 36 && w.cd <= 0) { w.cd = 1.4; w.bite = 0.25; this.hurt(tg, w.dmg); } }
+      if (tg) w.lost = 0; if (w.t <= 0 || (!tg && (w.lost = (w.lost || 0) + dt) > 4)) { w.vs = 0; w.air = 1; w.hx = w.x; w.hy = w.y; w.lost = 0; }   // time is up (or nobody is left near): take off
+    }
+    { const ex = w.x - is.x, ey = w.y - is.y, L = Math.hypot(ex, ey); if (L > is.r - 45) { w.x = is.x + ex * (is.r - 45) / L; w.y = is.y + ey * (is.r - 45) / L; } }
+  }
   stepWolves(P, dt) {
     if (!this.wolves) this.wolves = [];
     if ((this.wolfT -= dt) <= 0) {   // home's snow quarter and every snow island; all filled at once the first time, then one per island at a time
       const first = !this.wolfFull; this.wolfFull = 1; this.wolfT = WOLF.respawn;
       for (let i = 0; i < this.islands.length; i++) {
         const is = this.islands[i]; if (i > 0 && is.b !== 's' && is.b !== 'm') continue;
-        const want = i === 0 ? WOLF.n : WOLF.outer; let have = this.wolves.filter(w => w.isl === i).length;
+        const want = i === 0 ? WOLF.n : WOLF.outer; let have = this.wolves.filter(w => w.isl === i && !w.vul).length;
         for (let k = 0; k < (first ? want : 1) && have < want; k++) {
           let q = null;
           for (let t = 0; t < 40 && !q; t++) {
@@ -726,6 +748,17 @@ class Room {
           if (big) { const B = BIG[big]; this.wolves.push({ id: this.nid++, wolf: 1, big, heavy: 1, isl: i, alpha: 0, x: q[0], y: q[1], hx: q[0], hy: q[1], hp: B.hp, mhp: B.hp, run: B.run, dmg: B.dmg, reach: B.reach, bcd: B.cd, see: B.see, walk: B.walk, fa: Math.random() * 6.283, st: 0, tg: 0, cd: 0, wt: 0, wa: 0, bite: 0 }); continue; }
           const al = i > 0 && Math.random() < 0.08 + 0.55 * f, hp = al ? WOLF.aHp : WOLF.hp;   // alphas get more common the farther from home
           this.wolves.push({ id: this.nid++, wolf: 1, isl: i, alpha: al ? 1 : 0, x: q[0], y: q[1], hx: q[0], hy: q[1], hp, mhp: hp, run: al ? WOLF.aRun : WOLF.run, dmg: al ? WOLF.aDmg : WOLF.dmg, fa: Math.random() * 6.283, st: 0, tg: 0, cd: 0, wt: 0, wa: 0, bite: 0 });
+        }
+      }
+    }
+    if (this.wolfT === WOLF.respawn) {   // vultures circle over the desert: up to 2 per desert island, topped up on the wolf timer, never spawning in sight
+      for (let i = 1; i < this.islands.length; i++) {
+        const is = this.islands[i]; if (is.b !== 'd' && is.b !== 'm') continue;
+        let have = this.wolves.filter(w => w.vul && w.isl === i).length;
+        for (let k = 0; k < 2 && have < 2; k++) for (let t = 0; t < 30; t++) {
+          const a = Math.random() * 6.283, d = Math.sqrt(Math.random()) * (is.r - 300), x = is.x + Math.cos(a) * d, y = is.y + Math.sin(a) * d;
+          if (RC.biomeAt(is.x, is.y, is.r, is.b, x, y) !== 'd' || P.some(p => Math.hypot(p.x - x, p.y - y) < 900)) continue;
+          this.wolves.push({ id: this.nid++, wolf: 1, vul: 1, air: 1, vs: 0, isl: i, x, y, hx: x, hy: y, hp: 40, mhp: 40, dmg: 8, fa: Math.random() * 6.283, st: 0, tg: 0, cd: 0, wt: 0, wa: 0, bite: 0, oa: Math.random() * 6.283, t: 0 }); have++; break;
         }
       }
     }
@@ -745,6 +778,7 @@ class Room {
     }
     const nearFire = () => false;   // wolves, bears and mammoths are no longer scared of fire: they chase until the target is out of range (give-up distance) or they are too far from home (leash)
     for (const w of this.wolves) {
+      if (w.vul) { this.stepVulture(w, P, dt); continue; }
       w.cd -= dt; w.bite -= dt; let dx = 0, dy = 0, spd = 0; const wi = w.isl | 0, is = this.islands[wi] || this.islands[0];
       const home = Math.hypot(w.x - w.hx, w.y - w.hy);
       if (w.st === 2) {   // running home; after 3 s of that, anyone who comes close (away from the fire) gets chased again
@@ -777,7 +811,7 @@ class Room {
       w.x = nx; w.y = ny; w.fa = Math.atan2(dy, dx);
     }
     for (const w of this.wolves) if (w.hp <= 0 && !w.dropped) { w.dropped = 1; const BG = BIG[w.big], AL = w.alpha || w.big === 2, n = BG ? BG.meat[0] + (Math.random() * (BG.meat[1] + 1) | 0) : 1 + (Math.random() < 0.5 ? 1 : 0); for (let i = 0; i < n; i++) { const a = Math.random() * 6.283, d = 8 + Math.random() * (BG ? 40 : 18); this.pend.push({ k: 'n', x: w.x + Math.cos(a) * d, y: w.y + Math.sin(a) * d, t: 0.15 }); }
-      if (BG) { for (let i = 0; i < (w.big === 2 ? 3 : 1); i++) if (Math.random() < BG.pelt) this.pend.push({ k: 'h', x: w.x + 10 + i * 14, y: w.y - 6, t: 0.2 }); } else if (Math.random() < WOLF.pelt) this.pend.push({ k: 'h', x: w.x + 10, y: w.y - 6, t: 0.2 });
+      if (BG) { for (let i = 0; i < (w.big === 2 ? 3 : 1); i++) if (Math.random() < BG.pelt) this.pend.push({ k: 'h', x: w.x + 10 + i * 14, y: w.y - 6, t: 0.2 }); } else if (!w.vul && Math.random() < WOLF.pelt) this.pend.push({ k: 'h', x: w.x + 10, y: w.y - 6, t: 0.2 });
       if (AL && Math.random() < (w.big === 2 ? 1 : WOLF.aPelt)) this.pend.push({ k: 'H', x: w.x - 12, y: w.y + 8, t: 0.25 }); }   // alpha wolves (and mammoths) can drop an alpha pelt   // 1-2 meat scraps, and a 10% chance of a wolf pelt
     if (this.wolves.some(w => w.hp <= 0)) this.wolves = this.wolves.filter(w => w.hp > 0);
   }
@@ -890,7 +924,7 @@ class Room {
           else {
             const g = p.gear.rifle ? RC.GUNS.rifle : p.gear.pistol ? RC.GUNS.pistol : { dmg: c.dmg + (p.gear.sword ? 8 : 0), cd: Math.max(0.5, c.cd), speed: 800, ttl: 0.6 };   // no gun: a plain thrown shot
             p.hitcd = g.cd; let ang = p.fa, bd = 700;
-            if (i.am) ang = i.aim; else for (const t of [...this.aliens, ...(this.wolves || [])]) if (t.hp > 0 && t.k !== 2) { const dd = dist(p, t); if (dd < bd) { bd = dd; ang = Math.atan2(t.y - p.y, t.x - p.x); } }   // aboard you can aim all around
+            if (i.am) ang = i.aim; else for (const t of [...this.aliens, ...(this.wolves || [])]) if (t.hp > 0 && t.k !== 2 && !t.air) { const dd = dist(p, t); if (dd < bd) { bd = dd; ang = Math.atan2(t.y - p.y, t.x - p.x); } }   // aboard you can aim all around
             p.sw = (p.sw + 1) & 255; p.swk = 4; p.swa = ang; this.shoot(p, ang, g.dmg * (B.rage > 0 || B.power > 0 ? 2 : 1), g.speed, g.ttl, 3);
           }
         }
@@ -959,7 +993,7 @@ class Room {
       if (i.hit && p.hitcd <= 0 && !this.spendSta(p, STA.attack)) { p.hitcd = 0.3; this.winded(p); }
       else if (i.hit && p.hitcd <= 0 && !p.boat && (p.gear.rifle || p.gear.pistol)) {   // guns: ATTACK fires a bullet (auto-aimed at the nearest target in front)
         const g = p.gear.rifle ? RC.GUNS.rifle : RC.GUNS.pistol; p.hitcd = g.cd; let ang = p.fa, bd = 700;
-        if (!i.am) for (const t of [...this.aliens, ...(this.wolves || [])]) if (t.hp > 0 && t.k !== 2) { const dd = dist(p, t); let da = Math.atan2(t.y - p.y, t.x - p.x) - p.fa; da = Math.atan2(Math.sin(da), Math.cos(da)); if (dd < bd && Math.abs(da) < 1.0) { bd = dd; ang = Math.atan2(t.y - p.y, t.x - p.x); } }
+        if (!i.am) for (const t of [...this.aliens, ...(this.wolves || [])]) if (t.hp > 0 && t.k !== 2 && !t.air) { const dd = dist(p, t); let da = Math.atan2(t.y - p.y, t.x - p.x) - p.fa; da = Math.atan2(Math.sin(da), Math.cos(da)); if (dd < bd && Math.abs(da) < 1.0) { bd = dd; ang = Math.atan2(t.y - p.y, t.x - p.x); } }
         p.sw = (p.sw + 1) & 255; p.swk = 4; p.swa = ang; this.shoot(p, ang, g.dmg * (B.rage > 0 || B.power > 0 ? 2 : 1), g.speed, g.ttl, 3);
       }
       else if (i.hit && p.hitcd <= 0) {
@@ -971,7 +1005,7 @@ class Room {
         const consider = t => { const dd = ok(t); if (dd >= 0 && dd < bd) { bd = dd; best = t; } };
         for (const a of this.aliens) if (a.hp > 0 && a.k !== 2) consider(a);   // the Charger cannot be hit
         for (const b of this.rabbits) if (b.hp > 0) consider(b);   // rabbits too
-        for (const w of this.wolves || []) if (w.hp > 0) consider(w);   // and wolves
+        for (const w of this.wolves || []) if (w.hp > 0 && !w.air) consider(w);   // and wolves (vultures only once they have landed)
         p.sw = (p.sw + 1) & 255; p.swk = sp ? 5 : 4; p.swa = best ? Math.atan2(best.y - p.y, best.x - p.x) : p.fa;   // the weapon swings (or the spear pokes) even when nothing is in front of you
         if (best && best.rab) this.killRabbit(best);
         else if (best) {
@@ -1013,7 +1047,7 @@ class Room {
     }
     for (const st of this.struct) if (st.k === 'spike') {   // spike strips hurt every enemy on them (not the Charger), 10 damage a tick per enemy, and wear down as they do
       for (const e of [...this.aliens, ...(this.wolves || [])]) {
-        if (e.hp <= 0 || e.k === 2 || Math.hypot(e.x - st.x, e.y - st.y) > 36) continue;
+        if (e.hp <= 0 || e.k === 2 || e.air || Math.hypot(e.x - st.x, e.y - st.y) > 36) continue;
         e.spk = (e.spk || 0) - dt; if (e.spk > 0) continue; e.spk = 0.5; e.hp -= 10; if (e.wolf) { e.st = 1; } this.hitWall(st, 3); if (st.dead) break;
       }
     }
@@ -1103,7 +1137,7 @@ class Room {
       fp: (this.pools || []).map(q => [q.id, q.x, q.y, q.kind]),
       bt: this.boats.map(b => [b.id, Math.round(b.x), Math.round(b.y), Math.round(b.ang * 100), b.riders.length, b.drv, b.type || 'boat', Math.round(100 * (b.life == null ? 1 : b.life / RC.BOATS[b.type || 'boat'].life)), b.storm || 0]), sf: this.scrapFound ? 1 : 0,
       a: this.aliens.map(a => [a.id, Math.round(a.x), Math.round(a.y), Math.round(a.hp), a.mhp, a.k, a.fa === undefined ? null : Math.round(a.fa * 100), Math.ceil(a.trapT > 0 ? a.trapT : 0), a.aim > 0 ? Math.round(Math.min(1, a.aim / 1.5) * 100) : 0, a.spit ? 1 : 0]),
-      wf: (this.wolves || []).map(w => [w.id, Math.round(w.x), Math.round(w.y), Math.round(w.fa * 100), Math.round(w.hp), w.mhp, w.st, w.bite > 0 ? 1 : 0, w.alpha || 0, w.big || 0]),
+      wf: (this.wolves || []).map(w => [w.id, Math.round(w.x), Math.round(w.y), Math.round(w.fa * 100), Math.round(w.hp), w.mhp, w.st, w.bite > 0 ? 1 : 0, w.alpha || 0, w.big || 0, w.vul ? (w.air ? 1 : 2) : 0]),
       rb: this.rabbits.map(b => [b.id, Math.round(b.x), Math.round(b.y), Math.round(b.fa * 100), b.run ? 1 : b.sit ? 0 : 2]),
       cf: this.camps.map(c => [c.id, Math.round(c.x), Math.round(c.y), Math.round(c.fuel), RC.fuelMax(c.lvl), c.lvl, c.fuel > 0 ? RC.camp(c.lvl) : 0]),
       lo: this.loot.filter(l => l.open).map(l => l.id),
