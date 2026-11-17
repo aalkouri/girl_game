@@ -29,7 +29,7 @@ if (process.env.MAIL_MODE) config.mailMode = process.env.MAIL_MODE;
 if (process.env.MAIL_FROM) config.mailFrom = process.env.MAIL_FROM;
 const auth = require('./auth.js')({ dir: DIR, config });
 setInterval(() => { save(); auth.save(); }, 3000);
-for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => { save(); auth.save(); process.exit(0); });
+for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => { save(); auth.save(); saveRooms(); process.exit(0); });
 // accounts are keyed by lower-case email. Old anonymous profiles (random 16-32 char ids) can be claimed once at sign-in.
 const LEGACY = /^[A-Za-z0-9]{16,32}$/;
 function acct(email, create) {
@@ -238,9 +238,20 @@ class Room {
     return { ok: true, msg: f.n + ' ready!' };
   }
   ph() { return this.c < DAY ? 0 : this.c < DAY + DUSK ? 1 : 2; }
+  awayEntry(p) { return { t: Date.now(), s: { wood: p.wood, stone: p.stone, food: p.food, scrap: p.scrap, gear: p.gear, buff: p.buff, cls: p.cls, down: p.down, hp: p.hp, x: p.x, y: p.y } }; }
   stash(p) {   // remember a leaving player's character so they can come back (dropped connection) within the room window
     if (!p.email) return; const now = Date.now(); for (const [k, v] of this.away) if (now - v.t > ROOM_IDLE_SEC * 1000) this.away.delete(k);
-    this.away.set(p.email, { t: now, s: { wood: p.wood, stone: p.stone, food: p.food, scrap: p.scrap, gear: p.gear, buff: p.buff, cls: p.cls, down: p.down, hp: p.hp, x: p.x, y: p.y } });
+    this.away.set(p.email, this.awayEntry(p));
+  }
+  snapshot() {   // everything needed to rebuild this room after a server restart; connected players are saved as 'away' so they get their character back when they reconnect
+    const away = [...this.away]; for (const p of this.players.values()) if (p.email) away.push([p.email, this.awayEntry(p)]);
+    return { code: this.code, c: this.c, night: this.night, fire: this.fire, aliens: this.aliens, res: this.res, drops: this.drops, pend: this.pend, struct: this.struct, chargerNight: this.chargerNight, nid: this.nid, away };
+  }
+  static restore(o) {
+    const r = new Room(o.code);
+    Object.assign(r, { c: o.c, night: o.night, fire: o.fire, aliens: o.aliens || [], res: o.res, drops: o.drops || [], pend: o.pend || [], struct: o.struct || [], chargerNight: o.chargerNight || 0, nid: o.nid || 1, over: 0, emptyFor: 0 });
+    const now = Date.now(); r.away = new Map((o.away || []).map(([e, v]) => [e, { t: now, s: v.s }]));   // the reconnect window starts from the restart
+    return r;
   }
   add(ws, name, cls, pf, email) {
     const p = { id: this.nid++, ws, name, cls, prof: pf, gear: {}, buff: { speed: 0, regen: 0, dmg: 0 }, actPrev: 0, fa: 0, sw: 0, swk: 0, swa: 0, wood: parseInt(process.env.START_WOOD) || 0, stone: parseInt(process.env.START_STONE) || 0, food: parseInt(process.env.START_FOOD) || 0, scrap: 0, sta: STA.max, staCd: 0, tired: 0, actcd: 0, hitcd: 0, eat: 0, inp: { dx: 0, dy: 0, act: 0, hit: 0 } };
@@ -416,6 +427,14 @@ class Room {
 }
 
 const rooms = new Map();
+// ---------- rooms survive a server restart: saved to rooms.json every 3 s and on shutdown, reloaded at startup ----------
+const ROOMS_FILE = DIR && path.join(DIR, 'rooms.json'); let lastRoomsJson = '';
+function saveRooms() {
+  if (!ROOMS_FILE) return;
+  try { const j = JSON.stringify([...rooms.values()].map(r => r.snapshot())); if (j === lastRoomsJson) return; lastRoomsJson = j; fs.writeFileSync(ROOMS_FILE + '.tmp', j); fs.renameSync(ROOMS_FILE + '.tmp', ROOMS_FILE); } catch (e) { console.error('rooms save failed:', e.message); }
+}
+try { for (const o of JSON.parse(fs.readFileSync(ROOMS_FILE, 'utf8'))) rooms.set(o.code, Room.restore(o)); console.log('restored', rooms.size, 'room(s)'); } catch (e) { }
+setInterval(saveRooms, 3000);
 const code = () => { let c; do { c = Array.from({ length: 4 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.random() * 24 | 0]).join(''); } while (rooms.has(c)); return c; };
 
 const wss = new WebSocketServer({ server: srv, maxPayload: 1024 });
