@@ -26,7 +26,7 @@
   ];
   const BY = {}; LIST.forEach(r => BY[r.id] = r);
   const FOOD_BY = {}; FOOD.forEach(f => FOOD_BY[f.id] = f);
-  const ITEM_BY = Object.assign({ boat: { id: 'boat', n: 'Boat', e: '⛵' }, trap: { id: 'trap', n: 'Trap', e: '🪤' } }, FOOD_BY);   // everything that can sit in a slot
+  const ITEM_BY = Object.assign({ boat: { id: 'boat', n: 'Boat', e: '⛵' }, trap: { id: 'trap', n: 'Trap', e: '🪤' }, foot: { id: 'foot', n: "Lucky Rabbit's Foot", e: '🐾' } }, FOOD_BY);   // everything that can sit in a slot
   // the camp (safe ring + build area) grows a little with every fire level
   const FIRE_MAX = 20;   // the fire can be levelled up to 20 (it used to stop at 5)
   const camp = lvl => lvl <= 5 ? 140 + lvl * 40 : 340 + (lvl - 5) * 12;   // safe ring / build area: +40 per level up to 5, then +12 per level (520 at level 20)

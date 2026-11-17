@@ -229,6 +229,27 @@ const T_SCRAP = tex(36, 28, g => {
   g.strokeStyle = 'rgba(0,0,0,.45)'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(3, 20); g.lineTo(8, 8); g.lineTo(28, 6); g.lineTo(33, 18); g.lineTo(26, 25); g.lineTo(8, 25); g.closePath(); g.stroke();
   g.fillStyle = '#ffb74d'; circ(g, 14, 20, 1.6); circ(g, 22, 19, 1.3);
 });
+const T_MEAT = tex(34, 26, g => {   // a raw meat scrap with a little bone
+  g.fillStyle = '#f3e9d8'; g.fillRect(20, 10, 11, 4); circ(g, 31, 9.5, 2.6); circ(g, 31, 14.5, 2.6);
+  poly(g, '#b8323a', [3, 14, 7, 5, 17, 3, 23, 9, 22, 19, 13, 23, 5, 21]); poly(g, '#e2626a', [7, 7, 16, 5, 19, 10, 10, 12]);
+  g.fillStyle = '#f6d7c8'; ell(g, 11, 15, 4, 2); g.strokeStyle = 'rgba(60,0,10,.55)'; g.lineWidth = 1.4;
+  g.beginPath(); g.moveTo(3, 14); g.lineTo(7, 5); g.lineTo(17, 3); g.lineTo(23, 9); g.lineTo(22, 19); g.lineTo(13, 23); g.lineTo(5, 21); g.closePath(); g.stroke();
+});
+const T_RABBIT = tex(44, 30, g => {   // seen from above, facing right: round body, head, long ears laid back, white tail
+  g.fillStyle = '#8a6a4f'; ell(g, 18, 15, 12, 9.5);
+  g.fillStyle = '#9c7a5c'; ell(g, 31, 15, 7, 6);
+  g.fillStyle = '#7a5b42'; ell(g, 24, 10, 8, 2.6); ell(g, 24, 20, 8, 2.6);
+  g.fillStyle = '#e8b4a8'; ell(g, 24, 10, 6, 1.2); ell(g, 24, 20, 6, 1.2);
+  g.fillStyle = '#b8977a'; ell(g, 15, 15, 7, 5);
+  g.fillStyle = '#ffffff'; circ(g, 6.5, 15, 3.6);
+  g.fillStyle = '#1a1a1a'; circ(g, 34, 12.6, 1.2); circ(g, 34, 17.4, 1.2); g.fillStyle = '#e48a9a'; circ(g, 37.6, 15, 1.1);
+  g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 1.2; g.beginPath(); g.ellipse(18, 15, 12, 9.5, 0, 0, TAU); g.stroke();
+});
+function mkRabbit(b) {
+  const c = new PIXI.Container(), sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5); sh.scale.set(.55, .32); sh.y = 5;
+  const body = new PIXI.Sprite(T_RABBIT); body.anchor.set(.5); body.scale.set(.8); c.addChild(sh, body); ents.addChild(c); c.alpha = 0;
+  return { c, body, sh, kind: 'r', ang: b[3] / 100, age: 0, hop: 0 };
+}
 const T_ALIEN = tex(84, 84, g => {
   g.translate(42, 42);
   g.strokeStyle = '#2a0c3c'; g.lineWidth = 4; g.lineCap = 'round';
@@ -512,17 +533,17 @@ function stepFallers(dt) {
 }
 
 // ground pickups (logs from trees, stones from rocks): hop out, bob, fly to the player that grabs them
-const dropE = {}, flyers = [], DROP_S = { w: .8, s: .85, m: .9, f: .75, d: .9, q: 1 };
+const dropE = {}, flyers = [], DROP_S = { w: .8, s: .85, m: .9, f: .75, d: .9, q: 1, n: .8 };
 function syncDrops(m, _d, _dx) {
   const seen = {};
   for (const d of m.dr || []) {
     seen[d[0]] = 1; let e = dropE[d[0]];
     if (!e) {
       const c = new PIXI.Container(), sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5); sh.scale.set(.6, .35); sh.y = 4;
-      const spr = d[1] === 'q' ? Object.assign(new PIXI.Text((RC.ITEM_BY[d[4]] || {}).e || '🍲', { fontSize: 30 }), { resolution: 2 }) : new PIXI.Sprite(d[1] === 'w' ? T_LOG : d[1] === 'm' ? T_SCRAP : d[1] === 'f' ? T_BERRY : d[1] === 'd' ? T_GEM : T_STONE); spr.anchor.set(.5); spr.scale.set(DROP_S[d[1]]); spr.rotation = d[1] === 'w' ? rnd(-.8, .8) : rnd(-.4, .4);
+      const spr = d[1] === 'q' ? Object.assign(new PIXI.Text((RC.ITEM_BY[d[4]] || {}).e || '🍲', { fontSize: 30 }), { resolution: 2 }) : new PIXI.Sprite(d[1] === 'w' ? T_LOG : d[1] === 'm' ? T_SCRAP : d[1] === 'f' ? T_BERRY : d[1] === 'd' ? T_GEM : d[1] === 'n' ? T_MEAT : T_STONE); spr.anchor.set(.5); spr.scale.set(DROP_S[d[1]]); spr.rotation = d[1] === 'w' ? rnd(-.8, .8) : rnd(-.4, .4);
       c.addChild(sh, spr); c.position.set(d[2], d[3]); c.zIndex = d[3]; ents.addChild(c);
       e = dropE[d[0]] = { c, spr, sh, x: d[2], y: d[3], t: 0, ph: rnd(0, TAU), k: d[1], dur: d[1] === 'm' || d[1] === 'q' ? .5 : .35 };
-      if (d[1] === 'm' || d[1] === 'q') {   // metal scrap jumps out of the nearest smelter; cooked food pops out of the nearest pot
+      if (d[1] === 'm' || (d[1] === 'q' && d[4] !== 'foot')) {   // metal scrap jumps out of the nearest smelter; cooked food pops out of the nearest pot
         let bs = null, bd = 160; for (const id in structE) { const st = structE[id]; if (st.k !== (d[1] === 'q' ? 'pot' : 'smelter')) continue; const dd = Math.hypot(st.x - d[2], st.y - d[3]); if (dd < bd) { bd = dd; bs = st; } }
         if (bs) e.from = { x: bs.x, y: bs.y - 18 }; const me = ents2['p' + myId], dm = me ? Math.hypot(me.x - d[2], me.y - d[3]) : 0; if (d[1] === 'm') SFX.smeltDone(dm, me ? d[2] - me.x : 0);
       }
@@ -876,8 +897,14 @@ function onSnap(m) {
     if (e.lh >= 0 && a[3] < e.lh) { e.flash = .12; burst(e.x, e.y, 6, 0xc6ff2a, 120, true, .1); SFX.hit(_d(e.x, e.y), _dx(e.x)); }
     e.lh = a[3]; aim(e, a[1], a[2], nowS); e.d = a;
   }
+  for (const b of m.rb || []) {   // rabbits
+    const k = 'r' + b[0]; seen[k] = 1; let e = ents2[k];
+    if (!e) { e = ents2[k] = mkRabbit(b); e.x = e.tx = b[1]; e.y = e.ty = b[2]; e.c.position.set(e.x, e.y); }
+    aim(e, b[1], b[2], nowS); e.d = b;
+  }
   for (const k in ents2) if (!seen[k]) {
     const e = ents2[k];
+    if (e.kind === 'r') { SFX.hit(_d(e.x, e.y), _dx(e.x)); burst(e.x, e.y, 9, 0xc62828, 110, false, .1); burst(e.x, e.y, 5, 0xf5f5f5, 70, false, .08); }
     if (e.kind === 'a') { SFX.alienDie(_d(e.x, e.y), _dx(e.x)); burst(e.x, e.y, 14, 0xb45fe0, 160, true, .2); burst(e.x, e.y, 8, 0xc6ff2a, 90, true, .12); e.eyes.forEach(s => s.destroy()); }
     e.c.destroy({ children: true }); delete ents2[k];
   }
@@ -970,6 +997,13 @@ app.ticker.add(() => {
       }
       if (e.lh !== p[5] || e.ld !== p[10] || e.lr !== p[11]) { e.lh = p[5]; e.ld = p[10]; e.lr = p[11]; if (p[10]) drawHp(e.hp, 40, Math.min(1, p[11] / 10), 0x4caf50); else drawHp(e.hp, 34, p[5] / p[6], 0xef5350); }
       if (sp > 30 && !down && !p[20]) { e.st = (e.st || 0) - dt; if (e.st <= 0) { e.st = .3; SFX.step(Math.hypot(e.x - me.x, e.y - me.y), e.x - me.x); } e.dust -= dt; if (e.dust <= 0) { e.dust = .14; emit(pfx, T_GLOW, e.x, e.y + 8, rnd(-8, 8), rnd(-8, 4), .5, .12, .3, 0xd9c79a, .35, false, 0); } }
+    } else if (e.kind === 'r') {   // rabbit: faces where it hops, bounces while moving, fast hops when it runs
+      const b = e.d; e.age += dt; e.c.alpha = Math.min(1, e.age * 2);
+      e.c.renderable = Math.abs(e.x - camX) < W / Z / 2 + 80 && Math.abs(e.y - camY) < H / Z / 2 + 80;
+      e.ang = angLerp(e.ang, b[3] / 100, Math.min(1, dt * 10)); e.body.rotation = e.ang;
+      const moving = sp > 6; e.hop = moving ? e.hop + dt * (b[4] === 1 ? 13 : 7) : 0;
+      const h = moving ? Math.abs(Math.sin(e.hop)) : 0; e.body.y = -h * (b[4] === 1 ? 6 : 3.5); e.sh.scale.set(.55 - h * .12, .32 - h * .07);
+      e.body.scale.set(.8 * (1 + h * .08), .8 * (1 - h * .05));
     } else {
       const a = e.d; e.age += dt; e.c.alpha = Math.min(1, e.age * 2);
       if (a[6] != null) e.ang = angLerp(e.ang, a[6] / 100, Math.min(1, dt * (e.charger ? 14 : 10)));   // turn toward the player it is going for (works while standing still, e.g. against the fire ring)
@@ -1093,7 +1127,7 @@ function hud() {
   const f = S.f, mp = S.p.find(p => p[0] === myId), PH = ['DAY', 'DUSK', 'NIGHT'][S.ph], left = Math.ceil(S.ph === 0 ? 90 - S.c : S.ph === 1 ? 120 - S.c : 180 - S.c);
   $('t1').textContent = 'Night ' + S.n + ' · ' + PH + ' ' + left + 's · 🔥 Lv' + f[2];
   $('bar').firstElementChild.style.width = (100 * f[0] / f[1]) + '%';
-  if (mp) $('inv').textContent = '🪵' + mp[7] + '  🪨' + mp[8] + '  🍓' + mp[9] + (mp[15] ? '  🔩' + mp[15] : '') + '   ❤ ' + mp[5] + '/' + mp[6];
+  if (mp) $('inv').textContent = '🪵' + mp[7] + '  🪨' + mp[8] + '  🍓' + mp[9] + (mp[15] ? '  🔩' + mp[15] : '') + (mp[21] ? '  🍖' + mp[21] : '') + '   ❤ ' + mp[5] + '/' + mp[6];
   if (mp) { const sl = mp[19] || [], sig = sl.join(','); if (sig !== slotSig) { slotSig = sig; document.querySelectorAll('#slots .slot').forEach((el, i) => { const f = RC.ITEM_BY[sl[i]]; el.textContent = f ? f.e : ''; el.classList.toggle('full', !!f); el.title = f ? f.n + ' - tap to use' : 'empty'; }); } }
   $('pl').textContent = S.p.length + ' player' + (S.p.length > 1 ? 's' : '');
   { const el = (performance.now() - buffAt) / 1000, bt = []; if (BUFF.speed - el > 0) bt.push('⚡' + Math.ceil(BUFF.speed - el) + 's'); if (BUFF.regen - el > 0) bt.push('💚' + Math.ceil(BUFF.regen - el) + 's'); if (BUFF.dmg - el > 0) bt.push('⚔' + Math.ceil(BUFF.dmg - el) + 's'); const bs = bt.join('  '); if ($('buffs').textContent !== bs) $('buffs').textContent = bs; }
