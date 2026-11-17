@@ -57,6 +57,7 @@ function award(pl, amount, why) {
   if (!pl.prof) return;
   const n = Math.max(1, Math.round(amount * GC.BY[pl.cls].dia));
   pl.prof.d += n; dirty = true; send(pl.ws, { t: 'dia', n, d: pl.prof.d, why });
+  pl.runBy = pl.runBy || {}; pl.runBy[why] = (pl.runBy[why] || 0) + n;   // where this run's gems came from (for the game-over screen)
 }
 
 const MAXBODY = 8192;
@@ -292,7 +293,8 @@ class Room {
     for (const p of this.players.values()) {
       p.ended = 1; let got = 0;
       if (p.prof && pay > 0) { const before = p.prof.d; award(p, pay, 'run'); got = p.prof.d - before; }
-      send(p.ws, { t: 'over', n: days, d: got, total: p.prof ? p.prof.d : 0 });
+      const by = p.runBy || {}, all = Object.values(by).reduce((s, v) => s + v, 0), total = p.prof ? p.prof.d : 0;
+      send(p.ws, { t: 'over', n: days, d: got, total, before: total - all, kills: p.runK || {}, gems: { days: by.run || 0, kills: by.kills || 0, chest: by.chest || 0, other: all - (by.run || 0) - (by.kills || 0) - (by.chest || 0) } });
     }
     this.players.clear(); this.away.clear(); this.reset();
   }
@@ -529,7 +531,12 @@ class Room {
     const B = p.buff; if (B.invuln > 0) return; d *= 1 - Math.min(0.6, RC.ARMOR[p.gear.armor || 0] + RC.armorOf(p.gear)); if (B.shield > 0) d *= 0.3; if (B.rage > 0) d *= 1.5;
     p.hp -= d; if (p.hp <= 0) { p.hp = 0; p.down = 1; p.rev = 0; }
   }
-  killCredit(p, a) { if (a.hp <= 0 && !a.cred) { a.cred = 1; if (p.prof) { p.prof.k++; dirty = true; if (p.prof.k % 10 === 0) award(p, 1, 'kills'); } } }
+  killKey(a) {   // what kind of creature was that (for the game-over kill list)
+    if (a.rab) return a.crit || 'rabbit'; if (a.vul) return 'vulture'; if (a.sp) return a.sp; if (a.big === 1) return 'bear'; if (a.big === 2) return 'mammoth'; if (a.wolf) return a.alpha ? 'alpha' : 'wolf';
+    if (a.spit) return 'spitter'; if (a.k === 1) return 'brute'; if (a.k >= 3) return 'villager'; return 'alien';
+  }
+  tally(p, a) { p.runK = p.runK || {}; const k = this.killKey(a); p.runK[k] = (p.runK[k] || 0) + 1; }
+  killCredit(p, a) { if (a.hp <= 0 && !a.cred) { a.cred = 1; this.tally(p, a); if (p.prof) { p.prof.k++; dirty = true; if (p.prof.k % 10 === 0) award(p, 1, 'kills'); } } }
   aoe(p, x, y, r, dmg, stun) {   // damage (and stun) every alien and wolf in a circle; the Charger cannot be hurt
     for (const a of this.aliens) if (a.hp > 0 && a.k !== 2 && Math.hypot(a.x - x, a.y - y) < r) { a.hp -= dmg; if (stun) a.stunT = stun; this.killCredit(p, a); }
     for (const w of this.wolves || []) if (w.hp > 0 && !w.air && Math.hypot(w.x - x, w.y - y) < r) { w.hp -= dmg; w.st = 1; w.tg = p.id; this.killCredit(p, w); }
@@ -1110,12 +1117,13 @@ class Room {
         for (const b of this.rabbits) if (b.hp > 0) consider(b);   // rabbits too
         for (const w of this.wolves || []) if (w.hp > 0 && !w.air) consider(w);   // and wolves (vultures only once they have landed)
         p.sw = (p.sw + 1) & 255; p.swk = sp ? 5 : 4; p.swa = best ? Math.atan2(best.y - p.y, best.x - p.x) : p.fa;   // the weapon swings (or the spear pokes) even when nothing is in front of you
-        if (best && best.rab) this.killRabbit(best);
+        if (best && best.rab) { this.tally(p, best); this.killRabbit(best); }
         else if (best) {
           let mul = (B.rage > 0 || B.power > 0 ? 2 : 1) * (B.flurry > 0 ? 1.5 : 1); if (B.crit3 > 0) { mul *= 3; B.crit3 = 0; }
           best.hp -= (c.dmg + (p.gear.spear ? 6 : 0) + (p.gear.sword ? 8 : 0) + (B.dmg > 0 ? 5 : 0)) * (Math.random() < c.crit ? 2 : 1) * mul;
           const kd = Math.max(1, dist(p, best)); const kr = best.k === 2 ? 0.2 : best.big === 2 ? 0.05 : best.heavy ? 0.12 : 1; best.x += (best.x - p.x) / kd * c.knock * kr; best.y += (best.y - p.y) / kd * c.knock * kr;
           if (best.wolf) { best.st = 1; best.tg = p.id; }   // a hit wolf turns on you
+          if (best.hp <= 0) this.tally(p, best);
           if (best.hp <= 0 && p.prof) { p.prof.k++; dirty = true; if (p.prof.k % 10 === 0) award(p, 1, 'kills'); }
         }
       }

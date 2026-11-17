@@ -1557,6 +1557,47 @@ function chosen() {
   else ic.textContent = c.e;
   $('cName').textContent = c.n;
 }
+// ---------- game-over screen: what you killed, how the gems add up, and they fly into your gem pool ----------
+const KILLN = { alien: ['👾', 'Aliens'], brute: ['👹', 'Brutes'], villager: ['🏹', 'Villagers'], spitter: ['🤢', 'Spitters'], wolf: ['🐺', 'Wolves'], alpha: ['🐺', 'Alpha wolves'], bear: ['🐻', 'Bears'], mammoth: ['🦣', 'Mammoths'], boar: ['🐗', 'Boars'], golem: ['🪨', 'Magma golems'], imp: ['👺', 'Fire imps'], vulture: ['🦅', 'Vultures'], rabbit: ['🐇', 'Rabbits'], scorpion: ['🦂', 'Scorpions'], penguin: ['🐧', 'Penguins'], sal: ['🦎', 'Lava salamanders'] };
+async function showGameOver(m) {
+  const sleepMs = ms => new Promise(r => setTimeout(r, skip ? Math.min(ms, 30) : ms)); let skip = false;
+  const countTo = (el, to, ms, fmt, sound) => new Promise(res => { const t0 = performance.now(); let last = -1; const step = now => { const u = skip ? 1 : Math.min(1, (now - t0) / ms), v = Math.round(to * (u * (2 - u))); if (v !== last) { last = v; el.textContent = fmt(v); if (sound && v > 0 && v <= to) SFX.coin(); } if (u < 1) requestAnimationFrame(step); else res(); }; requestAnimationFrame(step); });
+  let o = $('overScr'); if (o) o.remove();
+  o = document.createElement('div'); o.id = 'overScr'; o.style.cssText = 'position:fixed;inset:0;z-index:70;display:flex;flex-direction:column;align-items:center;background:radial-gradient(ellipse at 50% 30%,#1b2f4a,#060d18 70%);overflow-y:auto;padding:22px 14px 90px;color:#fff;font-family:system-ui,sans-serif;opacity:0;transition:opacity .6s';
+  const kills = Object.entries(m.kills || {}).filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]), g = m.gems || {}, rows = [['Days survived', m.n + (m.n === 1 ? ' day' : ' days'), g.days || 0, '🌙'], ['Kill bonuses', '', g.kills || 0, '⚔️'], ['Chests & finds', '', (g.chest || 0) + (g.other || 0), '🧰']].filter(r => r[2] > 0 || r[0] === 'Days survived');
+  o.innerHTML = '<div style="font-size:44px;font-weight:900;letter-spacing:3px;color:#ff6b5e;text-shadow:0 3px 14px #000;margin:6px 0 2px">GAME OVER</div>' +
+    '<div style="opacity:.85;margin-bottom:14px">You survived <b>' + m.n + '</b> day' + (m.n === 1 ? '' : 's') + '</div>' +
+    '<div style="width:min(440px,94vw);background:#10243a;border:2px solid #ffd000;border-radius:14px;padding:12px 16px;margin-bottom:12px"><div style="font-weight:800;margin-bottom:8px">Creatures defeated</div><div id="ovKills">' + (kills.length ? '' : '<div style="opacity:.7">Nothing this time.</div>') + '</div></div>' +
+    '<div style="width:min(440px,94vw);background:#10243a;border:2px solid #7fe9ff;border-radius:14px;padding:12px 16px"><div style="font-weight:800;margin-bottom:8px">Gems earned</div><div id="ovGems"></div>' +
+    '<div id="ovTotalRow" style="display:none;justify-content:space-between;align-items:center;border-top:1px solid #fff4;margin-top:8px;padding-top:8px;font-weight:800;font-size:20px"><span>Total</span><span id="ovTotal">💎 0</span></div></div>' +
+    '<div id="ovPool" style="display:none;margin-top:14px;font-size:22px;font-weight:800;color:#7fe9ff">Your gems: <span id="ovPoolN">💎 ' + m.before + '</span></div>' +
+    '<div style="position:fixed;left:0;right:0;bottom:0;padding:14px;background:linear-gradient(transparent,#060d18 40%);display:flex;justify-content:center"><button id="ovAgain" style="min-width:min(300px,80vw);padding:15px 24px;font-size:20px;font-weight:900;border:0;border-radius:14px;background:linear-gradient(#3fd196,#17835a);color:#fff;box-shadow:0 4px 14px #0008;opacity:.45" disabled>Try again</button></div>';
+  document.body.appendChild(o); requestAnimationFrame(() => o.style.opacity = 1);
+  $('ovAgain').onclick = () => { try { ws.close(); } catch (e) { } location.reload(); };
+  setTimeout(() => { const b = $('ovAgain'); if (b) { b.disabled = false; b.style.opacity = 1; } }, 25000);   // never leave anyone stuck here
+  o.addEventListener('pointerdown', e => { if (e.target.id !== 'ovAgain') skip = true; });   // tap anywhere to speed the count-up
+  await sleepMs(700);
+  for (const [k, n] of kills) {   // kills count up one creature type at a time
+    const [em, nm] = KILLN[k] || ['❓', k], row = document.createElement('div'); row.style.cssText = 'display:flex;justify-content:space-between;padding:3px 0;font-size:17px';
+    row.innerHTML = '<span>' + em + ' ' + nm + '</span><b class="cnt">0</b>'; $('ovKills').appendChild(row); await countTo(row.querySelector('.cnt'), n, 380 + Math.min(500, n * 20), v => '× ' + v, true); await sleepMs(120);
+  }
+  await sleepMs(500);
+  for (const [nm, note, gems, em] of rows) {   // the gem tally, line by line
+    const row = document.createElement('div'); row.style.cssText = 'display:flex;justify-content:space-between;padding:4px 0;font-size:17px';
+    row.innerHTML = '<span>' + em + ' ' + nm + (note ? ' <span style="opacity:.65">(' + note + ')</span>' : '') + '</span><b class="cnt">💎 0</b>'; $('ovGems').appendChild(row); await countTo(row.querySelector('.cnt'), gems, 600, v => '💎 ' + v, true); await sleepMs(180);
+  }
+  const all = (g.days || 0) + (g.kills || 0) + (g.chest || 0) + (g.other || 0);
+  $('ovTotalRow').style.display = 'flex'; await countTo($('ovTotal'), all, 700, v => '💎 ' + v, true); SFX.levelup(); await sleepMs(500);
+  $('ovPool').style.display = 'block';
+  const from = $('ovTotal').getBoundingClientRect(), to = $('ovPoolN').getBoundingClientRect(), flyN = Math.min(14, Math.max(3, all));   // gems fly from the total into the gem pool
+  for (let i = 0; i < flyN; i++) {
+    const f = document.createElement('div'); f.textContent = '💎'; f.style.cssText = 'position:fixed;z-index:80;font-size:22px;left:' + (from.left + from.width / 2) + 'px;top:' + (from.top + from.height / 2) + 'px;transition:transform .7s cubic-bezier(.5,0,.8,.6),opacity .7s;pointer-events:none'; document.body.appendChild(f);
+    setTimeout(() => { f.style.transform = 'translate(' + (to.left + to.width / 2 - from.left - from.width / 2 + (Math.random() * 30 - 15)) + 'px,' + (to.top + to.height / 2 - from.top - from.height / 2) + 'px) scale(.6)'; f.style.opacity = .3; setTimeout(() => { f.remove(); SFX.coin(); }, 720); }, skip ? 0 : i * 70);
+    await sleepMs(70);
+  }
+  await sleepMs(750); await countTo($('ovPoolN'), m.total - m.before, 900, v => '💎 ' + (m.before + v), true); setDia(m.total);
+  $('ovAgain').disabled = false; $('ovAgain').style.opacity = 1;
+}
 function setDia(n) { PF.d = n; document.querySelectorAll('.diaN').forEach(e => e.textContent = n); }
 function applyProfile(pr, useLast) {
   PF.owned = pr.owned; PF.abil = pr.abil || PF.abil; PF.save = pr.save || null; setDia(pr.d); window.xLobby && xLobby();
@@ -1739,9 +1780,8 @@ $('go').onclick = () => {
       if (m.b) { for (const k in BUFF) BUFF[k] = m.b[k] || 0; buffAt = performance.now(); }
       SFX.cook(); const me = ents2['p' + myId]; if (me) floatText(me.x, me.y - 10, m.msg, 0xffe082);
     } else if (m.t === 'over') {   // everyone went down: remember the result, then back to the title screen
-      runOver = true; setDia(m.total); try { sessionStorage.setItem('runres', JSON.stringify({ n: m.n, d: m.d })); sessionStorage.removeItem('rejoin'); } catch (e) { }
-      $('banner').style.fontSize = '22px'; $('banner').textContent = 'Game over - you survived ' + m.n + ' day' + (m.n === 1 ? '' : 's') + ' and earned ' + m.d + ' 💎';
-      setTimeout(() => { try { ws.close(); } catch (e) { } location.reload(); }, 3500);
+      runOver = true; try { sessionStorage.setItem('runres', JSON.stringify({ n: m.n, d: m.d })); sessionStorage.removeItem('rejoin'); } catch (e) { }
+      showGameOver(m);
     } else if (window.xMsg && ['loot', 'camped', 'fish', 'fx', 'abilUsed', 'traded', 'saved'].includes(m.t)) { xMsg(m);
     } else if (m.t === 'dia') {
       setDia(m.d); const me = ents2['p' + myId];
