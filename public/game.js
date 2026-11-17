@@ -40,14 +40,16 @@ function noiseTile(base, cols, bladeCols) {
 const T_GRASS = noiseTile('#3d7a3a', ['#4a9244', '#2f6a30', '#52a04a', '#357233'], ['#6cbb5d', '#2a5e2b', '#8fd070']);
 const T_SAND = noiseTile('#dccb90', ['#e8d9a2', '#cdb97c', '#d5c284'], ['#f0e4b4', '#bfa96c']);
 
-const T_TREE = tex(130, 140, g => {
+const drawTree = g => {
   g.fillStyle = '#4b2f17'; g.fillRect(58, 82, 14, 42); g.fillStyle = '#6b4423'; g.fillRect(58, 82, 6, 42);
   const blob = (x, y, r, c) => { g.fillStyle = c; circ(g, x, y, r); };
   [[65, 70, 34], [42, 78, 26], [88, 78, 26], [50, 48, 27], [80, 48, 27], [65, 36, 24]].forEach(b => blob(b[0], b[1], b[2], '#15462a'));
   [[65, 66, 28], [45, 74, 20], [85, 74, 20], [52, 46, 21], [78, 46, 21], [65, 36, 18]].forEach(b => blob(b[0], b[1], b[2], '#1f6a37'));
   [[56, 52, 12], [44, 70, 9], [70, 36, 9], [80, 56, 8]].forEach(b => blob(b[0], b[1], b[2], '#3f9a4d'));
   g.globalAlpha = .6; blob(52, 44, 5, '#8bd47a'); blob(70, 32, 4, '#8bd47a'); g.globalAlpha = 1;
-});
+};
+const T_TREE = tex(130, 140, drawTree);
+const T_TREE_S = tex(130, 140, g => { drawTree(g); g.fillStyle = '#f4f8fc'; for (const [x, y, rx, ry] of [[65, 17, 17, 7], [50, 30, 12, 5], [80, 30, 12, 5], [38, 58, 9, 4], [92, 58, 9, 4], [65, 50, 10, 4]]) { g.beginPath(); g.ellipse(x, y, rx, ry, 0, 0, TAU); g.fill(); } });   // a tree dusted with snow
 const T_ROCK = tex(72, 60, g => {
   g.fillStyle = '#5b6068'; g.beginPath(); g.moveTo(8, 48); g.lineTo(14, 22); g.lineTo(32, 8); g.lineTo(54, 14); g.lineTo(66, 36); g.lineTo(58, 52); g.lineTo(20, 54); g.closePath(); g.fill();
   g.fillStyle = '#8a9099'; g.beginPath(); g.moveTo(14, 22); g.lineTo(32, 8); g.lineTo(54, 14); g.lineTo(40, 30); g.lineTo(18, 36); g.closePath(); g.fill();
@@ -188,7 +190,7 @@ const T_GEM = tex(26, 26, g => {
   poly(g, '#26c6da', [13, 2, 23, 10, 13, 24, 3, 10]); poly(g, '#80deea', [13, 2, 23, 10, 13, 10, 3, 10]); poly(g, '#00acc1', [13, 10, 23, 10, 13, 24]);
   g.strokeStyle = 'rgba(255,255,255,.8)'; g.lineWidth = 1; g.beginPath(); g.moveTo(3, 10); g.lineTo(23, 10); g.moveTo(13, 2); g.lineTo(9, 10); g.lineTo(13, 24); g.lineTo(17, 10); g.lineTo(13, 2); g.stroke();
 });
-const T_CACTUS = tex(84, 130, g => {
+const drawCactus = g => {
   g.fillStyle = '#2f7d3a'; g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 2;
   const cap = (x, y, r) => { g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill(); g.stroke(); };
   g.beginPath(); g.moveTo(32, 120); g.lineTo(32, 38); g.arc(42, 38, 10, Math.PI, 0); g.lineTo(52, 120); g.closePath(); g.fill(); g.stroke();
@@ -196,7 +198,9 @@ const T_CACTUS = tex(84, 130, g => {
   g.fillRect(50, 78, 20, 10); g.fillRect(60, 50, 10, 38); cap(65, 50, 5);
   g.fillStyle = '#43a35a'; g.fillRect(38, 40, 4, 78); g.fillRect(16, 38, 3, 34); g.fillRect(62, 52, 3, 34);
   g.fillStyle = '#f5f0c8'; [[36, 50], [48, 62], [37, 80], [47, 96], [38, 108], [19, 48], [65, 62]].forEach(p => { g.fillRect(p[0], p[1], 2, 2); });
-});
+};
+const T_CACTUS = tex(84, 130, drawCactus);
+const T_CACTUS_S = tex(84, 130, g => { drawCactus(g); g.fillStyle = '#f4f8fc'; g.strokeStyle = 'rgba(80,110,140,.5)'; g.lineWidth = 1.2; for (const [x, y, rx, ry] of [[42, 29, 13, 6], [19, 32, 8, 4], [65, 46, 8, 4], [36, 40, 5, 3], [50, 44, 5, 3]]) { g.beginPath(); g.ellipse(x, y, rx, ry, 0, 0, TAU); g.fill(); g.stroke(); } });   // a cactus dusted with snow (at a snow border)
 const T_BOAT = tex(132, 74, g => {
   g.fillStyle = '#5a3818'; g.beginPath(); g.moveTo(8, 37); g.quadraticCurveTo(14, 8, 60, 8); g.quadraticCurveTo(112, 10, 126, 37); g.quadraticCurveTo(112, 64, 60, 66); g.quadraticCurveTo(14, 66, 8, 37); g.fill();
   g.fillStyle = '#a8773f'; g.beginPath(); g.moveTo(16, 37); g.quadraticCurveTo(22, 16, 60, 16); g.quadraticCurveTo(102, 18, 114, 37); g.quadraticCurveTo(102, 58, 60, 58); g.quadraticCurveTo(22, 58, 16, 37); g.fill();
@@ -442,6 +446,9 @@ function buildIsland(is, idx) {   // is = [x, y, radius, biome]: the quarter fac
     hp.drawPolygon([[-B, -B], [B, -B], [B, 0], [-B, 0]].flatMap(([t, w]) => [hx * t + kx * w, hy * t + ky * w])); hp.endFill();
     const snowC = new PIXI.Container(), sm2 = new PIXI.Graphics(); sm2.beginFill(0xffffff); sm2.drawPolygon(polyOf(ef)); sm2.endFill();
     const snow = new PIXI.TilingSprite(T_SNOW, R * 2 + 120, R * 2 + 120); snow.position.set(-R - 60, -R - 60); snow.mask = hp; snowC.addChild(snow, hp); snowC.mask = sm2; c.addChild(sm2, snowC);
+    { const ro = new PIXI.Graphics(), r3 = mulberry(idx * 53 + 5);   // runoff along the snow/desert line: snow drifts onto the sand, sand blows onto the snow
+      for (let i = 0; i < 700; i++) { const t = (r3() * 2 - 1) * R * .95, w = (r3() * 2 - 1) * 150, k = 1 - Math.abs(w) / 150; if (r3() > k * k) continue; const x = hx * t + kx * w, y = hy * t + ky * w; if (Math.hypot(x, y) > R * .93 || inF(x, y)) continue; ro.beginFill(w > 0 ? 0xf4f8fc : 0xe3c78a, w > 0 ? .6 : .55); ro.drawEllipse(x, y, 8 + r3() * 18, 4 + r3() * 9); ro.endFill(); }
+      ro.mask = sm; c.addChild(ro); }
   }
   const rng = mulberry(idx * 977 + 13);
   if (biome === 'd') {   // desert: a few darker dunes, kept off the forest
@@ -473,6 +480,18 @@ function buildIsland(is, idx) {   // is = [x, y, radius, biome]: the quarter fac
     c.addChild(sp);
   }
 }
+function biomeAtPt(x, y) {   // 'f' forest, 's' snow, 'd' desert (null at sea) - the same rules as the server
+  if (Math.hypot(x, y) < RR + 120) return RC.inSnow(x, y) ? 's' : 'f';
+  for (const [ix, iy, r, b] of ISL) if (Math.hypot(x - ix, y - iy) < r + 120) return RC.biomeAt(ix, iy, r, b, x, y);
+  return null;
+}
+function nearBiome(x, y, want, dist = 130) {   // is there another biome ('want') within `dist` of this spot? (decor near a border picks up a bit of the neighbour)
+  for (let k = 0; k < 8; k++) { const a = k * TAU / 8; for (const d of [dist * .5, dist]) if (biomeAtPt(x + Math.cos(a) * d, y + Math.sin(a) * d) === want) return true; }
+  return false;
+}
+function borderDist(x, y, want, max) {   // roughly how far to the nearest 'want' ground (max if none close)
+  for (let d = 12; d <= max; d += 12) for (let k = 0; k < 12; k++) { const a = k * TAU / 12; if (biomeAtPt(x + Math.cos(a) * d, y + Math.sin(a) * d) === want) return d; } return max;
+}
 function buildWorld(list) {
   { const u = new Float32Array(48).fill(0); for (let i = 0; i < 12; i++) { u[i * 4] = 1e7; u[i * 4 + 2] = -1e5; } u.set([0, 0, RR, 0], 0); ISL.slice(0, 11).forEach((s, i) => u.set([s[0], s[1], s[2], (i + 1) * 1.7], (i + 1) * 4)); waterF.uniforms.uIs = u; }
   const poly = fn => { const p = []; for (let i = 0; i < 200; i++) { const a = i / 200 * TAU, r = fn(a); p.push(Math.cos(a) * r, Math.sin(a) * r); } return p; };
@@ -496,6 +515,15 @@ function buildWorld(list) {
     const srim = new PIXI.Graphics(); srim.lineStyle(14, 0xffffff, .35); srim.drawPolygon(pts); srim.lineStyle(5, 0xb9cde0, .4); srim.drawPolygon(pts);
     ground.addChild(snm, sn, srim);
   }
+  {   // snow blowing out of the snow quarter onto the grass: scattered white patches that thin out with distance
+    const ro = new PIXI.Graphics(), r2 = mulberry(31); ro.beginFill(0xf2f7fc, .55);
+    for (let i = 0; i < 1400; i++) {
+      const a = RC.SNOW_A + (r2() - .5) * 2.4, d = 1000 + r2() * (RR - 1100), x = Math.cos(a) * d, y = Math.sin(a) * d; if (RC.inSnow(x, y)) continue;
+      const bd = borderDist(x, y, 's', 140); if (bd >= 140 || r2() > 1 - bd / 140) continue;
+      ro.drawEllipse(x, y, 7 + r2() * 15, 4 + r2() * 8);
+    }
+    ro.endFill(); ro.mask = sm; ground.addChild(ro);
+  }
   const dirt = new PIXI.Graphics(); dirt.beginFill(0x5e4526, .5); dirt.drawCircle(0, 0, 78); dirt.beginFill(0x3d2c17, .55); dirt.drawCircle(0, 0, 46); dirt.endFill(); ground.addChild(dirt);
   const rng = mulberry(7), N = Math.round(320 * (RR / 900) * (RR / 900) / 1.5);
   const pcs = [T_TUFT, T_FLOWER, T_PEBBLE].map(() => { const pc = new PIXI.ParticleContainer(8000, { position: true, rotation: true, scale: true, tint: true }); ground.addChild(pc); return pc; });
@@ -514,9 +542,9 @@ function buildWorld(list) {
   list.forEach((r, i) => {
     const c = new PIXI.Container(), sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5); c.addChild(sh);
     let s;
-    if (r[0] === 'p') { s = new PIXI.Sprite(T_PINE); s.anchor.set(.5, .9); s.scale.set(.66 + (i % 5) * .03); sh.scale.set(1.6, .75); sh.y = 4; }
-    else if (r[0] === 't') { s = new PIXI.Sprite(T_TREE); s.anchor.set(.5, .88); s.scale.set(.62 + (i % 5) * .03); sh.scale.set(1.7, .8); sh.y = 4; }
-    else if (r[0] === 'c') { s = new PIXI.Sprite(T_CACTUS); s.anchor.set(.5, .9); s.scale.set(.62 + (i % 5) * .03); sh.scale.set(1.1, .6); sh.y = 4; }
+    if (r[0] === 'p') { s = new PIXI.Sprite(T_PINE); if (nearBiome(r[1], r[2], 'd')) s.tint = 0xe9d8ac; s.anchor.set(.5, .9); s.scale.set(.66 + (i % 5) * .03); sh.scale.set(1.6, .75); sh.y = 4; }
+    else if (r[0] === 't') { s = new PIXI.Sprite(nearBiome(r[1], r[2], 's') ? T_TREE_S : T_TREE); s.anchor.set(.5, .88); s.scale.set(.62 + (i % 5) * .03); sh.scale.set(1.7, .8); sh.y = 4; }
+    else if (r[0] === 'c') { s = new PIXI.Sprite(nearBiome(r[1], r[2], 's') ? T_CACTUS_S : T_CACTUS); s.anchor.set(.5, .9); s.scale.set(.62 + (i % 5) * .03); sh.scale.set(1.1, .6); sh.y = 4; }
     else if (r[0] === 'r' || r[0] === 'g') { s = new PIXI.Sprite(r[0] === 'g' ? T_GOLDV : T_ROCK); s.anchor.set(.5, .8); s.scale.set(.6); sh.scale.set(1.1, .6); sh.y = 4; }
     else { s = new PIXI.Sprite(T_BUSH); s.anchor.set(.5, .8); s.scale.set(.62); sh.scale.set(1, .5); sh.y = 4; }
     c.addChild(s); c.position.set(r[1], r[2]); c.zIndex = r[2];   // (attached to the scene only while near the camera: see the cull loop)
@@ -1218,7 +1246,8 @@ app.ticker.add(() => {
     e.c.position.set(e.x, e.y); e.c.zIndex = e.y;
     if (e.kind === 'p') {
       const p = e.d, down = p[10];
-      if (sp > 12 && !down && !e.swing) e.ang = angLerp(e.ang, Math.atan2(vy, vx), Math.min(1, dt * 12));
+      { const la = p[0] === myId ? currentAim() : null;   // you face your crosshair / aim stick right away (no waiting for the server); everyone else faces where the server says they face
+        if (!down && !e.swing) { if (la !== null) e.ang = angLerp(e.ang, la, Math.min(1, dt * 30)); else if (p[16] !== undefined && p[0] !== myId) e.ang = angLerp(e.ang, p[16] / 100, Math.min(1, dt * 14)); else if (sp > 12) e.ang = angLerp(e.ang, Math.atan2(vy, vx), Math.min(1, dt * 12)); } }
       if (e.swing) {
         const sw = e.swing; sw.t += dt;
         if (sw.t >= .42) { e.swing = null; e.tool.visible = false; }
@@ -1658,12 +1687,13 @@ function aimPadDraw() {
   if (aimStick) { let dx = aimStick.x - aimStick.ox, dy = aimStick.y - aimStick.oy; const m = Math.hypot(dx, dy), L = 34; if (m > L) { dx *= L / m; dy *= L / m; } k.style.transform = 'translate(' + dx + 'px,' + dy + 'px)'; k.style.background = '#ff8a80'; } else { k.style.transform = ''; k.style.background = '#ffffffaa'; }
 }
 (function () {
-  app.view.style.cursor = 'none';
-  crossEl = document.createElement('div'); crossEl.style.cssText = 'position:fixed;width:26px;height:26px;margin:-13px 0 0 -13px;pointer-events:none;z-index:7;display:none;border:2px solid #ff5252;border-radius:50%;box-shadow:0 0 6px #000a,inset 0 0 4px #000a;';
+  const cs = document.createElement('style'); cs.textContent = 'body.ingame, body.ingame * { cursor: none !important; }'; document.head.appendChild(cs);   // in a game the real mouse cursor is hidden everywhere (menus too); the crosshair is the pointer
+  setInterval(() => document.body.classList.toggle('ingame', !!myId && $('btns').style.display !== 'none'), 250);
+  crossEl = document.createElement('div'); crossEl.style.cssText = 'position:fixed;width:26px;height:26px;margin:-13px 0 0 -13px;pointer-events:none;z-index:99;display:none;border:2px solid #ff5252;border-radius:50%;box-shadow:0 0 6px #000a,inset 0 0 4px #000a;';
   crossEl.innerHTML = '<div style="position:absolute;left:50%;top:-7px;width:2px;height:8px;margin-left:-1px;background:#ff5252"></div><div style="position:absolute;left:50%;bottom:-7px;width:2px;height:8px;margin-left:-1px;background:#ff5252"></div><div style="position:absolute;top:50%;left:-7px;height:2px;width:8px;margin-top:-1px;background:#ff5252"></div><div style="position:absolute;top:50%;right:-7px;height:2px;width:8px;margin-top:-1px;background:#ff5252"></div>';
   document.body.appendChild(crossEl);
-  const mv = e => { if (e.pointerType !== 'mouse') return; mouse.on = true; mouse.x = e.clientX; mouse.y = e.clientY; crossEl.style.display = 'block'; crossEl.style.left = e.clientX + 'px'; crossEl.style.top = e.clientY + 'px'; };
-  app.view.addEventListener('pointermove', mv); app.view.addEventListener('pointerenter', mv); app.view.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') crossEl.style.display = 'none'; });
+  const mv = e => { if (e.pointerType !== 'mouse') return; mouse.on = true; mouse.x = e.clientX; mouse.y = e.clientY; crossEl.style.display = document.body.classList.contains('ingame') ? 'block' : 'none'; crossEl.style.left = e.clientX + 'px'; crossEl.style.top = e.clientY + 'px'; };
+  addEventListener('pointermove', mv, true); document.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') crossEl.style.display = 'none'; }, true); document.documentElement.addEventListener('mouseleave', () => { crossEl.style.display = 'none'; });
   app.view.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse' && e.button === 0) { mouse.down = true; mv(e); } });
   addEventListener('pointerup', e => { if (e.pointerType === 'mouse' && e.button === 0) mouse.down = false; });
   if (matchMedia('(pointer: coarse)').matches) {   // touch screens: the aim stick
@@ -1679,14 +1709,18 @@ function aimPadDraw() {
     setInterval(() => { aimPad.style.display = $('btns').style.display === 'none' || !myId ? 'none' : 'block'; }, 500);
   }
 })();
+function currentAim() {   // the direction you are aiming right now (aim stick, a just-released stick, or the mouse cursor), or null when not aiming
+  const nowT = performance.now();
+  if (aimStick && Math.hypot(aimStick.x - aimStick.ox, aimStick.y - aimStick.oy) > 16) return Math.atan2(aimStick.y - aimStick.oy, aimStick.x - aimStick.ox);
+  if (nowT < aimHold.until) return aimHold.ang; return mouse.on ? mouseAngle() : null;
+}
 function readInput() {
   let dx = 0, dy = 0;
   let rn = 0; if (actBlock && !(act || keys[' '] || keys.e)) actBlock = false;
   if (joy) { dx = (joy.x - joy.ox) / 55; dy = (joy.y - joy.oy) / 55; const m = Math.hypot(dx, dy); if (m > 1) { dx /= m; dy /= m; } if (m < .12) dx = dy = 0; else if (m > 1.15) rn = Math.min(1, (m - 1.15) / .75); }   // past the ring = run, faster the further you push
   if (keys.a || keys.arrowleft) dx -= 1; if (keys.d || keys.arrowright) dx += 1; if (keys.w || keys.arrowup) dy -= 1; if (keys.s || keys.arrowdown) dy += 1;
   if (keys.shift && (dx || dy)) rn = 1;
-  let aim = null; const nowT = performance.now();
-  if (aimStick && Math.hypot(aimStick.x - aimStick.ox, aimStick.y - aimStick.oy) > 16) aim = Math.atan2(aimStick.y - aimStick.oy, aimStick.x - aimStick.ox); else if (nowT < aimHold.until) aim = aimHold.ang; else if (mouse.on) aim = mouseAngle();
+  const aim = currentAim(), nowT = performance.now();
   return { dx, dy, am: aim === null ? 0 : 1, aim: aim === null ? 0 : Math.round(aim * 100) / 100, rn: Math.round(rn * 100) / 100, act: !placingId && !actBlock && (act || keys[' '] || keys.e) ? 1 : 0, hit: hit || keys.q || keys.f || keys.j || mouse.down || nowT < hitPulse ? 1 : 0 };
 }
 setInterval(() => { if (ws && ws.readyState === 1 && myId) ws.send(JSON.stringify(Object.assign({ t: 'in' }, readInput()))); }, 50);
