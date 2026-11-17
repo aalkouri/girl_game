@@ -34,6 +34,7 @@ const COSTI = { wood: '🪵', stone: '🪨', food: '🍓', scrap: '🔩', pelt: 
 
 // ---------- loot areas ----------
 function xInit(m) {
+  window.mapInit && mapInit(m);
   LOOT = (m.loot || []).map(l => ({ id: l[0], x: l[1], y: l[2], b: l[3], seed: l[4], tier: l[5], cx: l[6], cy: l[7], trader: l[8], tx: l[9], ty: l[10] }));
   for (const l of LOOT) {
     const rng = mulberry(l.seed), list = DECOR[l.b] || DECOR.f, n = 6 + Math.floor(rng() * 4);
@@ -174,6 +175,11 @@ function xMsg(m) {
     else if (m.k === 'heal' && me) floatText(me.x, me.y - 20, '✨ Revived!', 0xb9f6ca);
   }
   else if (m.t === 'abilUsed') { if (m.b) { for (const k in BUFF) BUFF[k] = m.b[k] || 0; buffAt = performance.now(); } SFX.levelup(); if (me) floatText(me.x, me.y - 26, m.n + '!', 0xd1b3ff); }
+  else if (m.t === 'saved') {
+    const pi = $('pmInfo'); if (!pi) return;
+    if (m.ok) { PF.save = { at: m.at, n: m.night, bytes: m.bytes, gz: m.gz }; pi.textContent = '✔ Saved: night ' + m.night + ', ' + m.players + ' player' + (m.players === 1 ? '' : 's') + '. Size ' + fmtBytes(m.bytes) + ' (' + fmtBytes(m.gz) + ' stored compressed).'; pi.style.color = '#b9f6ca'; }
+    else { pi.textContent = 'Could not save right now.'; pi.style.color = '#ff8a80'; }
+  }
   else if (m.t === 'traded') {
     GEAR = m.gear || GEAR; if (m.prof) PF.abil = m.prof.abil || PF.abil;
     const tm = $('trMsg'); if (tm) { tm.textContent = m.msg || ''; tm.style.color = m.ok ? '#7fe9a0' : '#ff8a80'; } if (m.ok) { SFX.cook(); const me2 = ents2['p' + myId]; if (me2) floatText(me2.x, me2.y - 20, m.msg, 0xffe082); }
@@ -187,4 +193,25 @@ function xActLabel(me) {
   const c = xCampNear(me); if (c) return c[4] - c[3] > 8 ? 'REFUEL' : c[5] < RC.FIRE_MAX ? 'UPGRADE' : 'ACT';
   const mp = S.p.find(q => q[0] === myId); if (GEAR.rod && mp && !mp[20]) { const fa = (mp[16] || 0) / 100; if (isWaterC(me.x + Math.cos(fa) * 80, me.y + Math.sin(fa) * 80)) return 'FISH'; }
   return null;
+}
+
+// ---------- Escape menu: resume / save the game to your account / exit ----------
+(function () {
+  const d = document.createElement('div'); d.className = 'ov'; d.id = 'pauseMenu'; d.style.cssText = 'display:none;align-items:center;justify-content:center;z-index:60;background:#06101ccc';
+  d.innerHTML = '<div style="background:#14304a;border:2px solid #ffd000;border-radius:14px;padding:18px 22px;width:min(340px,86vw);text-align:center;box-shadow:0 8px 30px #000a"><div style="font-size:20px;font-weight:800;margin-bottom:12px">Menu</div>' +
+    '<button class="mini" id="pmResume" style="display:block;width:100%;margin:6px 0;padding:11px">Resume</button>' +
+    '<button class="mini" id="pmSave" style="display:block;width:100%;margin:6px 0;padding:11px;background:#1565c0">💾 Save game</button>' +
+    '<div id="pmInfo" style="font-size:12px;opacity:.85;min-height:34px;margin:4px 0 6px;line-height:1.35">Saves this whole game (every player, everything built and collected) to your account. One save per account; a new save replaces the old one.</div>' +
+    '<button class="mini gray" id="pmExit" style="display:block;width:100%;margin:6px 0;padding:11px">Exit to main menu</button></div>';
+  document.body.appendChild(d);
+  d.querySelector('#pmResume').onclick = () => xPause(false);
+  d.querySelector('#pmSave').onclick = () => { if (ws && ws.readyState === 1) { ws.send(JSON.stringify({ t: 'save' })); $('pmInfo').textContent = 'Saving...'; } };
+  d.querySelector('#pmExit').onclick = () => { try { sessionStorage.removeItem('rejoin'); } catch (e) { } runOver = true; try { ws.close(); } catch (e) { } location.reload(); };
+})();
+const fmtBytes = n => n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(2) + ' MB';
+function xPause(on) { const m = $('pauseMenu'), show = on === undefined ? m.style.display === 'none' : on; m.style.display = show ? 'flex' : 'none'; if (show && PF.save) $('pmInfo').textContent = 'Last save: night ' + PF.save.n + ', ' + fmtBytes(PF.save.bytes) + ' (' + fmtBytes(PF.save.gz) + ' stored compressed).'; }
+// lobby: continue the saved game
+function xLobby() {
+  const b = $('loadBtn'); if (!b) return;
+  if (PF.save) { b.style.display = ''; b.textContent = 'Continue saved game - night ' + PF.save.n + ' (' + new Date(PF.save.at).toLocaleString() + ')'; b.onclick = () => { window.loadSaveFlag = true; $('go').onclick(); }; } else b.style.display = 'none';
 }

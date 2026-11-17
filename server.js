@@ -1,5 +1,5 @@
 // Island Night - authoritative multiplayer server (Node + ws) with saved player profiles
-const http = require('http'), fs = require('fs'), path = require('path');
+const http = require('http'), fs = require('fs'), path = require('path'), zlib = require('zlib'), crypto = require('crypto');
 const { WebSocketServer } = require('ws');
 const GC = require('./public/classes.js');
 const RC = require('./public/recipes.js');
@@ -51,7 +51,7 @@ function claimLegacy(email, pid) {
   delete profiles[pid]; pcount--; dirty = true;
 }
 const ownedOf = p => GC.DEFAULT_OWNED.concat(p ? p.owned : []);
-const view = p => ({ abil: p && p.abil ? Object.keys(p.abil) : [], d: p ? p.d : 0, owned: ownedOf(p), last: p && ownedOf(p).includes(p.last) ? p.last : 'forester', n: p ? p.n : 0 });
+const view = p => ({ save: p && p.save ? { at: p.save.at, n: p.save.n, bytes: p.save.bytes, gz: p.save.gz } : null, abil: p && p.abil ? Object.keys(p.abil) : [], d: p ? p.d : 0, owned: ownedOf(p), last: p && ownedOf(p).includes(p.last) ? p.last : 'forester', n: p ? p.n : 0 });
 const send = (ws, o) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); };
 function award(pl, amount, why) {
   if (!pl.prof) return;
@@ -192,6 +192,15 @@ const slotCap = (p, room) => { const b = p.boat && room.boats.find(x => x.id ===
 const RAB = { home: 20, outer: 8, respawn: 6, see: 260, run: 95, walk: 28, edge: 45, foot: 0.10 };   // rabbits: counts per island, seconds between top-ups, flee range, speeds (players walk 150), shore margin, foot drop chance   // how long a trap holds the big monster   // cooked food you can carry
 const REVIVE = { sec: 10, hp: .5, decay: 1 };   // a downed player is revived by a teammate standing still next to them and holding ACT for 10 s (Medic-type classes are faster); they come back with half health
 const STA = { max: 100, drain: 16, regen: 22, delay: 1, tiredDelay: 1.6, resume: 30, sprint: 1.7, swing: 8, bush: 5, attack: 6 };   // stamina: a full-stick run drains 16/s (~6 s), refills 22/s after a 1 s rest; at 0 you are winded (no running, chopping, mining or attacking) until it climbs back to 30%; every chop/mine/pick costs 8/8/5 and every attack swing 6
+// ---------- saving a game to your account: one save per account (the newest), gzipped, in <data dir>/saves ----------
+const saveFile = email => DIR && path.join(DIR, 'saves', crypto.createHash('sha1').update(email).digest('hex').slice(0, 20) + '.json.gz');
+function writeSave(email, blob) {
+  const f = saveFile(email); if (!f) return null;
+  const json = JSON.stringify(blob), gz = zlib.gzipSync(json, { level: 9 });
+  fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f + '.tmp', gz); fs.renameSync(f + '.tmp', f);
+  return { bytes: json.length, gz: gz.length };
+}
+function readSave(email) { try { return JSON.parse(zlib.gunzipSync(fs.readFileSync(saveFile(email))).toString()); } catch (e) { return null; } }
 // the Charger: from night 4 on, one huge, very fast enemy per night that hammers players far backwards and vanishes at dawn
 const CHARGER = { firstNight: 4, sp0: 115, spPerNight: 5, spMax: 185, dmg: 25, rad: 36, reach: 62, stop: 44, knock: 300, stunSec: 0.6 };               // logs per tree / stones per rock (before class bonus)
 
@@ -222,6 +231,7 @@ class Room {
   reset() {
     this.c = +process.env.START_C || 0; this.night = +process.env.START_N || 1; this.fire = { fuel: 150, lvl: 1 }; this.aliens = []; this.over = 0;
     for (const r of this.res) r.hp = r.mhp;
+    if (process.env.START_BREAKALL) for (const r of this.res) { r.hp = 0; r.rt = 1e9; }   // (test hook: size a worst-case save)
     this.drops = []; this.pend = []; this.struct = []; this.chargerNight = 0; this.islNight = {}; this.boats = []; this.camps = []; this.bullets = []; this.zones = []; this.turrets = []; for (const l of this.loot || []) l.open = 0; this.arrows = []; this.rabbits = []; this.rabT = 0; this.rabFull = 0; this.wolves = []; this.wolfT = 0; this.raidNight = 0; this.scrapFound = !!process.env.START_SCRAPFOUND;
     if (process.env.START_BENCH) this.struct.push({ id: this.nid++, k: 'bench', x: 110, y: 0, r: RC.RADIUS.bench, hp: 0, mhp: 0, rot: 0 });   // (test hook)
     for (const p of this.players.values()) { this.respawn(p); p.gear = {}; p.buff = { speed: 0, regen: 0, dmg: 0 }; p.kb = null; p.slots = []; }
@@ -510,8 +520,8 @@ class Room {
     const f = RC.FOOD_BY[id], fail = msg => ({ ok: false, msg });
     if (!f) return fail('Unknown recipe.'); if (p.down) return fail('You are down.');
     if (!this.struct.some(s => s.k === 'pot' && this.near(p, s))) return fail('Stand next to a cooking pot.');
-    if (this.pool(p, 'food') < f.cost.food) return fail('Not enough berries (your bag plus the chests).');
-    this.pay(p, { food: f.cost.food });
+    for (const k in f.cost) if (this.pool(p, k) < f.cost[k]) return fail('Not enough ' + (k === 'meat' ? 'meat' : 'berries') + ' (your bag plus the chests).');
+    this.pay(p, f.cost);
     const pot = this.struct.find(s => s.k === 'pot' && this.near(p, s)), a = Math.PI * (0.15 + Math.random() * 0.7), dd = pot.r + 24 + Math.random() * 18;
     this.pend.push({ k: 'q', food: id, x: pot.x + Math.cos(a) * dd, y: pot.y + Math.sin(a) * dd, t: 0.45 });   // the dish pops out of the pot and lands on the floor to be picked up
     return { ok: true, msg: f.n + ' popped out of the pot!' };
@@ -531,7 +541,8 @@ class Room {
     if (id === 'foot') return send(p.ws, { t: 'toast', msg: "Your lucky rabbit's foot. Hold on to it." });
     if (!RC.FOOD_BY[id]) return;
     p.slots.splice(i, 1);
-    if (id === 'juice') p.hp = Math.min(p.mhp, p.hp + 40);
+    if (id === 'steak') p.hp = Math.min(p.mhp, p.hp + 80);
+    else if (id === 'juice') p.hp = Math.min(p.mhp, p.hp + 40);
     else if (id === 'tea') p.buff.speed = 60;
     send(p.ws, { t: 'ate', id, msg: RC.FOOD_BY[id].n, b: p.buff });
   }
@@ -659,6 +670,26 @@ class Room {
     const away = [...this.away]; for (const p of this.players.values()) if (p.email) away.push([p.email, this.awayEntry(p)]);
     return { code: this.code, c: this.c, night: this.night, fire: this.fire, aliens: this.aliens, res: this.res, islands: this.islands, isv: ISL_VER, camps: this.camps, lootOpen: this.loot.filter(l => l.open).map(l => l.id), boats: this.boats.map(b => ({ id: b.id, type: b.type || 'boat', x: b.x, y: b.y, ang: b.ang })), scrapFound: this.scrapFound, drops: this.drops, pend: this.pend, struct: this.struct, chargerNight: this.chargerNight, raidNight: this.raidNight, nid: this.nid, away };
   }
+  saveBlob() {   // everything about this game, compactly: island resources are re-made from the room code, so only home's resources and the changed island ones are stored
+    const o = this.snapshot(); delete o.islands;
+    const homeRes = [], dev = []; let ri = 0;
+    const fresh = []; this.islands.forEach((is, i) => { if (i > 0) fresh.push(...islandRes(is, i, this.code)); });
+    for (const r of this.res) {
+      if (!(r.isl > 0)) homeRes.push([r.k, Math.round(r.x), Math.round(r.y), Math.round(r.hp * 10) / 10]);
+      else { const f = fresh[ri++]; if (!f || r.hp !== r.mhp || r.k !== f.k) dev.push([ri - 1, r.k, Math.round(r.hp * 10) / 10]); }
+    }
+    o.res = undefined; o.homeRes = homeRes; o.dev = dev; o.v = 2; o.at = Date.now();
+    const rd = n => Math.round(n * 10) / 10;
+    o.aliens = (o.aliens || []).map(a => ({ id: a.id, isl: a.isl, k: a.k, x: rd(a.x), y: rd(a.y), hp: rd(a.hp), mhp: a.mhp, sp: a.sp, dmg: a.dmg, cd: 0, atkCd: a.atkCd, reach: a.reach, stop: a.stop, range: a.range, rad: a.rad, aim: 0, shotCd: 0 }));
+    return o;
+  }
+  static fromSave(b) {   // rebuild the snapshot form that restore() understands, then restore it
+    const r0 = new Room(b.code), rest = r0.res.filter(x => x.isl > 0);
+    for (const [i, k, hp] of b.dev || []) if (rest[i]) { rest[i].k = k; rest[i].mhp = HP[k]; rest[i].hp = hp; }
+    const home = (b.homeRes || []).map(a => ({ k: a[0], x: a[1], y: a[2], hp: a[3], mhp: HP[a[0]], rt: 0, isl: 0 }));
+    const o = Object.assign({}, b, { res: home.concat(rest), islands: r0.islands, isv: ISL_VER, islandsV: 2 });
+    return Room.restore(o);
+  }
   static restore(o) {
     const r = new Room(o.code), genIsl = r.islands, genExtra = r.res.filter(x => x.isl > 0), fresh = r.res;
     Object.assign(r, { c: o.c, night: o.night, fire: o.fire, aliens: o.aliens || [], res: o.res, drops: (o.drops || []).filter(d => d.k !== 'q' || RC.ITEM_BY[d.food]), pend: o.pend || [], struct: o.struct || [], chargerNight: o.chargerNight || 0, raidNight: o.raidNight || 0, nid: o.nid || 1, over: 0, emptyFor: 0 });
@@ -679,7 +710,7 @@ class Room {
   }
   add(ws, name, cls, pf, email) {
     this.rForce = 1;   // the next snapshot carries the full resource state for the newcomer
-    const p = { id: this.nid++, ws, name, cls, prof: pf, gear: {}, buff: { speed: 0, regen: 0, dmg: 0 }, actPrev: 0, fa: 0, sw: 0, swk: 0, swa: 0, wood: parseInt(process.env.START_WOOD) || 0, stone: parseInt(process.env.START_STONE) || 0, food: parseInt(process.env.START_FOOD) || 0, scrap: parseInt(process.env.START_SCRAP) || 0, meat: 0, gold: 0, pelt: 0, slots: [], abilCd: 0, sta: STA.max, staCd: 0, tired: 0, actcd: 0, hitcd: 0, eat: 0, inp: { dx: 0, dy: 0, act: 0, hit: 0 } };
+    const p = { id: this.nid++, ws, name, cls, prof: pf, gear: {}, buff: { speed: 0, regen: 0, dmg: 0 }, actPrev: 0, fa: 0, sw: 0, swk: 0, swa: 0, wood: parseInt(process.env.START_WOOD) || 0, stone: parseInt(process.env.START_STONE) || 0, food: parseInt(process.env.START_FOOD) || 0, scrap: parseInt(process.env.START_SCRAP) || 0, meat: parseInt(process.env.START_MEAT) || 0, gold: 0, pelt: 0, slots: [], abilCd: 0, sta: STA.max, staCd: 0, tired: 0, actcd: 0, hitcd: 0, eat: 0, inp: { dx: 0, dy: 0, act: 0, hit: 0 } };
     p.email = email; p.inf = INFINITE.has(email); this.respawn(p);
     if (process.env.START_ABIL && pf) { pf.abil = {}; for (const c of GC.LIST) pf.abil[c.id] = 1; }   // (test hook: every ability unlocked)
     const a = email && this.away.get(email); this.away.delete(email);
@@ -719,7 +750,20 @@ class Room {
       p.actcd -= dt; p.hitcd -= dt; p.abilCd = Math.max(0, (p.abilCd || 0) - dt);
       const B = p.buff; for (const k in B) if (B[k] > 0) B[k] = Math.max(0, B[k] - dt);
       const actEdge = i.act && !p.actPrev; p.actPrev = i.act;
-      if (p.boat) { if (actEdge) this.exitBoat(p); continue; }   // aboard a boat: the boat carries you; ACT gets you out near land
+      if (p.boat) {   // aboard a boat: the boat carries you; ACT gets you out near land. Passengers (not the captain) can shoot projectiles with ATTACK
+        if (actEdge) this.exitBoat(p);
+        const bt = this.boats.find(x => x.id === p.boat);
+        if (bt && bt.drv !== p.id && i.hit && p.hitcd <= 0) {
+          if (!this.spendSta(p, STA.attack)) { p.hitcd = 0.3; this.winded(p); }
+          else {
+            const g = p.gear.rifle ? RC.GUNS.rifle : p.gear.pistol ? RC.GUNS.pistol : { dmg: c.dmg + (p.gear.sword ? 8 : 0), cd: Math.max(0.5, c.cd), speed: 800, ttl: 0.6 };   // no gun: a plain thrown shot
+            p.hitcd = g.cd; let ang = p.fa, bd = 700;
+            for (const t of [...this.aliens, ...(this.wolves || [])]) if (t.hp > 0 && t.k !== 2) { const dd = dist(p, t); if (dd < bd) { bd = dd; ang = Math.atan2(t.y - p.y, t.x - p.x); } }   // aboard you can aim all around
+            p.sw = (p.sw + 1) & 255; p.swk = 4; p.swa = ang; this.shoot(p, ang, g.dmg * (B.rage > 0 || B.power > 0 ? 2 : 1), g.speed, g.ttl, 3);
+          }
+        }
+        continue;
+      }
       if (B.regen > 0 && p.hp < p.mhp) p.hp = Math.min(p.mhp, p.hp + 2 * dt);
       let dx = i.dx, dy = i.dy; const m = Math.hypot(dx, dy); if (m > 1) { dx /= m; dy /= m; }
       let spd = c.spd * (B.speed > 0 ? 1.25 : 1) * (B.haste > 0 ? 2 : 1) * (B.rage > 0 || B.power > 0 ? 1.4 : 1);
@@ -943,6 +987,10 @@ wss.on('connection', ws => {
       const cls = owned.includes(m.cls) ? m.cls : (owned.includes(pf.last) ? pf.last : 'forester');
       if (pf.last !== cls) { pf.last = cls; dirty = true; }
       let rc = String(m.room || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+      if (m.load) {   // "Continue saved game": rebuild the saved room (unless that room is still running)
+        const sv = readSave(email); if (!sv || !sv.code) { send(ws, { t: 'err', m: 'No saved game found.' }); return; }
+        rc = sv.code; if (!rooms.has(rc)) { try { rooms.set(rc, Room.fromSave(sv)); } catch (e) { console.error('load failed:', e && e.stack || e); send(ws, { t: 'err', m: 'The saved game could not be loaded.' }); return; } }
+      }
       if (!rc) rc = code();
       if (!rooms.has(rc)) rooms.set(rc, new Room(rc));
       room = rooms.get(rc);
@@ -966,6 +1014,12 @@ wss.on('connection', ws => {
     } else if (m.t === 'boat' && me) {
       const now = Date.now(); if (now - (me.lastBoat || 0) < 300) return; me.lastBoat = now;
       const res = room.placeBoat(me, m.i | 0); send(ws, { t: 'boatPlaced', ok: res.ok, msg: res.msg });
+    } else if (m.t === 'save' && me) {
+      const now = Date.now(); if (now - (me.lastSave || 0) < 5000) return; me.lastSave = now;
+      let out = null; try { out = writeSave(me.email, room.saveBlob()); } catch (e) { console.error('save failed:', e && e.stack || e); }
+      if (!out || !me.prof) { send(ws, { t: 'saved', ok: false }); return; }
+      me.prof.save = { at: now, n: room.night, rc: room.code, bytes: out.bytes, gz: out.gz }; dirty = true;
+      send(ws, { t: 'saved', ok: true, at: now, night: room.night, bytes: out.bytes, gz: out.gz, players: room.players.size });
     } else if (m.t === 'trade' && me) {
       const now = Date.now(); if (now - (me.lastTrade || 0) < 250) return; me.lastTrade = now;
       let res; try { res = room.trade(me, m.id | 0, String(m.offer || '')); } catch (e) { console.error('trade error:', e && e.stack || e); res = { ok: false, msg: 'Trade failed.' }; }

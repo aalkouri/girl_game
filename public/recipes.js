@@ -23,6 +23,7 @@
   // things you can cook at a cooking pot (cost is in berries)
   const FOOD = [
     { id: 'juice', n: 'Berry Juice', e: '🧃', type: 'Drink', cost: { food: 2 }, d: 'Heals 40 HP right away.' },
+    { id: 'steak', n: 'Steak Dinner', e: '🥩', type: 'Meal', cost: { food: 2, meat: 2 }, d: 'Heals 80 HP right away. Made from 2 chunks of meat (dropped by rabbits and wolves) and 2 berries.' },
     { id: 'tea', n: 'Berry Tea', e: '🍵', type: 'Drink', cost: { food: 3 }, d: '+25% movement speed for 60 seconds.' },
   ];
   const BY = {}; LIST.forEach(r => BY[r.id] = r);

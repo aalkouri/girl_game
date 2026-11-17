@@ -880,14 +880,15 @@ const nearestOf = kind => { const me = ents2['p' + myId]; let best = null, bd = 
 function openPot() { setCraft(false); closeChest(); closeSmelt(); armDismantle($('potDis'), () => nearestOf('pot')); potOpen = true; potSig = ''; $('pot').style.display = 'flex'; $('potMsg').textContent = ''; buildPot(); }
 function closePot() { potOpen = false; $('pot').style.display = 'none'; }
 function buildPot() {
-  const food = pooled().food, sig = String(food); if (sig === potSig) return; potSig = sig;
-  $('potInv').textContent = '🍓 ' + food + ' (chests incl.)'; const list = $('potList'); list.innerHTML = '';
+  const pl = pooled(), food = pl.food, meat = (S && S.p.find(p => p[0] === myId) || [])[21] || 0, sig = food + ',' + meat; if (sig === potSig) return; potSig = sig;
+  $('potInv').textContent = '🍓 ' + food + (meat ? '  🍖 ' + meat : '') + ' (chests incl.)'; const list = $('potList'); list.innerHTML = '';
   for (const f of RC.FOOD) {
-    const ok = food >= f.cost.food, d = document.createElement('div'); d.className = 'rc';
-    d.innerHTML = '<div class="ic">' + f.e + '</div><div class="tx"><div class="nm">' + f.n + ' <span style="font-weight:400;opacity:.7;font-size:11px">' + f.type + '</span></div><div class="ds">' + f.d + '</div><div class="co"><span class="' + (ok ? '' : 'no') + '">🍓 ' + food + '/' + f.cost.food + '</span></div></div>';
+    const have = { food, meat }, ok = Object.entries(f.cost).every(([k, n]) => (have[k] || 0) >= n), d = document.createElement('div'); d.className = 'rc';
+    const co = Object.entries(f.cost).map(([k, n]) => '<span class="' + ((have[k] || 0) >= n ? '' : 'no') + '">' + (k === 'meat' ? '🍖' : '🍓') + ' ' + (have[k] || 0) + '/' + n + '</span>').join(' &nbsp; ');
+    d.innerHTML = '<div class="ic">' + f.e + '</div><div class="tx"><div class="nm">' + f.n + ' <span style="font-weight:400;opacity:.7;font-size:11px">' + f.type + '</span></div><div class="ds">' + f.d + '</div><div class="co">' + co + '</div></div>';
     d.classList.add('pick'); if (!ok) d.classList.add('dim');   // the whole row is the button: tap anywhere on it to cook
     d.onclick = () => {
-      if (!ok) { const m = $('potMsg'); m.textContent = 'Not enough berries for ' + f.n + '.'; m.style.color = '#ff8a80'; return; }
+      if (!ok) { const m = $('potMsg'); m.textContent = 'Not enough ingredients for ' + f.n + '.'; m.style.color = '#ff8a80'; return; }
       if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'cook', id: f.id }));
     };
     list.appendChild(d);
@@ -1276,7 +1277,7 @@ function chosen() {
 }
 function setDia(n) { PF.d = n; document.querySelectorAll('.diaN').forEach(e => e.textContent = n); }
 function applyProfile(pr, useLast) {
-  PF.owned = pr.owned; setDia(pr.d);
+  PF.owned = pr.owned; PF.abil = pr.abil || PF.abil; PF.save = pr.save || null; setDia(pr.d); window.xLobby && xLobby();
   if (useLast || !PF.owned.includes(sel)) sel = PF.owned.includes(pr.last) ? pr.last : 'forester';
   try { localStorage.setItem('cls', sel); } catch (e) { }
   chosen(); buildPicker();
@@ -1398,7 +1399,8 @@ $('go').onclick = () => {
   const name = $('name').value.trim() || 'Survivor'; try { localStorage.setItem('nm', name); } catch (e) { }
   $('err').textContent = 'Connecting...';
   ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
-  ws.onopen = () => ws.send(JSON.stringify({ t: 'join', name, cls: sel, room: $('room').value, token }));
+  const wantLoad = !!window.loadSaveFlag; window.loadSaveFlag = false;
+  ws.onopen = () => ws.send(JSON.stringify({ t: 'join', name, cls: sel, room: $('room').value, token, load: wantLoad }));
   ws.onerror = () => $('err').textContent = 'Could not connect';
   ws.onclose = () => {
     if (!myId || runOver) return; $('banner').textContent = 'Connection lost - reconnecting...';
@@ -1451,7 +1453,7 @@ $('go').onclick = () => {
       runOver = true; setDia(m.total); try { sessionStorage.setItem('runres', JSON.stringify({ n: m.n, d: m.d })); sessionStorage.removeItem('rejoin'); } catch (e) { }
       $('banner').style.fontSize = '22px'; $('banner').textContent = 'Game over - you survived ' + m.n + ' day' + (m.n === 1 ? '' : 's') + ' and earned ' + m.d + ' 💎';
       setTimeout(() => { try { ws.close(); } catch (e) { } location.reload(); }, 3500);
-    } else if (window.xMsg && ['loot', 'camped', 'fish', 'fx', 'abilUsed', 'traded'].includes(m.t)) { xMsg(m);
+    } else if (window.xMsg && ['loot', 'camped', 'fish', 'fx', 'abilUsed', 'traded', 'saved'].includes(m.t)) { xMsg(m);
     } else if (m.t === 'dia') {
       setDia(m.d); const me = ents2['p' + myId];
       if (me) floatText(me.x, me.y - 24, '+' + m.n + ' 💎' + (m.why === 'milestone' ? ' milestone!' : ''), 0x7fe9ff);
@@ -1479,7 +1481,7 @@ addEventListener('keydown', e => { const k = e.key.toLowerCase(); if (placingId 
     else actPress();
   }
   if (!keys[k] && /^[1-7]$/.test(k) && $('btns').style.display !== 'none' && !/INPUT|TEXTAREA/.test((e.target || {}).tagName || '')) useSlotAt(+k - 1);   // 1-3 use the item in that slot (only in game, not while typing)
-  if (k === 'escape') { if (craftOpen || chestId !== null || potOpen || smeltId !== null || (typeof trOpen !== 'undefined' && trOpen)) { setCraft(false); closeChest(); closePot(); closeSmelt(); window.closeTrader && closeTrader(); menuClosedAt = performance.now(); } else if (placingId) stopPlacing(); }   // Escape closes menus / cancels placing
+  if (k === 'escape') { if (craftOpen || chestId !== null || potOpen || smeltId !== null || (typeof trOpen !== 'undefined' && trOpen)) { setCraft(false); closeChest(); closePot(); closeSmelt(); window.closeTrader && closeTrader(); menuClosedAt = performance.now(); } else if (placingId) stopPlacing(); else if (typeof mapOpen !== 'undefined' && mapOpen) { /* the map closes itself */ } else if (window.xPause) xPause(); }   // Escape closes menus / cancels placing
   keys[k] = 1; }); addEventListener('keyup', e => { keys[e.key.toLowerCase()] = 0; });
 // never let a lost touch/key leave the character walking: drop all held input whenever the page loses focus or no finger is down
 function clearInput() { joy = null; jb.style.display = jk.style.display = 'none'; act = hit = 0; for (const k in keys) keys[k] = 0; ['act', 'hit'].forEach(i => { $(i).style.transform = ''; }); }
