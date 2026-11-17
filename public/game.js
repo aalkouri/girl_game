@@ -1839,7 +1839,14 @@ const jend = e => { if (joy && joy.id === e.pointerId) { joy = null; jb.style.di
 app.view.addEventListener('pointerup', jend); app.view.addEventListener('pointercancel', jend);
 function jpos() { const dx = joy.x - joy.ox, dy = joy.y - joy.oy, m = Math.min(100, Math.hypot(dx, dy)), a = Math.atan2(dy, dx); jk.style.background = m > 63 ? '#ffb74dd0' : ''; jb.style.left = joy.ox + 'px'; jb.style.top = joy.oy + 'px'; jk.style.left = (joy.ox + Math.cos(a) * m) + 'px'; jk.style.top = (joy.oy + Math.sin(a) * m) + 'px'; }
 function bind(id, set) { const b = $(id); b.addEventListener('pointerdown', e => { e.preventDefault(); set(1); b.setPointerCapture(e.pointerId); b.style.transform = 'scale(.92)'; }); ['pointerup', 'pointercancel'].forEach(t => b.addEventListener(t, () => { set(0); b.style.transform = ''; })); }
-bind('act', v => { act = v; if (v) actPress(); }); bind('hit', v => { hit = v; if (v && placingId) actPress(); });   // while a silhouette is out, ATTACK places it (and attacking is off)
+bind('act', v => { act = v; if (v) actPress(); }); bind('hit', v => { hit = v; if (v && placingId) actPress(); });
+(function () {   // ATTACK is also the aim stick: hold it to keep attacking, drag to aim (the knob is the button itself)
+  const b = $('hit'); let st = null;
+  b.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse') return; const r = b.getBoundingClientRect(); st = aimStick = { id: e.pointerId, ox: r.left + r.width / 2, oy: r.top + r.height / 2, x: e.clientX, y: e.clientY }; aimPadDraw(); });
+  b.addEventListener('pointermove', e => { if (aimStick && aimStick.id === e.pointerId) { aimStick.x = e.clientX; aimStick.y = e.clientY; aimPadDraw(); } });
+  const end = e => { if (aimStick && aimStick.id === e.pointerId) { aimStick = null; aimPadDraw(); } };
+  b.addEventListener('pointerup', end); b.addEventListener('pointercancel', end);
+})();   // while a silhouette is out, ATTACK places it (and attacking is off)
 addEventListener('keydown', e => { const k = e.key.toLowerCase(); if (placingId && !keys[k] && (k === 'q' || k === 'f' || k === 'j') && !/INPUT|TEXTAREA/.test((e.target || {}).tagName || '')) actPress(); if (placingId && k === 'r') rotatePlace(); else if (k === 'r' && !keys[k] && window.useAbility && $('btns').style.display !== 'none' && !/INPUT|TEXTAREA/.test((e.target || {}).tagName || '')) useAbility(); if (!keys[k] && (k === ' ' || k === 'e') && !/INPUT|TEXTAREA/.test((e.target || {}).tagName || '')) {
     if (craftOpen || chestId !== null || potOpen || smeltId !== null || (typeof trOpen !== 'undefined' && trOpen)) { setCraft(false); closeChest(); closePot(); closeSmelt(); window.closeTrader && closeTrader(); menuClosedAt = performance.now(); }   // E / Space closes whatever menu is open
     else actPress();
@@ -1856,11 +1863,11 @@ app.view.addEventListener('touchstart', e => { if (e.touches.length >= 2) { joy 
 app.view.addEventListener('contextmenu', e => e.preventDefault());
 let actBlock = false;   // set after placing something so a still-held ACT doesn't instantly act again (e.g. hop into the boat you just put down)
 // ---- aiming: you face where you aim and ATTACK goes that way. Mouse: the cursor. Touch: the aim stick next to ATTACK (drag, release to attack); without it, attacks auto-aim as before ----
-const mouse = { on: false, x: 0, y: 0, down: false }; let aimStick = null, aimHold = { until: 0, ang: 0 }, hitPulse = 0, crossEl = null, aimPad = null;
+const mouse = { on: false, x: 0, y: 0, down: false }; let aimStick = null, aimHold = { until: 0, ang: 0 }, hitPulse = 0, crossEl = null;
 function mouseAngle() { const me = ents2['p' + myId]; if (!me) return null; return Math.atan2(mouse.y - (H / 2 + (me.y - camY) * Z), mouse.x - (W / 2 + (me.x - camX) * Z)); }
-function aimPadDraw() {
-  if (!aimPad) return; const k = aimPad.firstElementChild;
-  if (aimStick) { let dx = aimStick.x - aimStick.ox, dy = aimStick.y - aimStick.oy; const m = Math.hypot(dx, dy), L = 34; if (m > L) { dx *= L / m; dy *= L / m; } k.style.transform = 'translate(' + dx + 'px,' + dy + 'px)'; k.style.background = '#ff8a80'; } else { k.style.transform = ''; k.style.background = '#ffffffaa'; }
+function aimPadDraw() {   // touch: the ATTACK button itself is the stick - it slides toward where you drag
+  const b = $('hit'); if (!b) return;
+  if (aimStick) { let dx = aimStick.x - aimStick.ox, dy = aimStick.y - aimStick.oy; const m = Math.hypot(dx, dy), L = 40; if (m > L) { dx *= L / m; dy *= L / m; } b.style.transform = 'translate(' + dx + 'px,' + dy + 'px) scale(.92)'; } else b.style.transform = '';
 }
 (function () {
   const cs = document.createElement('style'); cs.textContent = 'body.ingame, body.ingame * { cursor: none !important; }'; document.head.appendChild(cs);   // in a game the real mouse cursor is hidden everywhere (menus too); the crosshair is the pointer
@@ -1872,18 +1879,6 @@ function aimPadDraw() {
   addEventListener('pointermove', mv, true); document.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') crossEl.style.display = 'none'; }, true); document.documentElement.addEventListener('mouseleave', () => { crossEl.style.display = 'none'; });
   app.view.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse' && e.button === 0) { mouse.down = true; mv(e); if (placingId) actPress(); } });
   addEventListener('pointerup', e => { if (e.pointerType === 'mouse' && e.button === 0) mouse.down = false; });
-  if (matchMedia('(pointer: coarse)').matches) {   // touch screens: the aim stick
-    aimPad = document.createElement('div'); aimPad.id = 'aimPad';
-    aimPad.style.cssText = 'position:fixed;z-index:9;border-radius:50%;border:2px solid #ff8a80aa;background:#ef535022;touch-action:none;display:none;right:calc(max(16px,env(safe-area-inset-right)) + clamp(52px,15vmin,76px) + clamp(44px,12vmin,60px) + clamp(42px,11.5vmin,56px) + 40px);bottom:max(14px,env(safe-area-inset-bottom));width:clamp(72px,20vmin,100px);height:clamp(72px,20vmin,100px)';
-    aimPad.innerHTML = '<div style="position:absolute;left:50%;top:50%;width:30px;height:30px;margin:-15px;border-radius:50%;background:#ffffffaa;pointer-events:none"></div><div style="position:absolute;left:0;right:0;top:-16px;text-align:center;font-size:10px;font-weight:800;opacity:.8;pointer-events:none">AIM</div>';
-    document.body.appendChild(aimPad);
-    const ctr = () => { const r = aimPad.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };
-    aimPad.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); const [cx, cy] = ctr(); aimStick = { id: e.pointerId, ox: cx, oy: cy, x: e.clientX, y: e.clientY }; aimPad.setPointerCapture(e.pointerId); aimPadDraw(); });
-    aimPad.addEventListener('pointermove', e => { if (aimStick && aimStick.id === e.pointerId) { aimStick.x = e.clientX; aimStick.y = e.clientY; aimPadDraw(); } });
-    const end = e => { if (!aimStick || aimStick.id !== e.pointerId) return; const dx = aimStick.x - aimStick.ox, dy = aimStick.y - aimStick.oy; if (Math.hypot(dx, dy) > 16 && e.type !== 'pointercancel') aimHold = { until: performance.now() + 400, ang: Math.atan2(dy, dx) }; if (e.type !== 'pointercancel') { hitPulse = performance.now() + 170; if (placingId) actPress(); } aimStick = null; aimPadDraw(); };
-    aimPad.addEventListener('pointerup', end); aimPad.addEventListener('pointercancel', end);
-    setInterval(() => { aimPad.style.display = $('btns').style.display === 'none' || !myId ? 'none' : 'block'; }, 500);
-  }
 })();
 function currentAim() {   // the direction you are aiming right now (aim stick, a just-released stick, or the mouse cursor), or null when not aiming
   const nowT = performance.now();
