@@ -125,6 +125,7 @@ const MAXP = 8;
 const ROOM_IDLE_SEC = +process.env.ROOM_IDLE_SEC || 20 * 60;   // an empty room is kept this long; any join resets the timer
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const CAMP_CLEAR = RC.camp(5) + 30;          // no trees anywhere the camp can grow to (max level)
+const BUSHES = 33;                   // berry bushes per island (was 66)
 const HP = { t: 4, r: 3, b: 1 };            // hits to break: tree 4, rock 3, berry bush 1
 const STRUCT = { bench: { r: RC.RADIUS.bench }, chest: { r: RC.RADIUS.chest }, pot: { r: RC.RADIUS.pot }, smelter: { r: RC.RADIUS.smelter }, wall: { r: RC.RADIUS.wall, hp: 60 } };
 const CHEST_CAP = 500, REACH = 62;   // collision radius / hit points of placed structures
@@ -142,7 +143,7 @@ class Room {
     this.code = code; this.away = new Map(); this.players = new Map(); this.nid = 1; this.emptyFor = 0;
     this.res = [];
     const add = (k, n, min = 130) => { for (let i = 0; i < n; i++) { const a = Math.random() * 6.283, d = min + Math.sqrt(Math.random()) * (R - 70 - min); this.res.push({ k, x: Math.cos(a) * d, y: Math.sin(a) * d, hp: HP[k], mhp: HP[k], rt: 0 }); } };
-    add('t', 135, CAMP_CLEAR); add('r', 84); add('b', 66);   // island area is 4x, so ~3x the resources
+    add('t', 135, CAMP_CLEAR); add('r', 84); add('b', BUSHES);   // island area is 4x, so ~3x the resources
     this.reset();
   }
   endRun() {   // everyone is down: pay out by days survived, send everyone back to the title screen, and start the room fresh
@@ -270,6 +271,7 @@ class Room {
   static restore(o) {
     const r = new Room(o.code);
     Object.assign(r, { c: o.c, night: o.night, fire: o.fire, aliens: o.aliens || [], res: o.res, drops: o.drops || [], pend: o.pend || [], struct: o.struct || [], chargerNight: o.chargerNight || 0, nid: o.nid || 1, over: 0, emptyFor: 0 });
+    { let nb = 0; r.res = r.res.filter(x => x.k !== 'b' || ++nb <= BUSHES); }   // rooms saved before the bush cut lose their extra bushes (done before anyone joins, so client indexes stay aligned)
     const now = Date.now(); r.away = new Map((o.away || []).map(([e, v]) => [e, { t: now, s: v.s }]));   // the reconnect window starts from the restart
     return r;
   }
