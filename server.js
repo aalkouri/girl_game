@@ -5,7 +5,7 @@ const GC = require('./public/classes.js');
 const RC = require('./public/recipes.js');
 const PORT = process.env.PORT || 80;
 const PUB = path.join(__dirname, 'public');
-const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.txt': 'text/plain' };
+const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.txt': 'text/plain', '.webp': 'image/webp', '.png': 'image/png' };
 
 // ---------- player profiles (no login: a secret random id stored in the player's browser) ----------
 function pickDir() {

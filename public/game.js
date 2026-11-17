@@ -1247,7 +1247,7 @@ $('go').onclick = () => {
 };
 $('rm').onclick = () => { const u = location.origin + '/?room=' + roomCode; try { navigator.clipboard.writeText(u); $('rm').textContent = 'Link copied!'; } catch (e) { prompt('Share this link', u); } };
 
-const snd = $('snd'); const sndIcon = () => snd.textContent = SFX.isMuted() ? '🔇' : '🔊'; sndIcon();
+const snd = $('snd'); const sndIcon = () => snd.style.backgroundImage = SFX.isMuted() ? 'url(ui/mute.webp)' : 'url(ui/sound.webp)'; sndIcon();
 snd.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); SFX.init(); SFX.setMuted(!SFX.isMuted()); sndIcon(); });
 addEventListener('pointerdown', () => SFX.resume());
 // ---------- input ----------
