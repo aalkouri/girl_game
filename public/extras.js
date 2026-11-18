@@ -249,13 +249,20 @@ function xActLabel(me) {
 // ---------- Escape menu: resume / save the game to your account / exit ----------
 (function () {
   const d = document.createElement('div'); d.className = 'ov'; d.id = 'pauseMenu'; d.style.cssText = 'display:none;align-items:center;justify-content:center;z-index:60;background:#06101ccc';
-  d.innerHTML = '<div style="background:#14304a;border:2px solid #ffd000;border-radius:14px;padding:18px 22px;width:min(340px,86vw);text-align:center;box-shadow:0 8px 30px #000a"><div style="font-size:20px;font-weight:800;margin-bottom:12px">Menu</div>' +
+  d.innerHTML = '<div style="background:#14304a;border:2px solid #ffd000;border-radius:14px;padding:18px 22px;width:min(360px,90vw);max-height:92vh;overflow:auto;text-align:center;box-shadow:0 8px 30px #000a"><div style="font-size:20px;font-weight:800;margin-bottom:12px">Menu</div>' +
     '<button class="mini" id="pmResume" style="display:block;width:100%;margin:6px 0;padding:11px">Resume</button>' +
     '<button class="mini" id="pmSave" style="display:block;width:100%;margin:6px 0;padding:11px;background:#1565c0">💾 Save game</button>' +
     '<div id="pmInfo" style="font-size:12px;opacity:.85;min-height:34px;margin:4px 0 6px;line-height:1.35">Saves this whole game (every player, everything built and collected) to your account. One save per account; a new save replaces the old one.</div>' +
+    '<button class="mini gray" id="pmKeys" style="display:block;width:100%;margin:6px 0;padding:11px">🎮 Controls</button>' +
+    '<div id="pmCtl" style="display:none;text-align:left;font-size:12.5px;line-height:1.55;margin:6px 0 4px;background:#0b1a2a;border-radius:10px;padding:10px 12px">' +
+    '<b>Keyboard + mouse</b><br>W A S D / arrows - move &nbsp;·&nbsp; Shift - run<br>Mouse - aim (your character faces the crosshair)<br>Click / Q / F / J - attack &nbsp;·&nbsp; Space / E - ACT (chop, mine, pick, open, refuel)<br>R - rotate what you are placing, or use your ability<br>1-7 - use the item in that slot &nbsp;·&nbsp; M - map &nbsp;·&nbsp; Esc - this menu<br>' +
+    '<b style="display:block;margin-top:6px">Touch</b>Left side of the screen: drag to move, push past the ring to run<br>ACT button: chop, mine, pick, open, refuel<br>ATTACK button: hold to keep attacking, drag it to aim<br>Slot buttons (right edge): tap to use an item &nbsp;·&nbsp; + / − zoom &nbsp;·&nbsp; 🗺️ map &nbsp;·&nbsp; ☰ this menu</div>' +
     '<button class="mini gray" id="pmExit" style="display:block;width:100%;margin:6px 0;padding:11px">Exit to main menu</button></div>';
   document.body.appendChild(d);
   d.querySelector('#pmResume').onclick = () => xPause(false);
+  d.querySelector('#pmKeys').onclick = () => { const c = d.querySelector('#pmCtl'); c.style.display = c.style.display === 'none' ? 'block' : 'none'; };
+  const mb = document.createElement('button'); mb.id = 'menuBtn'; mb.className = 'zb'; mb.textContent = '☰'; mb.setAttribute('aria-label', 'Menu'); mb.style.cssText = 'bottom:max(196px,calc(env(safe-area-inset-bottom) + 186px));font-size:18px'; $('btns').appendChild(mb);   // phones have no Escape key
+  mb.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); xPause(); });
   d.querySelector('#pmSave').onclick = () => { if (ws && ws.readyState === 1) { ws.send(JSON.stringify({ t: 'save' })); $('pmInfo').textContent = 'Saving...'; } };
   d.querySelector('#pmExit').onclick = () => { try { sessionStorage.removeItem('rejoin'); } catch (e) { } runOver = true; try { ws.close(); } catch (e) { } location.reload(); };
 })();
