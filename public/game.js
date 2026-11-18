@@ -870,12 +870,37 @@ const T_FIN = tex(46, 58, g => {   // a shark's dorsal fin sticking out of the w
   g.fillStyle = gr; g.beginPath(); g.moveTo(8, 56); g.quadraticCurveTo(14, 20, 20, 2); g.quadraticCurveTo(26, 26, 42, 56); g.quadraticCurveTo(26, 48, 8, 56); g.fill();
   g.strokeStyle = 'rgba(0,0,0,.45)'; g.lineWidth = 1.5; g.stroke(); g.fillStyle = 'rgba(255,255,255,.55)'; g.beginPath(); g.ellipse(25, 56, 22, 3.5, 0, 0, TAU); g.fill();   // foam at the base
 });
+// a shark seen from above, nose to the right: torpedo body with counter-shading, swept pectoral fins, dorsal ridge, gill slits and eyes (the tail is a separate sprite so it can swish)
+const T_SHARK = tex(260, 120, g => {
+  const fin = (pts, c) => { g.fillStyle = c; g.beginPath(); g.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) g.lineTo(pts[i], pts[i + 1]); g.closePath(); g.fill(); g.strokeStyle = 'rgba(8,22,32,.7)'; g.lineWidth = 1.6; g.stroke(); };
+  fin([168, 37, 124, 2, 146, 40], '#3b5565'); fin([168, 83, 124, 118, 146, 80], '#3b5565');          // pectoral fins
+  fin([94, 42, 74, 24, 86, 44], '#3b5565'); fin([94, 78, 74, 96, 86, 76], '#3b5565');                // pelvic fins
+  const body = () => { g.beginPath(); g.moveTo(254, 60); g.bezierCurveTo(238, 44, 206, 34, 160, 31); g.bezierCurveTo(110, 28, 70, 38, 40, 54); g.lineTo(28, 60); g.lineTo(40, 66); g.bezierCurveTo(70, 82, 110, 92, 160, 89); g.bezierCurveTo(206, 86, 238, 76, 254, 60); g.closePath(); };
+  const gr = g.createLinearGradient(0, 28, 0, 92); gr.addColorStop(0, '#a9bfca'); gr.addColorStop(.22, '#6a8798'); gr.addColorStop(.5, '#34505f'); gr.addColorStop(.78, '#6a8798'); gr.addColorStop(1, '#a9bfca');
+  body(); g.fillStyle = gr; g.fill(); g.strokeStyle = 'rgba(8,22,32,.75)'; g.lineWidth = 2; g.stroke();
+  g.strokeStyle = 'rgba(255,255,255,.14)'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(232, 60); g.lineTo(46, 60); g.stroke();            // the pale line down the back
+  g.strokeStyle = 'rgba(5,18,28,.45)'; g.lineWidth = 1.6; for (let i = 0; i < 5; i++) { const x = 188 - i * 6; g.beginPath(); g.moveTo(x, 38); g.quadraticCurveTo(x - 4, 43, x - 2, 49); g.stroke(); g.beginPath(); g.moveTo(x, 82); g.quadraticCurveTo(x - 4, 77, x - 2, 71); g.stroke(); }   // gill slits
+  fin([150, 58, 104, 54, 112, 60, 104, 66, 150, 62], '#2a4150');                                       // dorsal fin, seen from above
+  g.fillStyle = 'rgba(255,255,255,.22)'; g.beginPath(); g.ellipse(246, 60, 8, 4, 0, 0, TAU); g.fill();   // snout
+  g.fillStyle = '#05121a'; for (const y of [46, 74]) { g.beginPath(); g.arc(222, y, 3.4, 0, TAU); g.fill(); g.fillStyle = '#fff'; g.beginPath(); g.arc(221, y - 1, 1, 0, TAU); g.fill(); g.fillStyle = '#05121a'; }   // eyes
+  g.fillStyle = 'rgba(0,0,0,.4)'; for (const y of [54, 66]) { g.beginPath(); g.arc(243, y, 1.3, 0, TAU); g.fill(); }   // nostrils
+});
+const T_SHARK_TAIL = tex(100, 126, g => {   // the tail fin: the upper lobe is the longer one
+  g.beginPath(); g.moveTo(99, 60); g.lineTo(72, 55); g.lineTo(14, 2); g.quadraticCurveTo(26, 38, 40, 62); g.quadraticCurveTo(30, 96, 22, 120); g.lineTo(72, 69); g.lineTo(99, 66); g.closePath();
+  const gr = g.createLinearGradient(0, 0, 100, 0); gr.addColorStop(0, '#2c4452'); gr.addColorStop(1, '#4a6677'); g.fillStyle = gr; g.fill(); g.strokeStyle = 'rgba(8,22,32,.75)'; g.lineWidth = 2; g.stroke();
+});
 const sharkE = {};
 function syncSharks(m) {
   const seen = {};
   for (const s of m.sk || []) {
     seen[s[0]] = 1; let e = sharkE[s[0]];
-    if (!e) { const c = new PIXI.Container(), fin = new PIXI.Sprite(T_FIN); fin.anchor.set(.5, .95); fin.scale.set(1.1); const wake = new PIXI.Graphics(); c.addChild(wake, fin); ents.addChild(c); e = sharkE[s[0]] = { c, fin, wake, x: s[1], y: s[2], tx: s[1], ty: s[2], a: s[3] / 100, ph: rnd(0, TAU), age: 0, bite: 0 }; c.position.set(e.x, e.y); }
+    if (!e) {
+      const c = new PIXI.Container(), wake = new PIXI.Graphics(), rot = new PIXI.Container(), shadow = new PIXI.Graphics(), tail = new PIXI.Sprite(T_SHARK_TAIL), body = new PIXI.Sprite(T_SHARK), jaws = new PIXI.Graphics(), foam = new PIXI.Graphics();
+      shadow.beginFill(0x04202f, .3); shadow.drawEllipse(-6, 10, 118, 26); shadow.endFill();
+      tail.anchor.set(1, .5); tail.position.set(-98, 0); body.anchor.set(.5, .5); jaws.alpha = 0;
+      rot.addChild(shadow, tail, body, jaws, foam); rot.scale.set(.74); c.addChild(wake, rot); ents.addChild(c);
+      e = sharkE[s[0]] = { c, rot, tail, body, jaws, foam, wake, x: s[1], y: s[2], tx: s[1], ty: s[2], a: s[3] / 100, ar: s[3] / 100, ph: rnd(0, TAU), age: 0, bite: 0 }; c.position.set(e.x, e.y);
+    }
     e.tx = s[1]; e.ty = s[2]; e.a = s[3] / 100; if (s[4] && !e.bite) { e.bite = .5; burst(e.x, e.y, 14, 0xffffff, 170, false, .16); burst(e.x, e.y, 6, 0xb71c1c, 90, false, .1); } if (!s[4]) e.bite = Math.max(0, e.bite - .1);
   }
   for (const id in sharkE) if (!seen[id]) { sharkE[id].c.destroy({ children: true }); delete sharkE[id]; }
@@ -883,9 +908,14 @@ function syncSharks(m) {
 function stepSharkFx(dt) {
   for (const id in sharkE) {
     const e = sharkE[id], k = Math.min(1, dt * 9); e.age += dt; const ox = e.x, oy = e.y; e.x += (e.tx - e.x) * k; e.y += (e.ty - e.y) * k;
-    e.c.position.set(e.x, e.y); e.c.zIndex = e.y + 200; e.c.alpha = Math.min(1, e.age * 2); e.fin.rotation = Math.sin(T * 5 + e.ph) * .07; e.fin.y = Math.sin(T * 3 + e.ph) * 1.5;
+    e.c.position.set(e.x, e.y); e.c.zIndex = e.y + 200; e.c.alpha = Math.min(1, e.age * 2);
+    { let da = ((e.a - e.ar + Math.PI) % TAU + TAU) % TAU - Math.PI; e.ar += da * Math.min(1, dt * 6); }   // turns smoothly toward where it is heading
+    const sw = Math.sin(T * 6.5 + e.ph), fast = Math.hypot(e.x - ox, e.y - oy) > .5 ? 1 : .35;
+    e.rot.rotation = e.ar + sw * .035 * fast; e.tail.rotation = Math.sin(T * 6.5 + e.ph - 1.1) * .34 * fast; e.body.rotation = Math.sin(T * 6.5 + e.ph - .5) * .04 * fast;
+    e.jaws.clear(); if (e.bite > 0) { const o = Math.min(1, e.bite * 2.2); e.jaws.alpha = Math.min(1, o * 1.6); e.jaws.beginFill(0x4a0b0b, 1); e.jaws.drawEllipse(128, 0, 9 + 11 * o, 5 + 17 * o); e.jaws.endFill(); e.jaws.beginFill(0xf5f5f0, 1); for (let k = -3; k <= 3; k++) { const ya = k * (4.2 * (.4 + o)); e.jaws.drawPolygon([126 + Math.abs(k), ya - 2.2, 136 - Math.abs(k) * .6, ya, 126 + Math.abs(k), ya + 2.2]); } e.jaws.endFill(); }
+    e.foam.clear(); e.foam.lineStyle(3, 0xffffff, .55 * fast); e.foam.arc(120, 0, 15, -1.1, 1.1); e.foam.lineStyle(2, 0xffffff, .3 * fast); e.foam.arc(108, 0, 26, -.9, .9);   // the bow wave
     const bx = -Math.cos(e.a), by = -Math.sin(e.a), px = -by, py = bx;   // the wake: a V of white lines trailing behind the fin
-    e.wake.clear(); e.wake.lineStyle(3, 0xffffff, .5); for (const sg of [-1, 1]) { e.wake.moveTo(0, 0); e.wake.lineTo(bx * 70 + px * sg * 26, by * 70 + py * sg * 26); }
+    const wr = Math.cos(e.ar), wq = Math.sin(e.ar), wbx = -wr, wby = -wq, wpx = -wby, wpy = wbx; e.wake.clear(); e.wake.lineStyle(3, 0xffffff, .5); for (const sg of [-1, 1]) { e.wake.moveTo(wbx * 60 + wpx * sg * 6, wby * 60 + wpy * sg * 6); e.wake.lineTo(wbx * 150 + wpx * sg * 34, wby * 150 + wpy * sg * 34); }
     if (Math.hypot(e.x - ox, e.y - oy) > .5 && Math.random() < dt * 14) emit(pfx, T_GLOW, e.x + bx * 30, e.y + by * 30, rnd(-10, 10), rnd(-10, 10), .8, .12, .3, 0xffffff, .45, false, 0);
   }
 }
