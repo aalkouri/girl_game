@@ -148,6 +148,7 @@ const srv = http.createServer((q, s) => {
 const R = 3600;                      // home island radius (doubled again from 1800)
 const ALIEN_R = 950;                 // aliens come ashore this far from the fire
 const DAY = 90, DUSK = 30, NIGHT = 60, CYC = DAY + DUSK + NIGHT;
+const HOME_R = 150, HOME_RATE = 1.0;   // a spitter's glob starts to curve toward you within HOME_R px, turning at most HOME_RATE rad/s, and only once
 const VIL_DMG = { arrow: 22, melee: 18 };   // raiding / camp villagers: an archer's arrow and a villager's blow (was 6 and 7), before the +4% per night and before armor
 const BLOCK_SEC = 5, WALL_SEC = 8;   // an enemy that cannot find a way to (or a clear shot at) you for BLOCK_SEC seconds attacks the nearest wall for up to WALL_SEC seconds, then tries to path to you again
 const ACT_R = 2600, VIL_ACT = 3000;   // an island's animals exist while a player is within ACT_R of its shore; villagers while one is within VIL_ACT of their camp
@@ -1350,7 +1351,19 @@ class Room {
       }
     }
     for (let i = this.arrows.length - 1; i >= 0; i--) {   // arrows fly straight; spike walls / stations stop them, players take the damage
-      const w = this.arrows[i]; w.x += w.vx * dt; w.y += w.vy * dt; w.ttl -= dt; let dead = w.ttl <= 0;
+      const w = this.arrows[i];
+      if (w.slow && w.hd !== 2) {   // the spitter's glob bends a little toward you once it gets close; if it misses it just carries on straight
+        let tp = null, td = HOME_R; for (const p of P) if (!p.down && !p.boat) { const d = Math.hypot(p.x - w.x, p.y - w.y); if (d < td) { td = d; tp = p; } }
+        if (tp) {
+          const cur = Math.atan2(w.vy, w.vx), want = Math.atan2(tp.y - w.y, tp.x - w.x), df = ((want - cur + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
+          if (!w.hd && Math.abs(df) < 1.2) { w.hd = 1; w.pd = td; }   // it only tries if you are roughly ahead of it
+          if (w.hd === 1) {
+            if (td > w.pd + 0.3) w.hd = 2;   // it is moving away again: that was its one attempt
+            else { const turn = Math.max(-HOME_RATE * dt, Math.min(HOME_RATE * dt, df)), sp = Math.hypot(w.vx, w.vy), na = cur + turn; w.vx = Math.cos(na) * sp; w.vy = Math.sin(na) * sp; w.pd = td; }
+          }
+        } else if (w.hd === 1) w.hd = 2;
+      }
+      w.x += w.vx * dt; w.y += w.vy * dt; w.ttl -= dt; let dead = w.ttl <= 0;
       if (!dead) for (const st of this.struct) if (st.k !== 'trap' && st.k !== 'spike' && !(st.k === 'gate' && st.open)) { const [qx, qy, qr] = solidPt(st, w.x, w.y); if (Math.hypot(w.x - qx, w.y - qy) < qr) { if (st.hp > 0) this.hitWall(st, w.dmg); dead = true; break; } }
       if (!dead) for (const p of P) if (!p.down && !p.boat && Math.hypot(p.x - w.x, p.y - w.y) < 18) { this.hurt(p, w.dmg); dead = true; break; }
       if (dead) this.arrows.splice(i, 1);
