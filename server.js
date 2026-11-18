@@ -152,6 +152,7 @@ const HOME_R = 150, HOME_RATE = 1.0;   // a spitter's glob starts to curve towar
 const VIL_DMG = { arrow: 22, melee: 18 };   // raiding / camp villagers: an archer's arrow and a villager's blow (was 6 and 7), before the +4% per night and before armor
 // [infight] experiment: different species fight each other (set to false to switch it off; see the INFIGHT block in Room to remove it)
 const INFIGHT = true, FIGHT_SEE = 280, FIGHT_PLAYER = 380;
+const GHOST_SEC = 30;   // a player who disconnects at night / near enemies stays in the world this long
 const BLOCK_SEC = 5, WALL_SEC = 8;   // an enemy that cannot find a way to (or a clear shot at) you for BLOCK_SEC seconds attacks the nearest wall for up to WALL_SEC seconds, then tries to path to you again
 const ACT_R = 2600, VIL_ACT = 3000;   // an island's animals exist while a player is within ACT_R of its shore; villagers while one is within VIL_ACT of their camp
 const MAXP = 8;
@@ -293,6 +294,9 @@ function writeSave(email, blob) {
   const json = JSON.stringify(blob), gz = zlib.gzipSync(json, { level: 9 });
   fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f + '.tmp', gz); fs.renameSync(f + '.tmp', f);
   return { bytes: json.length, gz: gz.length };
+}
+function eraseSaveOf(email) {   // delete one account's saved game
+  const pf = profiles[email]; try { const f = saveFile(email); if (f) fs.unlinkSync(f); } catch (e) { } if (pf && pf.save) { delete pf.save; dirty = true; }
 }
 function eraseSavesOf(code) {   // delete every account's saved copy of this game (called when the run is lost)
   for (const email in profiles) { const pf = profiles[email]; if (pf && pf.save && pf.save.rc === code) { try { const f = saveFile(email); if (f) fs.unlinkSync(f); } catch (e) { } delete pf.save; dirty = true; } }
@@ -1088,6 +1092,13 @@ class Room {
   }
   ph() { return this.c < DAY ? 0 : this.c < DAY + DUSK ? 1 : 2; }
   awayEntry(p) { return { t: Date.now(), s: { wood: p.wood, stone: p.stone, food: p.food, scrap: p.scrap, meat: p.meat, gold: p.gold, pelt: p.pelt, apelt: p.apelt, fish1: p.fish1, fish2: p.fish2, fish3: p.fish3, abilOn: p.abilOn, gear: p.gear, buff: p.buff, slots: p.slots, cls: p.cls, down: p.down, hp: p.hp, x: p.x, y: p.y } }; }
+  dangerFor(p) {   // is it dangerous to be where this player is (night / dusk, an enemy close by, a shark near their boat)?
+    if (this.ph() >= 1) return true;
+    for (const w of this.wolves || []) if (w.hp > 0 && !w.vul && Math.hypot(w.x - p.x, w.y - p.y) < 700) return true;
+    for (const a of this.aliens) if (a.hp > 0 && !a.vil && a.k < 3 && Math.hypot(a.x - p.x, a.y - p.y) < 700) return true;
+    if (p.boat) for (const sk of this.sharks || []) if (Math.hypot(sk.x - p.x, sk.y - p.y) < 900) return true;
+    return false;
+  }
   stash(p) {   // remember a leaving player's character so they can come back (dropped connection) within the room window
     if (!p.email) return; const now = Date.now(); for (const [k, v] of this.away) if (now - v.t > ROOM_IDLE_SEC * 1000) this.away.delete(k);
     this.away.set(p.email, this.awayEntry(p));
@@ -1153,6 +1164,10 @@ class Room {
     this.players.set(p.id, p); return p;
   }
   tick(dt) {
+    for (const gp of [...this.players.values()]) if (gp.ghost) {   // players who dropped out in danger: they stand there helpless until the grace period ends
+      gp.inp = { dx: 0, dy: 0, act: 0, hit: 0, rn: 0, am: 0, aim: 0 }; gp.ghost -= dt;
+      if (gp.ghost <= 0) { this.releaseBoat(gp); this.stash(gp); this.players.delete(gp.id); }
+    }
     const P = [...this.players.values()];
     if (!P.length) { this.emptyFor += dt; return; } this.emptyFor = 0;
     for (const p of P) if (p.inf) { p.wood = p.stone = p.food = p.scrap = p.meat = p.gold = p.pelt = p.apelt = INF_N; }   // test accounts: bag always full
@@ -1496,13 +1511,14 @@ wss.on('connection', ws => {
       let rc = String(m.room || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
       if (m.load) {   // "Continue saved game": rebuild the saved room (unless that room is still running)
         const sv = readSave(email); if (!sv || !sv.code) { send(ws, { t: 'err', m: 'No saved game found.' }); return; }
-        rc = sv.code; if (!rooms.has(rc)) { try { rooms.set(rc, Room.fromSave(sv)); } catch (e) { console.error('load failed:', e && e.stack || e); send(ws, { t: 'err', m: 'The saved game could not be loaded.' }); return; } }
+        rc = sv.code; if (!rooms.has(rc)) { try { rooms.set(rc, Room.fromSave(sv)); eraseSaveOf(email); /* a save can be loaded once */ } catch (e) { console.error('load failed:', e && e.stack || e); send(ws, { t: 'err', m: 'The saved game could not be loaded.' }); return; } }
       }
       if (!rc) rc = code();
       if (!rooms.has(rc)) rooms.set(rc, new Room(rc));
       room = rooms.get(rc);
       if (room.players.size >= MAXP) { send(ws, { t: 'err', m: 'Room is full' }); return; }
-      me = room.add(ws, name, cls, pf, email);
+      const ghost = email && [...room.players.values()].find(p => p.ghost && p.email === email);   // you dropped out in danger and are back within the grace period
+      if (ghost) { me = ghost; me.ghost = 0; me.ws = ws; me.name = name; } else me = room.add(ws, name, cls, pf, email);
       send(ws, { t: 'init', id: me.id, room: rc, R, cls, gear: me.gear, prof: view(pf), res: room.res.map(r => [r.k, Math.round(r.x), Math.round(r.y)]), isl: room.islands.map(i => [i.x, i.y, i.r, i.b, i.s || 0]), loot: room.loot.map(l => [l.id, l.x, l.y, l.b, l.seed, l.tier, l.cx, l.cy, l.trader, l.tx, l.ty]), vg: (room.villages || []).map(v => [v.id, v.x, v.y, v.seed]), lv: (room.lava || []).map(l => [l.x, l.y, l.r]) });
     } else if (m.t === 'craft' && me) {
       const now = Date.now(); if (now - (me.lastCraft || 0) < 200) { send(ws, { t: 'crafted', id: String(m.id || ''), ok: false, msg: 'Slow down a little.', gear: me.gear }); return; } me.lastCraft = now;
@@ -1523,11 +1539,13 @@ wss.on('connection', ws => {
     } else if (m.t === 'boat' && me) {
       const now = Date.now(); if (now - (me.lastBoat || 0) < 300) return; me.lastBoat = now;
       const res = room.placeBoat(me, m.i | 0); send(ws, { t: 'boatPlaced', ok: res.ok, msg: res.msg });
+    } else if (m.t === 'quit' && me) {   // "Exit to main menu": leaving after playing on past your save forfeits that save (no rewinding by quitting)
+      const sv = me.prof && me.prof.save; if (sv && sv.rc === room.code && sv.gt !== undefined && room.night * CYC + room.c - sv.gt > 20) eraseSaveOf(me.email);
     } else if (m.t === 'save' && me) {
       const now = Date.now(); if (now - (me.lastSave || 0) < 5000) return; me.lastSave = now;
       let out = null; try { out = writeSave(me.email, room.saveBlob()); } catch (e) { console.error('save failed:', e && e.stack || e); }
       if (!out || !me.prof) { send(ws, { t: 'saved', ok: false }); return; }
-      me.prof.save = { at: now, n: room.night, rc: room.code, bytes: out.bytes, gz: out.gz }; dirty = true;
+      me.prof.save = { at: now, n: room.night, rc: room.code, gt: room.night * CYC + room.c, bytes: out.bytes, gz: out.gz }; dirty = true;
       send(ws, { t: 'saved', ok: true, at: now, night: room.night, bytes: out.bytes, gz: out.gz, players: room.players.size });
     } else if (m.t === 'trade' && me) {
       const now = Date.now(); if (now - (me.lastTrade || 0) < 250) return; me.lastTrade = now;
@@ -1548,7 +1566,11 @@ wss.on('connection', ws => {
       me.inp = { dx: n(m.dx), dy: n(m.dy), act: m.act ? 1 : 0, hit: m.hit ? 1 : 0, rn: Math.max(0, Math.min(1, +m.rn || 0)), am: m.am && isFinite(+m.aim) ? 1 : 0, aim: +m.aim || 0 }; me.inpAt = Date.now();
     }
   });
-  ws.on('close', () => { if (room && me) { room.releaseBoat(me); if (!me.ended) room.stash(me); room.players.delete(me.id); } });
+  ws.on('close', () => {
+    if (!(room && me) || me.ws !== ws) return;
+    if (!me.ended && room.dangerFor(me)) { me.ghost = GHOST_SEC; me.ws = { readyState: 3, send() { } }; return; }   // leaving in danger: the character stays in the world (and can be hurt) for GHOST_SEC seconds
+    room.releaseBoat(me); if (!me.ended) room.stash(me); room.players.delete(me.id);
+  });
   ws.on('error', () => { });
 });
 

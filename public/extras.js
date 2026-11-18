@@ -264,7 +264,7 @@ function xActLabel(me) {
   const mb = document.createElement('button'); mb.id = 'menuBtn'; mb.className = 'zb'; mb.textContent = '☰'; mb.setAttribute('aria-label', 'Menu'); mb.style.cssText = 'bottom:max(196px,calc(env(safe-area-inset-bottom) + 186px));font-size:18px'; $('btns').appendChild(mb);   // phones have no Escape key
   mb.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); xPause(); });
   d.querySelector('#pmSave').onclick = () => { if (ws && ws.readyState === 1) { ws.send(JSON.stringify({ t: 'save' })); $('pmInfo').textContent = 'Saving...'; } };
-  d.querySelector('#pmExit').onclick = () => { try { sessionStorage.removeItem('rejoin'); } catch (e) { } runOver = true; try { ws.close(); } catch (e) { } location.reload(); };
+  d.querySelector('#pmExit').onclick = () => { try { sessionStorage.removeItem('rejoin'); } catch (e) { } runOver = true; try { ws.send(JSON.stringify({ t: 'quit' })); ws.close(); } catch (e) { } location.reload(); };
 })();
 const fmtBytes = n => n < 1024 ? n + ' B' : n < 1048576 ? (n / 1024).toFixed(1) + ' KB' : (n / 1048576).toFixed(2) + ' MB';
 function xPause(on) { const m = $('pauseMenu'), show = on === undefined ? m.style.display === 'none' : on; m.style.display = show ? 'flex' : 'none'; if (show && PF.save) $('pmInfo').textContent = 'Last save: night ' + PF.save.n + ', ' + fmtBytes(PF.save.bytes) + ' (' + fmtBytes(PF.save.gz) + ' stored compressed).'; }
