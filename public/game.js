@@ -1787,7 +1787,7 @@ $('go').onclick = () => {
     else if (m.t === 'init') {
       myId = m.id; RR = m.R; ISL = m.isl ? m.isl.slice(1) : []; roomCode = m.room; GEAR = m.gear || {}; buildWorld(m.res); if (m.prof) { PF.owned = m.prof.owned; PF.xp = m.prof.xp || PF.xp; PF.bn = m.prof.bn || 0; PF.abil = m.prof.abil || []; setDia(m.prof.d); } window.xInit && xInit(m);
       xpHud(); $('lobby').style.display = 'none'; $('hud').style.display = 'block'; $('btns').style.display = 'block';
-      $('rm').textContent = 'Room ' + roomCode + ' (tap to copy link)'; tipUntil = performance.now() + 14000; history.replaceState(null, '', '?room=' + roomCode);
+      $('rm').textContent = 'Room ' + roomCode; tipUntil = performance.now() + 14000; history.replaceState(null, '', '?room=' + roomCode);
     } else if (m.t === 'crafted') {
       GEAR = m.gear || GEAR; const msg = $('craftMsg'); msg.textContent = m.msg || ''; msg.style.color = m.ok ? '#7fe9a0' : '#ff8a80';
       if (placingId && m.id === placingId) { if (m.ok) { const r = RC.BY[placingId], pl = pooled(); if ((r.kind !== 'wall' && r.kind !== 'trap' && r.kind !== 'gate' && r.kind !== 'spike') || pl.wood < r.cost.wood || pl.stone < r.cost.stone || pl.scrap < (r.cost.scrap || 0)) stopPlacing(); } else { const me0 = ents2['p' + myId]; if (me0) floatText(me0.x, me0.y - 6, m.msg || 'Cannot place here', 0xff8a80); } }
@@ -1840,7 +1840,11 @@ $('go').onclick = () => {
     } else if (m.t === 's') onSnap(m);
   };
 };
-$('rm').onclick = () => { const u = (BASE || location.origin) + '/?room=' + roomCode; try { navigator.clipboard.writeText(u); $('rm').textContent = 'Link copied!'; } catch (e) { prompt('Share this link', u); } };
+function popup(msg) {   // a small pop-up that fades by itself
+  let el = $('popMsg'); if (!el) { el = document.createElement('div'); el.id = 'popMsg'; el.style.cssText = 'position:fixed;left:50%;top:max(70px,calc(env(safe-area-inset-top) + 60px));transform:translateX(-50%);background:#0b1a2af0;border:2px solid #ffd000;color:#fff;font-weight:800;font-size:15px;padding:8px 18px;border-radius:20px;z-index:80;pointer-events:none;opacity:0;transition:opacity .25s'; document.body.appendChild(el); }
+  el.textContent = msg; el.style.opacity = 1; clearTimeout(el._t); el._t = setTimeout(() => { el.style.opacity = 0; }, 1600);
+}
+$('rm').onclick = () => { const u = (BASE || location.origin) + '/?room=' + roomCode; const fail = () => prompt('Share this link', u); try { navigator.clipboard.writeText(u).then(() => popup('Link copied'), fail); } catch (e) { fail(); } };
 
 const snd = $('snd'); const sndIcon = () => snd.style.backgroundImage = SFX.isMuted() ? 'url(ui/mute.webp)' : 'url(ui/sound.webp)'; sndIcon();
 snd.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); SFX.init(); SFX.setMuted(!SFX.isMuted()); sndIcon(); });
