@@ -1,7 +1,7 @@
 'use strict';
 // The map: a 🗺️ button (or M) opens a chart of the archipelago. Home and the home-facing start of each outer island are known;
 // everything else is fogged until you (or your boat) travel near it. What you have explored is remembered per room code.
-let mapRoom = '', mapCells = new Set(), mapDirty = false, mapOpen = false, mapAll = { ext: 1, isl: [] };
+let mapSc = null, mapRaf = 0, mapRoom = '', mapCells = new Set(), mapDirty = false, mapOpen = false, mapAll = { ext: 1, isl: [] };
 const MCELL = 250;
 const mkey = (cx, cy) => (cx + 400) * 1000 + (cy + 400);
 
@@ -16,12 +16,12 @@ function mapInit(m) {
     b.style.cssText = 'bottom:max(152px,calc(env(safe-area-inset-bottom) + 142px));font-size:18px'; $('btns').appendChild(b);
     b.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); toggleMap(); });
     const d = document.createElement('div'); d.id = 'mapView'; d.className = 'ov'; d.style.cssText = 'display:none;align-items:center;justify-content:center;z-index:55;background:#030a14ee';
-    d.innerHTML = '<div style="position:relative"><canvas id="mapCv" style="border:2px solid #ffd000;border-radius:12px;background:#0b1623;display:block"></canvas><button class="mini gray" id="mapClose" style="position:absolute;right:8px;top:8px">Close</button><div id="mapLeg" style="position:absolute;left:10px;bottom:8px;font-size:12px;font-weight:700;text-shadow:0 1px 3px #000;opacity:.9">🔥 camp  ⛵ boat  🐺🎣⚒️⚓🔮 traders  · fog clears as you explore</div></div>';
+    d.innerHTML = '<div style="position:relative"><canvas id="mapCv" style="border:2px solid #ffd000;border-radius:12px;background:#0b1623;display:block"></canvas><canvas id="mapOv" style="position:absolute;left:2px;top:2px;border-radius:12px;pointer-events:none"></canvas><button class="mini gray" id="mapClose" style="position:absolute;right:8px;top:8px">Close</button><div id="mapLeg" style="position:absolute;left:10px;bottom:8px;font-size:12px;font-weight:700;text-shadow:0 1px 3px #000;opacity:.9">🔥 camp  ⛵ boat  🐺🎣⚒️⚓🔮 traders  · fog clears as you explore</div></div>';
     document.body.appendChild(d); d.querySelector('#mapClose').onclick = () => toggleMap(false);
     d.addEventListener('pointerdown', e => { if (e.target === d) toggleMap(false); });
   }
 }
-function toggleMap(on) { const v = $('mapView'); if (!v) return; mapOpen = on === undefined ? !mapOpen : on; v.style.display = mapOpen ? 'flex' : 'none'; if (mapOpen) drawMap(); }
+function toggleMap(on) { const v = $('mapView'); if (!v) return; mapOpen = on === undefined ? !mapOpen : on; v.style.display = mapOpen ? 'flex' : 'none'; if (mapOpen) { drawMap(); startMarkers(); } }
 
 // remember where we have been (and where boats took us)
 setInterval(() => {
@@ -78,6 +78,26 @@ function drawMap() {
     const T = RC.TRADERS[l.trader]; g.beginPath(); g.arc(X(l.tx), Y(l.ty), 11, 0, TAU); g.fillStyle = '#14304acc'; g.fill(); g.lineWidth = 2; g.strokeStyle = '#ffd000'; g.stroke(); g.font = '14px system-ui,sans-serif'; g.fillStyle = '#fff'; g.fillText(T.e, X(l.tx), Y(l.ty) + 1); g.font = '16px system-ui,sans-serif';
   }
   for (const b of S.bt || []) g.fillText('⛵', X(b[1]), Y(b[2]));
-  for (const p of S.p) { const me = p[0] === myId, e = ents2['p' + p[0]], x = e ? e.x : p[3], y = e ? e.y : p[4]; g.beginPath(); g.arc(X(x), Y(y), me ? 7 : 5, 0, TAU); g.fillStyle = me ? '#ffeb3b' : '#4fc3f7'; g.fill(); g.lineWidth = 2; g.strokeStyle = '#000'; g.stroke(); if (!me) { g.font = '11px system-ui,sans-serif'; g.fillStyle = '#fff'; g.fillText((p[1] || '').slice(0, 9), X(x), Y(y) - 12); g.font = '16px system-ui,sans-serif'; } }
+  mapSc = { size, s };   // the players are drawn on the overlay canvas (drawMarkers), so they can pulse
 }
 addEventListener('keydown', e => { if (e.key.toLowerCase() === 'm' && !/INPUT|TEXTAREA/.test((e.target || {}).tagName || '') && $('btns') && $('btns').style.display !== 'none') toggleMap(); else if (e.key === 'Escape' && mapOpen) toggleMap(false); });
+
+// players on the map: drawn every frame on their own canvas so your marker can throb
+function startMarkers() { if (!mapRaf) mapRaf = requestAnimationFrame(markerLoop); }
+function markerLoop() { mapRaf = 0; if (!mapOpen) return; drawMarkers(); mapRaf = requestAnimationFrame(markerLoop); }
+function drawMarkers() {
+  const ov = $('mapOv'), cv = $('mapCv'); if (!ov || !cv || !mapSc || typeof S === 'undefined' || !S) return;
+  if (ov.width !== cv.width) { ov.width = ov.height = cv.width; }
+  const g = ov.getContext('2d'), { size, s } = mapSc, X = x => size / 2 + x * s, Y = y => size / 2 + y * s, t = performance.now() / 1000;
+  g.clearRect(0, 0, size, size); g.textAlign = 'center'; g.textBaseline = 'middle';
+  for (const p of S.p) {
+    const me = p[0] === myId, e = ents2['p' + p[0]], x = X(e ? e.x : p[3]), y = Y(e ? e.y : p[4]);
+    if (me) {   // yours: two expanding rings and a beating dot, so you can always find yourself
+      for (let k = 0; k < 2; k++) { const ph = ((t * .9 + k * .5) % 1); g.beginPath(); g.arc(x, y, 8 + ph * 26, 0, TAU); g.lineWidth = 3 * (1 - ph) + .5; g.strokeStyle = 'rgba(255,235,59,' + (.9 * (1 - ph)).toFixed(2) + ')'; g.stroke(); }
+      const beat = 1 + .22 * Math.abs(Math.sin(t * 5)); g.beginPath(); g.arc(x, y, 8.5 * beat, 0, TAU); g.fillStyle = '#ffeb3b'; g.fill(); g.lineWidth = 2.5; g.strokeStyle = '#000'; g.stroke(); g.beginPath(); g.arc(x, y, 3, 0, TAU); g.fillStyle = '#fff'; g.fill();
+    } else {
+      g.beginPath(); g.arc(x, y, 5, 0, TAU); g.fillStyle = '#4fc3f7'; g.fill(); g.lineWidth = 2; g.strokeStyle = '#000'; g.stroke();
+      g.font = '11px system-ui,sans-serif'; g.fillStyle = '#fff'; g.fillText((p[1] || '').slice(0, 9), x, y - 12);
+    }
+  }
+}
