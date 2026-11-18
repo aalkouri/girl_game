@@ -1271,7 +1271,7 @@ class Room {
   snap() {
     const f = this.fire, rs = this.res.map(r => Math.max(0, Math.ceil(r.hp - 1e-9))).join('');
     this.rTick = ((this.rTick || 0) + 1) % 60; const rSend = rs !== this.lastR || this.rForce || this.rTick === 0; this.lastR = rs; this.rForce = 0;
-    return JSON.stringify({
+    const o = {
       t: 's', c: Math.round(this.c * 10) / 10, n: this.night, ph: this.ph(), o: this.over > 0 ? 1 : 0,
       f: [Math.round(f.fuel), RC.fuelMax(f.lvl), f.lvl, f.fuel > 0 ? RC.camp(f.lvl) : 0],
       p: [...this.players.values()].map(p => [p.id, p.name, p.cls, Math.round(p.x), Math.round(p.y), Math.round(p.hp), p.mhp, p.wood, p.stone, p.food, p.down, Math.round(p.rev * 10) / 10, p.sw, p.swk, Math.round(p.swa * 100), p.scrap, Math.round(p.fa * 100), Math.round(p.sta), p.tired, p.slots, p.boat || 0, p.meat || 0, p.gold || 0, p.pelt || 0, slotCap(p, this), !p.abilOn ? 0 : p.abilCd > 0 ? Math.ceil(p.abilCd) + 1 : 1, p.apelt || 0, p.fish1 || 0, p.fish2 || 0, p.fish3 || 0]),
@@ -1290,7 +1290,14 @@ class Room {
       r: rSend ? rs : undefined,
       dr: this.drops.map(d => [d.id, d.k, Math.round(d.x), Math.round(d.y), d.food]),
       st: this.struct.map(t => [t.id, t.k, Math.round(t.x), Math.round(t.y), Math.round(t.hp), t.mhp, t.items ? [t.items.wood, t.items.stone, t.items.food, t.items.scrap] : t.smelt ? [t.smelt.q, Math.round(t.smelt.prog / RC.SMELT.time * 100) / 100] : 0, t.rot || 0, t.open ? 1 : 0]),
-    });
+    };
+    // each player only gets the creatures, fish pools and sharks near them (the whole map's worth was ~90 KB per snapshot); everything else is shared
+    const NEAR = 1900, out = new Map();
+    for (const p of this.players.values()) {
+      const px = p.x, py = p.y, near = e => Math.abs(e[1] - px) < NEAR && Math.abs(e[2] - py) < NEAR;
+      out.set(p.id, JSON.stringify(Object.assign({}, o, { a: o.a.filter(near), wf: o.wf.filter(near), rb: o.rb.filter(near), fp: o.fp.filter(near), sk: o.sk.filter(near) })));
+    }
+    return out;
   }
 }
 
@@ -1382,7 +1389,7 @@ setInterval(() => {
   tk++;
   for (const [c, r] of rooms) {
     try { r.tick(1 / 30); } catch (e) { console.error('tick error:', e && e.stack || e); }
-    if (tk % 2 === 0 && r.players.size) { const s = r.snap(); for (const p of r.players.values()) if (p.ws.readyState === 1) p.ws.send(s); }
+    if (tk % 2 === 0 && r.players.size) { const s = r.snap(); for (const p of r.players.values()) if (p.ws.readyState === 1) p.ws.send(s.get(p.id)); }
     if (r.emptyFor > ROOM_IDLE_SEC) rooms.delete(c);   // nobody joined for the whole window: destroy the session
     if (r.ended) rooms.delete(c);   // everyone died and the game-over screens were sent: the session is gone (the same code starts a brand-new game)
   }
