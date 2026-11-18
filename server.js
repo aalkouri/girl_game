@@ -294,6 +294,9 @@ function writeSave(email, blob) {
   fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f + '.tmp', gz); fs.renameSync(f + '.tmp', f);
   return { bytes: json.length, gz: gz.length };
 }
+function eraseSavesOf(code) {   // delete every account's saved copy of this game (called when the run is lost)
+  for (const email in profiles) { const pf = profiles[email]; if (pf && pf.save && pf.save.rc === code) { try { const f = saveFile(email); if (f) fs.unlinkSync(f); } catch (e) { } delete pf.save; dirty = true; } }
+}
 function readSave(email) { try { return JSON.parse(zlib.gunzipSync(fs.readFileSync(saveFile(email))).toString()); } catch (e) { return null; } }
 // the Charger: from night 4 on, one huge, very fast enemy per night that hammers players far backwards and vanishes at dawn
 const CHARGER = { firstNight: 4, sp0: 115, spPerNight: 5, spMax: 185, dmg: 25, rad: 36, reach: 62, stop: 44, knock: 300, stunSec: 0.6 };               // logs per tree / stones per rock (before class bonus)
@@ -321,6 +324,7 @@ class Room {
       const by = p.runBy || {}, all = Object.values(by).reduce((s, v) => s + v, 0), total = p.prof ? p.prof.d : 0;
       send(p.ws, { t: 'over', n: days, d: got, total, before: total - all, kills: p.runK || {}, gems: { days: by.run || 0, kills: by.kills || 0, chest: by.chest || 0, other: all - (by.run || 0) - (by.kills || 0) - (by.chest || 0) } });
     }
+    eraseSavesOf(this.code);   // no save-scumming: when the game is lost, every saved copy of it (any player's) is deleted
     this.players.clear(); this.away.clear(); this.reset(); this.ended = 1;
   }
   reset() {
