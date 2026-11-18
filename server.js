@@ -875,10 +875,17 @@ class Room {
       if (go(p.x + Math.cos(w.la) * 55, p.y + Math.sin(w.la) * 55, 230) < 22) { w.vs = 3; w.air = 0; w.t = 22; w.cd = 0.7; }
     } else {   // on the ground: hop after the nearest player and peck; after a while it takes off again
       let tg = null, bd = 520; for (const p of P) if (!p.down && !p.boat && this.onIsland(p, w.isl | 0)) { const d = Math.hypot(p.x - w.x, p.y - w.y); if (d < bd) { bd = d; tg = p; } }
-      if (tg) { const d = go(tg.x, tg.y, 115); if (d < 36 && w.cd <= 0) { w.cd = 1.4; w.bite = 0.25; this.hurt(tg, w.dmg); } }
+      if (tg) {
+        let gx = tg.x, gy = tg.y; const ps = this.pathStep(tg, w.x, w.y); if (ps && ps.dir) { gx = w.x + ps.dir[0] * 60; gy = w.y + ps.dir[1] * 60; }   // on the ground it walks round walls like everything else
+        go(gx, gy, 115); const d = Math.hypot(tg.x - w.x, tg.y - w.y); if (d < 36 && w.cd <= 0) { w.cd = 1.4; w.bite = 0.25; this.hurt(tg, w.dmg); }
+      }
       if (tg) w.lost = 0; if (w.t <= 0 || (!tg && (w.lost = (w.lost || 0) + dt) > 4)) { w.vs = 0; w.air = 1; w.hx = w.x; w.hy = w.y; w.lost = 0; }   // time is up (or nobody is left near): take off
     }
     { const ex = w.x - is.x, ey = w.y - is.y, L = Math.hypot(ex, ey), er = RC.edgeRat(is, w.x, w.y) - 45; if (L > er) { w.x = is.x + ex * er / L; w.y = is.y + ey * er / L; } }
+    if (!w.air) for (const st of this.struct) {   // flying it passes over everything, but once it has landed, walls and closed gates are solid
+      if (st.k === 'trap' || st.k === 'spike' || (st.k === 'gate' && st.open)) continue;
+      const [qx, qy, qr] = solidPt(st, w.x, w.y), sd = Math.hypot(w.x - qx, w.y - qy), mn = qr + 12; if (sd < mn && sd > 0.01) { w.x = qx + (w.x - qx) / sd * mn; w.y = qy + (w.y - qy) / sd * mn; }
+    }
   }
   scaleN(i, n) {   // how many of a creature an island holds: the listed number is for an island as big as home; smaller islands get fewer (at least one), so a tiny islet is not crammed
     if (i === 0) return n; const is = this.islands[i]; return Math.max(1, Math.round(n * Math.min(1, (is.r / R) * (is.r / R) * 1.3)));
