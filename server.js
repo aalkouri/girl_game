@@ -148,6 +148,7 @@ const srv = http.createServer((q, s) => {
 const R = 3600;                      // home island radius (doubled again from 1800)
 const ALIEN_R = 950;                 // aliens come ashore this far from the fire
 const DAY = 90, DUSK = 30, NIGHT = 60, CYC = DAY + DUSK + NIGHT;
+const VIL_DMG = { arrow: 22, melee: 18 };   // raiding / camp villagers: an archer's arrow and a villager's blow (was 6 and 7), before the +4% per night and before armor
 const BLOCK_SEC = 5, WALL_SEC = 8;   // an enemy that cannot find a way to (or a clear shot at) you for BLOCK_SEC seconds attacks the nearest wall for up to WALL_SEC seconds, then tries to path to you again
 const ACT_R = 2600, VIL_ACT = 3000;   // an island's animals exist while a player is within ACT_R of its shore; villagers while one is within VIL_ACT of their camp
 const MAXP = 8;
@@ -366,7 +367,7 @@ class Room {
       st.raidNight = this.night; const n = 3 + (this.night / 5 - 1), s = 1 + 0.04 * (this.night - 1), a0 = Math.random() * 6.283, arch = Math.floor(n / 2);
       for (let k = 0; k < n; k++) {
         const [x, y] = at(a0 + (k - (n - 1) / 2) * (home ? 0.22 : 0.5), 40), archer = k < arch, hp = Math.round((archer ? 30 : 45) * s);
-        this.spawnA({ id: this.nid++, isl: i, x, y, hp, mhp: hp, sp: archer ? 70 : 80, dmg: (archer ? 6 : 7) * s, k: archer ? 4 : 3, cd: 0, atkCd: 1.5, reach: archer ? 0 : 30, stop: archer ? 250 : 22, range: 290, aim: 0, shotCd: 0 });
+        this.spawnA({ id: this.nid++, isl: i, x, y, hp, mhp: hp, sp: archer ? 70 : 80, dmg: (archer ? VIL_DMG.arrow : VIL_DMG.melee) * s, k: archer ? 4 : 3, cd: 0, atkCd: 1.5, reach: archer ? 0 : 30, stop: archer ? 250 : 22, range: 290, aim: 0, shotCd: 0 });
       }
       for (const q of home ? P : here) send(q.ws, { t: 'raid', n });
     }
@@ -975,7 +976,7 @@ class Room {
         const n = 3 + Math.floor(Math.random() * 4); v.spawned = 1; v.rt = 0;
         for (let k = 0; k < n; k++) {
           const archer = k % 3 === 2, a = Math.random() * 6.283, d = 60 + Math.random() * 90, hp = Math.round((archer ? 30 : 45) * s);
-          this.spawnA({ id: this.nid++, isl: v.isl, x: v.x + Math.cos(a) * d, y: v.y + Math.sin(a) * d, hp, mhp: hp, sp: archer ? 70 : 80, dmg: (archer ? 6 : 7) * s, k: archer ? 4 : 3, cd: 0, atkCd: 1.5, reach: archer ? 0 : 30, stop: archer ? 250 : 22, range: 290, aim: 0, shotCd: 0, vil: v.id, hx: v.x, hy: v.y });
+          this.spawnA({ id: this.nid++, isl: v.isl, x: v.x + Math.cos(a) * d, y: v.y + Math.sin(a) * d, hp, mhp: hp, sp: archer ? 70 : 80, dmg: (archer ? VIL_DMG.arrow : VIL_DMG.melee) * s, k: archer ? 4 : 3, cd: 0, atkCd: 1.5, reach: archer ? 0 : 30, stop: archer ? 250 : 22, range: 290, aim: 0, shotCd: 0, vil: v.id, hx: v.x, hy: v.y });
         }
       }
     }
