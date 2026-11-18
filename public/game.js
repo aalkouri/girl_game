@@ -229,14 +229,14 @@ const T_BENCH = tex(112, 84, g => {
   // little log stack
   g.fillStyle = '#6d4423'; ell(g, 70, 24, 8, 4); g.fillStyle = '#d9b676'; circ(g, 63, 24, 3);
 });
-const T_WALL = tex(84, 72, g => {
+const mkWall = P => tex(84, 72, g => {
   for (let i = 0; i < 5; i++) {
     const x = 6 + i * 15, h = 40 + (i % 2) * 8;
-    poly(g, '#7a4a22', [x, 64, x + 12, 64, x + 12, 64 - h + 14, x + 6, 64 - h, x, 64 - h + 14]);
-    poly(g, '#a56b34', [x + 1, 62, x + 5, 62, x + 5, 64 - h + 12, x + 6, 64 - h + 3, x + 1, 64 - h + 14]);
+    poly(g, P.m, [x, 64, x + 12, 64, x + 12, 64 - h + 14, x + 6, 64 - h, x, 64 - h + 14]);
+    poly(g, P.l, [x + 1, 62, x + 5, 62, x + 5, 64 - h + 12, x + 6, 64 - h + 3, x + 1, 64 - h + 14]);
     g.strokeStyle = 'rgba(0,0,0,.45)'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(x, 64); g.lineTo(x, 64 - h + 14); g.lineTo(x + 6, 64 - h); g.lineTo(x + 12, 64 - h + 14); g.lineTo(x + 12, 64); g.stroke();
   }
-  g.fillStyle = '#5a3a1c'; g.fillRect(2, 40, 80, 8); g.fillStyle = '#7a4a22'; g.fillRect(2, 40, 80, 3); g.strokeStyle = 'rgba(0,0,0,.45)'; g.lineWidth = 1.5; g.strokeRect(2, 40, 80, 8);
+  g.fillStyle = P.d; g.fillRect(2, 40, 80, 8); g.fillStyle = P.m; g.fillRect(2, 40, 80, 3); g.strokeStyle = 'rgba(0,0,0,.45)'; g.lineWidth = 1.5; g.strokeRect(2, 40, 80, 8);
 });
 const T_CHEST = tex(96, 80, g => {
   g.fillStyle = '#4a2f16'; g.beginPath(); g.roundRect ? g.roundRect(8, 30, 80, 42, 6) : g.rect(8, 30, 80, 42); g.fill();
@@ -967,17 +967,22 @@ function stepBoats(dt) {
 }
 // ---- placed structures (crafting bench, spike walls) ----
 const structE = {}; let GEAR = {}, craftOpen = false, craftSig = '', chestId = null, chestSig = '', potOpen = false, potSig = '';
-const T_GATE = tex(168, 72, g => {   // a double-width gate, closed: a post at each end and planks between
-  const post = x => { poly(g, '#5a3a1c', [x, 66, x + 14, 66, x + 14, 14, x + 7, 6, x, 14]); poly(g, '#7a4a22', [x + 1, 64, x + 6, 64, x + 6, 14, x + 7, 8, x + 1, 15]); g.strokeStyle = 'rgba(0,0,0,.5)'; g.lineWidth = 1.5; g.strokeRect(x, 14, 14, 52); };
-  for (let i = 0; i < 9; i++) { const x = 18 + i * 14; g.fillStyle = i % 2 ? '#8a5a2b' : '#a56b34'; g.fillRect(x, 28, 13, 38); g.strokeStyle = 'rgba(0,0,0,.4)'; g.lineWidth = 1.2; g.strokeRect(x, 28, 13, 38); }
-  g.fillStyle = '#5a3a1c'; g.fillRect(16, 36, 136, 7); g.fillRect(16, 54, 136, 7); g.strokeStyle = 'rgba(0,0,0,.5)'; g.strokeRect(16, 36, 136, 7); g.strokeRect(16, 54, 136, 7);
+const mkGate = P => tex(168, 72, g => {   // a double-width gate, closed: a post at each end and planks between
+  const post = x => { poly(g, P.d, [x, 66, x + 14, 66, x + 14, 14, x + 7, 6, x, 14]); poly(g, P.m, [x + 1, 64, x + 6, 64, x + 6, 14, x + 7, 8, x + 1, 15]); g.strokeStyle = 'rgba(0,0,0,.5)'; g.lineWidth = 1.5; g.strokeRect(x, 14, 14, 52); };
+  for (let i = 0; i < 9; i++) { const x = 18 + i * 14; g.fillStyle = i % 2 ? P.m2 : P.l; g.fillRect(x, 28, 13, 38); g.strokeStyle = 'rgba(0,0,0,.4)'; g.lineWidth = 1.2; g.strokeRect(x, 28, 13, 38); }
+  g.fillStyle = P.d; g.fillRect(16, 36, 136, 7); g.fillRect(16, 54, 136, 7); g.strokeStyle = 'rgba(0,0,0,.5)'; g.strokeRect(16, 36, 136, 7); g.strokeRect(16, 54, 136, 7);
   post(2); post(152);
 });
-const T_GATEO = tex(168, 72, g => {   // the same gate swung open: just the posts and the leaf folded back against the left one
-  const post = x => { poly(g, '#5a3a1c', [x, 66, x + 14, 66, x + 14, 14, x + 7, 6, x, 14]); poly(g, '#7a4a22', [x + 1, 64, x + 6, 64, x + 6, 14, x + 7, 8, x + 1, 15]); g.strokeStyle = 'rgba(0,0,0,.5)'; g.lineWidth = 1.5; g.strokeRect(x, 14, 14, 52); };
-  g.fillStyle = '#8a5a2b'; g.fillRect(16, 8, 8, 56); g.strokeStyle = 'rgba(0,0,0,.5)'; g.strokeRect(16, 8, 8, 56); g.fillStyle = '#5a3a1c'; g.fillRect(14, 20, 12, 5); g.fillRect(14, 46, 12, 5);
+const mkGateO = P => tex(168, 72, g => {   // the same gate swung open: just the posts and the leaf folded back against the left one
+  const post = x => { poly(g, P.d, [x, 66, x + 14, 66, x + 14, 14, x + 7, 6, x, 14]); poly(g, P.m, [x + 1, 64, x + 6, 64, x + 6, 14, x + 7, 8, x + 1, 15]); g.strokeStyle = 'rgba(0,0,0,.5)'; g.lineWidth = 1.5; g.strokeRect(x, 14, 14, 52); };
+  g.fillStyle = P.m2; g.fillRect(16, 8, 8, 56); g.strokeStyle = 'rgba(0,0,0,.5)'; g.strokeRect(16, 8, 8, 56); g.fillStyle = P.d; g.fillRect(14, 20, 12, 5); g.fillRect(14, 46, 12, 5);
   post(2); post(152);
 });
+// wall / gate looks per material: wood (''), rock ('r') and metal ('m') - same shapes, different colours
+const WPAL = { '': { d: '#5a3a1c', m: '#7a4a22', l: '#a56b34', m2: '#8a5a2b' }, r: { d: '#40454b', m: '#646c75', l: '#a2abb4', m2: '#7e8790' }, m: { d: '#2f3f48', m: '#566f7d', l: '#c3d2da', m2: '#7893a2' } };
+const T_WALLS = {}, T_GATES = {}, T_GATEOS = {};
+for (const k in WPAL) { T_WALLS[k] = mkWall(WPAL[k]); T_GATES[k] = mkGate(WPAL[k]); T_GATEOS[k] = mkGateO(WPAL[k]); }
+const T_WALL = T_WALLS[''], T_GATE = T_GATES[''], T_GATEO = T_GATEOS[''];
 const T_SPIKE = tex(84, 60, g => {   // a flat metal strip with a row of upward spikes
   g.fillStyle = '#4a4f57'; g.fillRect(4, 38, 76, 10); g.strokeStyle = 'rgba(0,0,0,.55)'; g.lineWidth = 1.5; g.strokeRect(4, 38, 76, 10); g.fillStyle = '#6b727c'; g.fillRect(4, 38, 76, 3);
   for (let i = 0; i < 6; i++) { const x = 8 + i * 12; poly(g, '#b8c0c8', [x, 38, x + 5, 12 + (i % 2) * 4, x + 10, 38]); poly(g, '#e7edf2', [x + 1, 37, x + 5, 14 + (i % 2) * 4, x + 5, 37]); g.strokeStyle = 'rgba(0,0,0,.5)'; g.lineWidth = 1; g.beginPath(); g.moveTo(x, 38); g.lineTo(x + 5, 12 + (i % 2) * 4); g.lineTo(x + 10, 38); g.stroke(); }
@@ -990,13 +995,13 @@ function syncStructs(m, first) {
     if (!e) {
       const D = SDEF[t[1]] || SDEF.wall, c = new PIXI.Container(), sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5);
       sh.scale.set(D.sh, .7); sh.y = 4;
-      const spr = new PIXI.Sprite(D.tex); spr.anchor.set(.5, .5); const base = D.base; spr.scale.set(base);
+      const mat0 = t[9] || '', spr = new PIXI.Sprite(t[1] === 'wall' ? T_WALLS[mat0] : t[1] === 'gate' ? (t[8] ? T_GATEOS[mat0] : T_GATES[mat0]) : D.tex); spr.anchor.set(.5, .5); const base = D.base; spr.scale.set(base);
       const rotc = new PIXI.Container(); rotc.y = -(D.ay - .5) * D.tex.height * base; rotc.rotation = (t[7] || 0) * Math.PI / 4; rotc.addChild(spr);   // turns about its own centre
       const hp = new PIXI.Graphics(); hp.y = D.hy; c.addChild(sh, rotc, hp); c.position.set(t[2], t[3]); c.zIndex = t[3]; ents.addChild(c);
-      e = structE[t[0]] = { c, spr, rotc, rot: t[7] || 0, hp, k: t[1], x: t[2], y: t[3], base, mhp: t[5], hpv: t[4], t: first ? 1 : 0, flash: 0, barT: 0 };
-      if (!first) { const d = me ? Math.hypot(me.x - t[2], me.y - t[3]) : 0; SFX.build(d, me ? t[2] - me.x : 0); burst(t[2], t[3], 10, 0xd9c79a, 80, false, .16); }
-    } else if (t[4] < e.hpv) { e.flash = .12; e.barT = 2; const d = me ? Math.hypot(me.x - t[2], me.y - t[3]) : 0; SFX.hit(d, me ? t[2] - me.x : 0); burst(t[2], t[3] - 14, 4, 0xb98349, 80, false, .1); }
-    if ((t[8] || 0) !== e.op) { e.op = t[8] || 0; if (t[1] === 'gate') e.spr.texture = e.op ? T_GATEO : T_GATE; }
+      e = structE[t[0]] = { c, spr, rotc, mat: mat0, rot: t[7] || 0, hp, k: t[1], x: t[2], y: t[3], base, mhp: t[5], hpv: t[4], t: first ? 1 : 0, flash: 0, barT: 0 };
+      if (!first) { const d = me ? Math.hypot(me.x - t[2], me.y - t[3]) : 0; SFX.build(d, me ? t[2] - me.x : 0); burst(t[2], t[3], 10, t[9] === 'm' ? 0xcfd8dc : t[9] === 'r' ? 0xb0b6bc : 0xd9c79a, 80, false, .16); }
+    } else if (t[4] < e.hpv) { e.flash = .12; e.barT = 2; const d = me ? Math.hypot(me.x - t[2], me.y - t[3]) : 0; SFX.hit(d, me ? t[2] - me.x : 0); burst(t[2], t[3] - 14, 4, t[9] === 'm' ? 0xb0bec5 : t[9] === 'r' ? 0x9aa0a6 : 0xb98349, 80, false, .1); }
+    if ((t[8] || 0) !== e.op) { e.op = t[8] || 0; if (t[1] === 'gate') e.spr.texture = e.op ? T_GATEOS[e.mat || ''] : T_GATES[e.mat || '']; }
     if ((t[7] || 0) !== e.rot) { e.rot = t[7] || 0; e.rotc.rotation = e.rot * Math.PI / 4; }
     if (t[1] === 'smelter') { const pq = e.smelt ? e.smelt[0] : t[6][0]; if (t[6][0] > pq) { const d = me ? Math.hypot(me.x - t[2], me.y - t[3]) : 0; SFX.smelterStart(d, me ? t[2] - me.x : 0); } e.smelt = t[6]; }
     else e.items = t[6];
@@ -1047,7 +1052,7 @@ function startPlacing(r) {
   stopPlacing(); setCraft(false); closeChest(); closePot(); closeSmelt();
   const D = SDEF[r.kind]; placingId = r.id; placeRot = (lastRot[r.id] || 0) % 8;
   ghost = new PIXI.Container(); ghostRot = new PIXI.Container();
-  const sp = new PIXI.Sprite(D.tex); sp.anchor.set(.5, .5); sp.scale.set(D.base);
+  const sp = new PIXI.Sprite(r.kind === 'wall' ? T_WALLS[r.mat || ''] : r.kind === 'gate' ? T_GATES[r.mat || ''] : D.tex); sp.anchor.set(.5, .5); sp.scale.set(D.base);
   ghostRot.y = -(D.ay - .5) * D.tex.height * D.base; ghostRot.addChild(sp); ghost.addChild(ghostRot);
   ghostF = new PIXI.ColorMatrixFilter(); ghost.filters = [ghostF]; ents.addChild(ghost);
   $('placeRotR').style.display = r.norot ? 'none' : ''; $('placeBar').style.display = 'flex'; $('placeName').textContent = r.e + ' ' + r.n; $('placeMsg').textContent = '';

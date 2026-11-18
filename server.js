@@ -667,14 +667,14 @@ class Room {
       if (station && d > campR) return fail('Stand inside the camp (the fire ring), a little away from the fire, facing a free spot.');
       if (!station && d > campR + 200) return fail('Walls and traps go in or just outside the camp.');
       if (!RC.inIsland(isl, x, y, 50)) return fail('Too close to the water.');
-      if (this.struct.filter(st => st.k === r.kind && this.inCamp(CF, st)).length >= (r.max || 99)) return fail('You have built the maximum number of those.');
+      if (this.struct.filter(st => st.k === r.kind && (st.m || '') === (r.mat || '') && this.inCamp(CF, st)).length >= (r.max || 99)) return fail('You have built the maximum number of those.');
       for (const st of this.struct) {   // nothing may be crafted too close to anything else
         const stWall = st.k === 'wall' || st.k === 'gate' || st.k === 'spike', dd = Math.hypot(st.x - x, st.y - y);
         const need = station && !stWall ? RC.STATION_GAP : (station || !stWall) ? RC.WALL_GAP : st.r + sr - 4;
         if (dd < need) return fail(need > 60 ? 'Too close to another structure. Keep stations about ' + RC.STATION_GAP + ' apart (walls about ' + RC.WALL_GAP + ' from stations).' : 'Something is already there. Turn and try another spot.');
       }
       this.pay(p, r.cost);
-      const st = { id: this.nid++, k: r.kind, x, y, r: sr, hp: STRUCT[r.kind].hp || 0, mhp: STRUCT[r.kind].hp || 0, rot: r.norot ? 0 : ((Math.trunc(+rot) || 0) % 8 + 8) % 8, items: r.kind === 'chest' ? { wood: 0, stone: 0, food: 0, scrap: 0 } : null, smelt: r.kind === 'smelter' ? { q: 0, prog: 0 } : null }; this.struct.push(st);
+      const st = { id: this.nid++, k: r.kind, x, y, r: sr, hp: r.hp || STRUCT[r.kind].hp || 0, mhp: r.hp || STRUCT[r.kind].hp || 0, m: r.mat || undefined, rot: r.norot ? 0 : ((Math.trunc(+rot) || 0) % 8 + 8) % 8, items: r.kind === 'chest' ? { wood: 0, stone: 0, food: 0, scrap: 0 } : null, smelt: r.kind === 'smelter' ? { q: 0, prog: 0 } : null }; this.struct.push(st);
       return { ok: true, msg: r.kind === 'bench' ? 'Crafting bench placed! More recipes unlocked.' : r.n + ' placed.' };
     }
     this.pay(p, r.cost); p.gear[r.gear] = 1;
@@ -1324,7 +1324,7 @@ class Room {
       ar: this.arrows.map(w => [w.id, Math.round(w.x), Math.round(w.y), Math.round(Math.atan2(w.vy, w.vx) * 100), w.slow ? 1 : 0]),
       rd: rd.length ? rd : undefined,
       dr: this.drops.map(d => [d.id, d.k, Math.round(d.x), Math.round(d.y), d.food]),
-      st: this.struct.map(t => [t.id, t.k, Math.round(t.x), Math.round(t.y), Math.round(t.hp), t.mhp, t.items ? [t.items.wood, t.items.stone, t.items.food, t.items.scrap] : t.smelt ? [t.smelt.q, Math.round(t.smelt.prog / RC.SMELT.time * 100) / 100] : 0, t.rot || 0, t.open ? 1 : 0]),
+      st: this.struct.map(t => [t.id, t.k, Math.round(t.x), Math.round(t.y), Math.round(t.hp), t.mhp, t.items ? [t.items.wood, t.items.stone, t.items.food, t.items.scrap] : t.smelt ? [t.smelt.q, Math.round(t.smelt.prog / RC.SMELT.time * 100) / 100] : 0, t.rot || 0, t.open ? 1 : 0, t.m || '']),
     };
     // each player only gets the creatures, fish pools and sharks near them (the whole map's worth was ~90 KB per snapshot); everything else is shared
     const NEAR = 1900, out = new Map();

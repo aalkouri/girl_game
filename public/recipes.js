@@ -19,8 +19,12 @@
     { id: 'spike', n: 'Spike Strip', e: '🗡️', kind: 'spike', scrap: true, cost: { wood: 0, stone: 0, scrap: 3 }, max: 12, d: 'A strip of metal spikes. Anything hostile that runs over it gets hurt, again and again, until the strip wears out. Walk over it freely. Place it in front of you, in or just outside camp.' },
     { id: 'trap', n: 'Trap', e: '🪤', kind: 'item', item: 'trap', scrap: true, cost: { wood: 0, stone: 0, scrap: 2 }, d: 'Goes into one of your slots. Tap it there to set it down where you stand. When the big monster runs over it he is stuck for 20 seconds. One use.' },
     { id: 'campfire', n: 'Campfire', e: '🔥', kind: 'item', item: 'campfire', cost: { wood: 25, stone: 10 }, d: 'Goes into one of your slots. Tap it to light a campfire where you stand on an outer island (not near the shore). Only one campfire per island. It burns, protects and can be upgraded just like the main fire.' },
-    { id: 'wall', n: 'Wood Wall', e: '🚧', kind: 'wall', cost: { wood: 6, stone: 0 }, max: 24, d: 'A solid, indestructible barricade that blocks aliens. Placed in front of you, near camp.' },
-    { id: 'gate', n: 'Gate', e: '🚪', kind: 'gate', cost: { wood: 12, stone: 0 }, max: 8, d: 'About two walls wide. Press ACT / E next to it to swing it open so you can walk through, and again to close it. Closed, it blocks aliens like a wall.' },
+    { id: 'wall', n: 'Wood Wall', e: '🚧', kind: 'wall', cost: { wood: 6, stone: 0 }, max: 60, d: 'A sturdy wooden barricade that blocks aliens until they break it down. Placed in front of you, near camp.' },
+    { id: 'gate', n: 'Wood Gate', e: '🚪', kind: 'gate', cost: { wood: 12, stone: 0 }, max: 8, d: 'About two walls wide. Press ACT / E next to it to swing it open so you can walk through, and again to close it. Closed, it blocks aliens like a wall, but it is weaker.' },
+    { id: 'rockwall', n: 'Rock Wall', e: '🧱', kind: 'wall', mat: 'r', hp: 450, cost: { wood: 0, stone: 8 }, max: 60, d: 'A wall of stacked rock: three times as tough as a wood wall.' },
+    { id: 'rockgate', n: 'Rock Gate', e: '🏰', kind: 'gate', mat: 'r', hp: 150, cost: { wood: 0, stone: 16 }, max: 8, d: 'A gate with a stone frame: three times as tough as a wood gate. ACT / E opens and closes it.' },
+    { id: 'metalwall', n: 'Metal Wall', e: '⬜', kind: 'wall', mat: 'm', hp: 1350, scrap: true, cost: { wood: 0, stone: 0, scrap: 4 }, max: 60, d: 'Riveted metal plates: three times as tough as a rock wall.' },
+    { id: 'metalgate', n: 'Metal Gate', e: '🔩', kind: 'gate', mat: 'm', hp: 450, scrap: true, cost: { wood: 0, stone: 0, scrap: 8 }, max: 8, d: 'A heavy metal gate: three times as tough as a rock gate. ACT / E opens and closes it.' },
   ];
   // things you can cook at a cooking pot (cost is in berries)
   const FOOD = [
