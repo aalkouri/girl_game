@@ -195,9 +195,9 @@ const CRIT = {
   sal: { b: 'l', idx: 3, n: [0, 10], run: 105, walk: 32, see: 250 },
 };
 const hasBiome = (is, b) => b === 'f' || is.b === b || (is.b === 'm' && (b === 's' || b === 'd'));   // does this island have that biome somewhere?
-const DIST_F = (x, y) => Math.max(0, Math.min(1, (Math.hypot(x, y) - R) / (WORLD_R - R)));   // 0 at home's shore, 1 at the far edge: out there alphas are common and bears / mammoths appear   // snow wolves: count, respawn s, hp, notice range, give-up range, max chase from home spot, speeds (players walk 150), bite   // a cactus gives more wood than a tree
+const DIST_F = (x, y, wr = WORLD_R) => Math.max(0, Math.min(1, (Math.hypot(x, y) - R) / (wr - R)));   // 0 at home's shore, 1 at the far edge: out there alphas are common and bears / mammoths appear   // snow wolves: count, respawn s, hp, notice range, give-up range, max chase from home spot, speeds (players walk 150), bite   // a cactus gives more wood than a tree
 // ---------- the archipelago: island 0 is home (all forest); the others are random sizes, each 25% forest on the side facing home and 75% its own biome (b) ----------
-const WORLD_R = 30000, BOAT_SPEED = 190, BOAT_AHEAD = 100, ISL_VER = 5;   // ISL_VER: bump when island generation changes so saved rooms regenerate their outer islands
+const WORLD_R = 24000, WORLD_R_V1 = 30000, MAP_VER = 2, BOAT_SPEED = 190, BOAT_AHEAD = 100, ISL_VER = 5;   // ISL_VER: bump when island generation changes so saved rooms regenerate their outer islands
 function seeded(code) { let h = 2166136261; for (const ch of String(code)) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); let a = h >>> 0; return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 // outer islands come in all sizes (about 1/6 of home's radius up to 1.4x) and are lumpy blobs, never circles (see RC.shapeK). The two nearest sit 500-1100 of
 // open sea from home's shore; the rest spread over the world, as many as fit (up to 60), with at least 450 of sea between any two shores
@@ -207,12 +207,27 @@ function islandsClash(A, B, gap) {   // do the real outlines of two islands come
   for (const [P, Q] of [[A, B], [B, A]]) for (let k = 0; k < 64; k++) { const a = k / 64 * 6.2832, e = RC.edgeR(P, a); if (RC.inIsland(Q, P.x + Math.cos(a) * e, P.y + Math.sin(a) * e, -gap)) return true; }
   return Math.hypot(A.x - B.x, A.y - B.y) < Math.min(A.r, B.r) * 0.6;   // (one inside the other)
 }
-function genIslands(code) {
+function genIslandsLegacy(code) {   // the original layout (map version 1): kept so older saved games still load with the islands they were saved with
   const rnd = seeded(code), out = [{ x: 0, y: 0, r: R, b: 'f' }]; let tries = 0;
   while (out.length < 61 && tries++ < 80000) {
     const near = out.length <= 2, q = rnd();
     const r = near ? R * (0.55 + rnd() * 0.8) : q < 0.22 ? R * (0.18 + rnd() * 0.27) : q < 0.6 ? R * (0.45 + rnd() * 0.45) : R * (0.9 + rnd() * 0.5);   // small / medium / large
-    const bound = r * RC.SHAPE_MAX, lo = R + bound + (near ? 500 : ISL_GAP), hi = near ? lo + 600 : WORLD_R - bound - 300;
+    const bound = r * RC.SHAPE_MAX, lo = R + bound + (near ? 500 : ISL_GAP), hi = near ? lo + 600 : WORLD_R_V1 - bound - 300;
+    const dist = lo + rnd() * (hi - lo), a = rnd() * 6.283, x = Math.cos(a) * dist, y = Math.sin(a) * dist;
+    const cand = { x, y, r, s: +(out.length * 1.7).toFixed(1) };
+    if (out.some(i => islandsClash(cand, i, ISL_GAP))) continue;   // keep water between islands
+    out.push({ x: Math.round(x), y: Math.round(y), r: Math.round(r), s: +(out.length * 1.7).toFixed(1), b: (q => q < 0.28 ? 'm' : q < 0.6 ? 's' : q < 0.92 ? 'd' : 'l')(rnd()) });   // the 75% biome: snow, desert, a mix of both ('m'), or (rarely, 8%) lava ('l')
+  }
+  if (out.length > 2 && !out.some(i => i.b === 's' || i.b === 'm')) out[out.length - 1].b = 's';   // always at least one snow island
+  if (out.length > 2 && !out.slice(1).some(i => i.b === 'd' || i.b === 'm')) out[out.length - 1].b = 'd';   // and at least one desert
+  return out;
+}
+function genIslands(code, wr = WORLD_R) {   // map version 2: no small islands, and a map 20% smaller across
+  const rnd = seeded(code), out = [{ x: 0, y: 0, r: R, b: 'f' }]; let tries = 0;
+  while (out.length < 61 && tries++ < 80000) {
+    const near = out.length <= 2, q = rnd();
+    const r = near ? R * (0.7 + rnd() * 0.7) : q < 0.5 ? R * (0.6 + rnd() * 0.3) : R * (0.9 + rnd() * 0.5);   // medium (0.6-0.9 x home) / large
+    const bound = r * RC.SHAPE_MAX, lo = R + bound + (near ? 500 : ISL_GAP), hi = near ? lo + 600 : wr - bound - 300;
     const dist = lo + rnd() * (hi - lo), a = rnd() * 6.283, x = Math.cos(a) * dist, y = Math.sin(a) * dist;
     const cand = { x, y, r, s: +(out.length * 1.7).toFixed(1) };
     if (out.some(i => islandsClash(cand, i, ISL_GAP))) continue;   // keep water between islands
@@ -350,8 +365,8 @@ function readSave(email) { try { return JSON.parse(zlib.gunzipSync(fs.readFileSy
 const CHARGER = { firstNight: 4, sp0: 115, spPerNight: 5, spMax: 185, dmg: 25, rad: 36, reach: 62, stop: 44, knock: 300, stunSec: 0.6 };               // logs per tree / stones per rock (before class bonus)
 
 class Room {
-  constructor(code) {
-    this.code = code; this.away = new Map(); this.players = new Map(); this.nid = 1; this.emptyFor = 0;
+  constructor(code, mv = MAP_VER) {
+    this.mv = mv; this.worldR = mv >= 2 ? WORLD_R : WORLD_R_V1; this.code = code; this.away = new Map(); this.players = new Map(); this.nid = 1; this.emptyFor = 0;
     this.res = [];
     const add = (k, n, min = 130) => { for (let i = 0, tries = 0; i < n && tries < n * 20; tries++) {
       const a = Math.random() * 6.283, d = min + Math.sqrt(Math.random()) * (R - 70 - min), x = Math.cos(a) * d, y = Math.sin(a) * d, snow = RC.inSnow(x, y);
@@ -360,7 +375,7 @@ class Room {
       this.res.push({ k: kk, x, y, hp: HP[kk], mhp: HP[kk], rt: 0 }); i++;
     } };
     add('t', 540, CAMP_CLEAR); add('r', 336); add('b', BUSHES);   // 4x the area of the old island, same density
-    this.islands = genIslands(code); this.islands.forEach((is, i) => { if (i > 0) this.res.push(...islandRes(is, i, code)); });
+    this.islands = mv >= 2 ? genIslands(code, this.worldR) : genIslandsLegacy(code); this.islands.forEach((is, i) => { if (i > 0) this.res.push(...islandRes(is, i, code)); });
     this.loot = genLoot(this.islands, code); this.villages = genVillages(this.islands, code, this.loot); this.lava = genLava(this.islands, code, this.loot);
     { const cb = genCabins(this.islands, code, this.loot); this.cabins = cb.cabins; this.loot.push(...cb.loot); this.clearCabinRes(); }
     this.reset();
@@ -521,7 +536,7 @@ class Room {
     }
   }
   landAt(x, y, m = 30) { for (let i = 0; i < this.islands.length; i++) { const s = this.islands[i]; if (RC.inIsland(s, x, y, m)) return i; } return -1; }
-  isWater(x, y) { if (Math.hypot(x, y) > WORLD_R) return false; for (const s of this.islands) if (RC.inIsland(s, x, y, -40)) return false; return true; }
+  isWater(x, y) { if (Math.hypot(x, y) > this.worldR) return false; for (const s of this.islands) if (RC.inIsland(s, x, y, -40)) return false; return true; }
   landPoint(x, y, m = 30) { let best = null, bd = 1e9; for (const s of this.islands) { const d = Math.hypot(x - s.x, y - s.y) - RC.edgeRat(s, x, y); if (d < bd) { bd = d; best = s; } } const dx = x - best.x, dy = y - best.y, L = Math.hypot(dx, dy) || 1, k = Math.min(L, RC.edgeRat(best, x, y) - m) / L; return [best.x + dx * k, best.y + dy * k]; }
   // ----- boats: placed in the water near the shore; two riders, the first one steers -----
   tickBoats(dt) {
@@ -1123,7 +1138,7 @@ class Room {
             if (!P.some(p => Math.hypot(p.x - x, p.y - y) < 600) && !this.inFire(x, y, 60)) q = [x, y];
           }
           if (!q) continue; have++;
-          const f = i > 0 ? DIST_F(q[0], q[1]) : 0, rl = Math.random(), nB = this.wolves.filter(w => w.isl === i && w.big === 1).length, nM = this.wolves.filter(w => w.isl === i && w.big === 2).length;
+          const f = i > 0 ? DIST_F(q[0], q[1], this.worldR) : 0, rl = Math.random(), nB = this.wolves.filter(w => w.isl === i && w.big === 1).length, nM = this.wolves.filter(w => w.isl === i && w.big === 2).length;
           const big = i > 0 && nM < 1 && rl < 0.07 * f ? 2 : i > 0 && nB < 2 && rl < 0.07 * f + 0.28 * f ? 1 : 0;   // farther out: more bears, and the odd mammoth
           if (big) { const B = BIG[big]; this.wolves.push({ id: this.nid++, wolf: 1, big, heavy: 1, isl: i, alpha: 0, x: q[0], y: q[1], hx: q[0], hy: q[1], hp: B.hp, mhp: B.hp, run: B.run, dmg: B.dmg, reach: B.reach, bcd: B.cd, see: B.see, walk: B.walk, fa: Math.random() * 6.283, st: 0, tg: 0, cd: 0, wt: 0, wa: 0, bite: 0 }); continue; }
           const al = i > 0 && Math.random() < 0.08 + 0.55 * f, hp = al ? WOLF.aHp : WOLF.hp;   // alphas get more common the farther from home
@@ -1265,7 +1280,7 @@ class Room {
   }
   snapshot() {   // everything needed to rebuild this room after a server restart; connected players are saved as 'away' so they get their character back when they reconnect
     const away = [...this.away]; for (const p of this.players.values()) if (p.email) away.push([p.email, this.awayEntry(p)]);
-    return { code: this.code, c: this.c, night: this.night, fire: this.fire, aliens: this.aliens, res: this.res, islands: this.islands, isv: ISL_VER, camps: this.camps, lootOpen: this.loot.filter(l => l.open).map(l => l.id), boats: this.boats.map(b => ({ id: b.id, type: b.type || 'boat', x: b.x, y: b.y, ang: b.ang, life: b.life == null ? undefined : Math.round(b.life) })), scrapFound: this.scrapFound, drops: this.drops, pend: this.pend, struct: this.struct.filter(s => s.k !== 'cwall'), chargerNight: this.chargerNight, raidNight: this.raidNight, islNight: this.islNight, nid: this.nid, wolves: this.wolves || [], rabbits: this.rabbits || [], pools: this.pools || [], away };
+    return { code: this.code, c: this.c, night: this.night, fire: this.fire, aliens: this.aliens, res: this.res, islands: this.islands, isv: ISL_VER, mv: this.mv, camps: this.camps, lootOpen: this.loot.filter(l => l.open).map(l => l.id), boats: this.boats.map(b => ({ id: b.id, type: b.type || 'boat', x: b.x, y: b.y, ang: b.ang, life: b.life == null ? undefined : Math.round(b.life) })), scrapFound: this.scrapFound, drops: this.drops, pend: this.pend, struct: this.struct.filter(s => s.k !== 'cwall'), chargerNight: this.chargerNight, raidNight: this.raidNight, islNight: this.islNight, nid: this.nid, wolves: this.wolves || [], rabbits: this.rabbits || [], pools: this.pools || [], away };
   }
   saveBlob() {   // everything about this game, compactly: island resources are re-made from the room code, so only home's resources and the changed island ones are stored
     const o = this.snapshot(); delete o.islands;
@@ -1286,14 +1301,14 @@ class Room {
     return o;
   }
   static fromSave(b) {   // rebuild the snapshot form that restore() understands, then restore it
-    const r0 = new Room(b.code), rest = r0.res.filter(x => x.isl > 0);
+    const r0 = new Room(b.code, b.mv || 1), rest = r0.res.filter(x => x.isl > 0);
     for (const [i, k, hp] of b.dev || []) if (rest[i]) { rest[i].k = k; rest[i].mhp = HP[k]; rest[i].hp = hp; }
     const home = (b.homeRes || []).map(a => ({ k: a[0], x: a[1], y: a[2], hp: a[3], mhp: HP[a[0]], rt: 0, isl: 0 }));
-    const o = Object.assign({}, b, { res: home.concat(rest), islands: r0.islands, isv: ISL_VER, islandsV: 2 });
+    const o = Object.assign({}, b, { res: home.concat(rest), islands: r0.islands, isv: ISL_VER, mv: r0.mv, islandsV: 2 });
     return Room.restore(o);
   }
   static restore(o) {
-    const r = new Room(o.code), genIsl = r.islands, genExtra = r.res.filter(x => x.isl > 0), fresh = r.res;
+    const r = new Room(o.code, o.mv || 1), genIsl = r.islands, genExtra = r.res.filter(x => x.isl > 0), fresh = r.res;
     Object.assign(r, { c: o.c, night: o.night, fire: o.fire, aliens: o.aliens || [], res: o.res, drops: (o.drops || []).filter(d => d.k !== 'q' || RC.ITEM_BY[d.food]), pend: o.pend || [], struct: o.struct || [], chargerNight: o.chargerNight || 0, raidNight: o.raidNight || 0, islNight: o.islNight || {}, nid: o.nid || 1, over: 0, emptyFor: 0,
       wolves: (o.wolves || []).map(w => Object.assign({ st: 0, tg: 0, cd: 0, wt: 0, wa: 0, bite: 0, t: 0 }, w)), rabbits: (o.rabbits || []).map(w => Object.assign({ wt: 0, wa: 0, run: 0, sit: 1, side: 1 }, w)), pools: o.pools || [], wolfFull: o.wolves ? 1 : 0, rabFull: o.rabbits ? 1 : 0 });
     if (o.islands) { r.islands = o.islands; r.boats = (o.boats || []).map(b => ({ id: b.id, type: b.type || 'boat', x: b.x, y: b.y, ang: b.ang, life: b.life, riders: [], drv: 0 })); r.scrapFound = !!o.scrapFound; }
