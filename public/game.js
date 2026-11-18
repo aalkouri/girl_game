@@ -1540,7 +1540,9 @@ app.ticker.add(() => {
       s.alpha = nk * (.4 + .6 * Math.abs(Math.sin(T * 1.7 + s.ph))); }); }
   const md = Math.hypot(me.x, me.y);
   // ocean sound: only when water is actually on screen. How far is the shore in the direction it lies, compared with how far the screen reaches that way?
-  const sAng = Math.atan2(me.y, me.x), shoreDist = edge(sAng) - md, ux = Math.max(Math.abs(Math.cos(sAng)), 1e-3), uy = Math.max(Math.abs(Math.sin(sAng)), 1e-3);
+  let sAng = Math.atan2(me.y, me.x), shoreDist = Math.abs(edge(sAng) - md);   // how far is the nearest coast (of home or of whichever island is close), and in which direction
+  for (let qi = 0; qi < ISL.length; qi++) { const q = ISL[qi], dx = me.x - q[0], dy = me.y - q[1], d = Math.hypot(dx, dy); if (d > q[2] * RC.SHAPE_MAX + 4000) continue; const an = Math.atan2(dy, dx), g = Math.abs(edgeJ(an, q[2], q[4] || (qi + 1) * 1.7, q[4] || 0) - d); if (g < shoreDist) { shoreDist = g; sAng = an; } }
+  const ux = Math.max(Math.abs(Math.cos(sAng)), 1e-3), uy = Math.max(Math.abs(Math.sin(sAng)), 1e-3);
   const reach = Math.min(W / Z / 2 / ux, H / Z / 2 / uy), shoreVis = clamp((reach - shoreDist) / (reach * .55), 0, 1);
   SFX.update({ night: d / .74, shore: shoreVis * shoreVis, fire: alive ? clamp(1 - md / 520, 0, 1) : 0, alive });
   hud(me);
