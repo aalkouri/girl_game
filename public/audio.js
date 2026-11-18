@@ -76,6 +76,8 @@ const SFX = (() => {
     coin() { tone({ f: 1318, dur: .08, type: 'square', gain: .09 }); tone({ f: 1976, dur: .28, type: 'square', gain: .09, when: .07 }); },
     treefall(d, dx) { noise({ type: 'lowpass', f: 500, f2: 120, q: .7, dur: .75, gain: .55, attack: .02, dist: d, dx }); tone({ f: 70, f2: 38, dur: .6, type: 'sine', gain: .6, dist: d, dx }); noise({ f: 2600, q: .6, dur: .35, gain: .22, when: .02, dist: d, dx }); },
     rockbreak(d, dx) { noise({ type: 'highpass', f: 1800, dur: .22, gain: .45, dist: d, dx }); noise({ f: 700, f2: 200, q: .8, dur: .4, gain: .4, dist: d, dx }); tone({ f: 120, f2: 50, dur: .3, type: 'triangle', gain: .4, dist: d, dx }); },
+    reloadStart(d, dx) { noise({ f: 2400, q: 2, dur: .05, gain: .22, dist: d, dx }); tone({ f: 320, f2: 170, dur: .07, type: 'square', gain: .07, dist: d, dx }); },   // the magazine drops out
+    reloadEnd(d, dx) { tone({ f: 520, f2: 260, dur: .06, type: 'square', gain: .09, dist: d, dx }); noise({ f: 1800, q: 1.5, dur: .06, gain: .26, when: .08, dist: d, dx }); tone({ f: 900, f2: 560, dur: .05, type: 'square', gain: .07, when: .08, dist: d, dx }); },   // slapped back in and cocked
     pickup() { tone({ f: 700, f2: 1100, dur: .09, type: 'triangle', gain: .12 }); tone({ f: 1400, dur: .1, type: 'sine', gain: .08, when: .05 }); },
     build(d, dx) { [0, .13, .27].forEach(w => { noise({ f: 1500, q: 1, dur: .07, gain: .45, when: w, dist: d, dx }); tone({ f: 210, f2: 120, dur: .09, type: 'triangle', gain: .4, when: w, dist: d, dx }); }); },
     chest() { tone({ f: 180, f2: 300, dur: .18, type: 'triangle', gain: .22 }); noise({ f: 900, q: 1, dur: .12, gain: .2, when: .05 }); },

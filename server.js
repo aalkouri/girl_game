@@ -153,6 +153,7 @@ const VIL_DMG = { arrow: 22, melee: 18 };   // raiding / camp villagers: an arch
 // [infight] experiment: different species fight each other (set to false to switch it off; see the INFIGHT block in Room to remove it)
 const INFIGHT = true, FIGHT_SEE = 280, FIGHT_PLAYER = 380;
 const VEND = { every: 3, boat: 150, walk: 70, sight: 1100, leaveAt: 90 + 30 - 10 };   // traveling vendor: every 3rd day; he leaves 10 s before night (night starts at 120 s)
+const GUN_MAG = { pistol: 6, rifle: 1 }, GUN_RELOAD = { pistol: 1.5, rifle: 3.2 };   // rounds per magazine, seconds to reload
 const GHOST_SEC = 30;   // a player who disconnects at night / near enemies stays in the world this long
 const BLOCK_SEC = 5, WALL_SEC = 8;   // an enemy that cannot find a way to (or a clear shot at) you for BLOCK_SEC seconds attacks the nearest wall for up to WALL_SEC seconds, then tries to path to you again
 const ACT_R = 2600, VIL_ACT = 3000;   // an island's animals exist while a player is within ACT_R of its shore; villagers while one is within VIL_ACT of their camp
@@ -719,14 +720,16 @@ class Room {
     const R2 = (a, b) => a + Math.floor(Math.random() * (b - a + 1)), got = [];
     const give = (k, n, e) => { if (n > 0) { p[k] = (p[k] || 0) + n; got.push('+' + n + ' ' + e); } };
     const t = l.tier;
+    const ammo = (chance, mult) => { if (Math.random() < chance) { if (Math.random() < 0.6) { const n = R2(6, 12) * mult; p.ammoP = (p.ammoP || 0) + n; got.push('+' + n + ' pistol rounds'); } else { const n = R2(3, 5) * mult; p.ammoR = (p.ammoR || 0) + n; got.push('+' + n + ' rifle rounds'); } } };   // ammunition turns up in chests and cabin furniture
     if (l.kind && l.kind !== 'chest') {   // cabin furniture: scrap, and often something better (gold, a pelt, now and then a gem)
       give('scrap', R2(2, 5), '🔩'); const x = Math.random();
-      if (x < 0.30) give('gold', R2(1, 2), '🪙'); else if (x < 0.50) give('pelt', 1, '🐺'); if (Math.random() < 0.04) { award(p, 1, 'chest'); got.push('+1 💎'); }
+      if (x < 0.30) give('gold', R2(1, 2), '🪙'); else if (x < 0.50) give('pelt', 1, '🐺'); if (Math.random() < 0.04) { award(p, 1, 'chest'); got.push('+1 💎'); } ammo(0.35, 1);
       l.open = 1; this.scrapFound = true; send(p.ws, { t: 'loot', tier: 1, msg: { cabinet: 'Cabinet', barrel: 'Barrel', crate: 'Crate', shelf: 'Shelf' }[l.kind] + ': ' + got.join('  ') }); return;
     }
     // chests hold only what the traders want: scrap and gold (pelts come from wolves)
     give('scrap', t === 1 ? R2(2, 4) : t === 2 ? R2(5, 8) : R2(9, 14), '🔩'); if (t >= 2) give('gold', t === 2 ? R2(1, 2) : R2(3, 5), '🪙');
     const dia = t === 3 ? R2(2, 4) : t === 2 && Math.random() < 0.3 ? 1 : 0; if (dia) { award(p, dia, 'chest'); got.push('+' + dia + ' 💎'); }
+    ammo(t === 1 ? 0.25 : 0.5, t === 3 ? 2 : 1);
     l.open = 1; this.scrapFound = this.scrapFound || got.some(g => g.includes('🔩'));
     send(p.ws, { t: 'loot', tier: t, msg: ['', 'Small', 'Silver', 'Golden'][t] + ' chest: ' + got.join('  ') });
   }
@@ -745,7 +748,8 @@ class Room {
       if (o.armor && (p.gear.armor || 0) >= o.armor) return fail('You already wear equal or better armor.'); if (o.gear && p.gear[o.gear]) return fail('You already have that.');
       cost = o.cost;
       apply = () => {
-        if (o.armor) p.gear.armor = o.armor; else if (o.gear) p.gear[o.gear] = true;
+        if (o.armor) p.gear.armor = o.armor; else if (o.gear) { p.gear[o.gear] = true; if (o.gear === 'pistol' || o.gear === 'rifle') { p.wpn = o.gear; if (o.gear === 'pistol') { p.magP = GUN_MAG.pistol; p.ammoP = (p.ammoP || 0) + 18; } else { p.magR = GUN_MAG.rifle; p.ammoR = (p.ammoR || 0) + 9; } p.reload = null; } }   // a gun you just bought is selected, and comes with some rounds
+        else if (o.ammo) p['ammo' + o.ammo] = (p['ammo' + o.ammo] || 0) + o.amt;
         else if (o.item) { if (p.slots.length < slotCap(p, this)) p.slots.push(o.item); else { const q = this.landPoint(p.x + 30, p.y + 30, 50); this.pend.push({ k: 'q', food: o.item, x: q[0], y: q[1], t: 0.2 }); } }
       };
     }
@@ -806,6 +810,7 @@ class Room {
       const b = this.bullets[i]; b.x += b.vx * dt; b.y += b.vy * dt; b.ttl -= dt; let dead = b.ttl <= 0; const owner = this.players.get(b.owner);
       if (!dead) for (const a of this.aliens) if (a.hp > 0 && a.k !== 2 && Math.hypot(a.x - b.x, a.y - b.y) < (a.rad || 22)) { a.hp -= b.dmg; if (owner) this.killCredit(owner, a); dead = true; break; }
       if (!dead) for (const w of this.wolves || []) if (w.hp > 0 && !w.air && Math.hypot(w.x - b.x, w.y - b.y) < 24) { w.hp -= b.dmg; w.st = 1; w.tg = b.owner; if (owner) this.killCredit(owner, w); dead = true; break; }
+      if (!dead) for (const q of this.rabbits || []) if (q.hp > 0 && Math.hypot(q.x - b.x, q.y - b.y) < 16) { if (owner) this.tally(owner, q); this.killRabbit(q); dead = true; break; }   // scorpions and the other small creatures can be shot too
       if (dead) this.bullets.splice(i, 1);
     }
     for (let i = this.turrets.length - 1; i >= 0; i--) {
@@ -1225,7 +1230,28 @@ class Room {
     for (const q of drops) { const a = Math.random() * 6.283, d = 8 + Math.random() * 18; q.x = b.x + Math.cos(a) * d; q.y = b.y + Math.sin(a) * d; q.t = 0.15; this.pend.push(q); }
   }
   ph() { return this.c < DAY ? 0 : this.c < DAY + DUSK ? 1 : 2; }
-  awayEntry(p) { return { t: Date.now(), s: { wood: p.wood, stone: p.stone, food: p.food, scrap: p.scrap, meat: p.meat, gold: p.gold, pelt: p.pelt, apelt: p.apelt, fish1: p.fish1, fish2: p.fish2, fish3: p.fish3, abilOn: p.abilOn, gear: p.gear, buff: p.buff, slots: p.slots, cls: p.cls, down: p.down, hp: p.hp, x: p.x, y: p.y, bt: p.boat || 0 } }; }
+  awayEntry(p) { return { t: Date.now(), s: { wood: p.wood, stone: p.stone, food: p.food, scrap: p.scrap, meat: p.meat, gold: p.gold, pelt: p.pelt, apelt: p.apelt, fish1: p.fish1, fish2: p.fish2, fish3: p.fish3, abilOn: p.abilOn, gear: p.gear, buff: p.buff, slots: p.slots, cls: p.cls, down: p.down, hp: p.hp, x: p.x, y: p.y, bt: p.boat || 0, wpn: p.wpn, magP: p.magP, magR: p.magR, ammoP: p.ammoP, ammoR: p.ammoR } }; }
+  // guns: the pistol holds 6 rounds and the rifle 1; when the magazine is empty (or you press V) the gun reloads from your reserve rounds, which takes a moment (the rifle a long one)
+  gunReady(p) {   // may the selected gun fire right now? (if not, it starts reloading / tells you)
+    const g = this.gunOf(p); if (!g || p.reload) return false;
+    if ((p[g === 'rifle' ? 'magR' : 'magP'] || 0) > 0) return true;
+    if (!this.startReload(p)) { const now = Date.now(); if (now - (p.noAmmoAt || 0) > 1500) { p.noAmmoAt = now; send(p.ws, { t: 'toast', msg: 'Out of ' + g + ' rounds! Switch weapon (X) or find more.' }); } }
+    p.hitcd = 0.3; return false;
+  }
+  gunFired(p) { const g = this.gunOf(p), k = g === 'rifle' ? 'magR' : 'magP'; p[k] = Math.max(0, (p[k] || 0) - 1); if (p[k] <= 0) this.startReload(p); }   // the last round is gone: reload at once
+  startReload(p) {
+    const g = this.gunOf(p); if (!g || p.reload) return false; const cap = GUN_MAG[g], mk = g === 'rifle' ? 'magR' : 'magP', rk = g === 'rifle' ? 'ammoR' : 'ammoP';
+    if ((p[mk] || 0) >= cap || (p[rk] || 0) <= 0) return false;
+    p.reload = { g, t: 0, dur: GUN_RELOAD[g] }; return true;
+  }
+  stepReload(p, dt) {
+    const rl = p.reload; if (!rl) return;
+    if (this.gunOf(p) !== rl.g || p.down) { p.reload = null; return; }   // switched weapon (or went down): the reload is lost
+    rl.t += dt; if (rl.t < rl.dur) return;
+    const mk = rl.g === 'rifle' ? 'magR' : 'magP', rk = rl.g === 'rifle' ? 'ammoR' : 'ammoP', n = Math.min(GUN_MAG[rl.g] - (p[mk] || 0), p[rk] || 0);
+    p[mk] = (p[mk] || 0) + n; p[rk] = (p[rk] || 0) - n; p.reload = null; p.hitcd = Math.max(p.hitcd || 0, 0.15);
+  }
+  gunOf(p) { const w = p.wpn || 'melee'; return w === 'rifle' && p.gear.rifle ? 'rifle' : w === 'pistol' && p.gear.pistol ? 'pistol' : null; }   // the gun you have selected (null = melee, or a plain thrown shot aboard a boat)
   dangerFor(p) {   // is it dangerous to be where this player is (night / dusk, an enemy close by, a shark near their boat)?
     if (this.ph() >= 1) return true;
     for (const w of this.wolves || []) if (w.hp > 0 && !w.vul && Math.hypot(w.x - p.x, w.y - p.y) < 700) return true;
@@ -1290,12 +1316,13 @@ class Room {
     this.rForce = 1;   // the next snapshot carries the full resource state for the newcomer
     const p = { needR: 1, id: this.nid++, ws, name, cls, prof: pf, gear: {}, buff: { speed: 0, regen: 0, dmg: 0 }, actPrev: 0, fa: 0, sw: 0, swk: 0, swa: 0, wood: parseInt(process.env.START_WOOD) || 0, stone: parseInt(process.env.START_STONE) || 0, food: parseInt(process.env.START_FOOD) || 0, scrap: parseInt(process.env.START_SCRAP) || 0, meat: parseInt(process.env.START_MEAT) || 0, gold: 0, pelt: 0, apelt: 0, fish1: 0, fish2: 0, fish3: 0, slots: [], abilCd: 0, sta: STA.max, staCd: 0, tired: 0, actcd: 0, hitcd: 0, eat: 0, inp: { dx: 0, dy: 0, act: 0, hit: 0 } };
     p.email = email; p.inf = INFINITE.has(email); this.respawn(p);
+    if (process.env.START_GUNS) { p.gear.pistol = p.gear.rifle = true; p.magP = 6; p.magR = 1; p.ammoP = 30; p.ammoR = 10; p.wpn = 'pistol'; }   // (test hook)
     if (process.env.START_ABIL) p.abilOn = 1;   // (test hook: the ability starts unlocked)
     const a = email && this.away.get(email); this.away.delete(email);
     if (a && Date.now() - a.t <= ROOM_IDLE_SEC * 1000) {   // welcome back: same stuff, same spot (a downed player just respawns)
       const o = a.s; p.wood = o.wood; p.stone = o.stone; p.food = o.food; p.scrap = o.scrap; p.meat = o.meat || 0; p.gold = o.gold || 0; p.pelt = o.pelt || 0; p.apelt = o.apelt || 0; p.fish1 = o.fish1 || 0; p.fish2 = o.fish2 || 0; p.fish3 = o.fish3 || 0; p.abilOn = o.abilOn ? 1 : 0; p.gear = o.gear; p.buff = o.buff; p.slots = (o.slots || []).filter(id => RC.ITEM_BY[id]).slice(0, 7);
       if (o.cls === cls && !o.down) {
-        p.hp = Math.min(p.mhp, o.hp); p.x = o.x; p.y = o.y;
+        p.hp = Math.min(p.mhp, o.hp); p.x = o.x; p.y = o.y; p.wpn = o.wpn || 'melee'; p.magP = o.magP || 0; p.magR = o.magR || 0; p.ammoP = o.ammoP || 0; p.ammoR = o.ammoR || 0;
         const bt = o.bt && this.boats.find(x => x.id === o.bt && !x.gone);   // left while sailing: you come back aboard the same boat, still on the water
         if (bt && bt.riders.length < RC.BOATS[bt.type || 'boat'].riders) this.enterBoat(p, bt);
         else if (this.landAt(p.x, p.y) < 0) { const q = this.landPoint(p.x, p.y); p.x = q[0]; p.y = q[1]; }   // (the boat is gone or full: the nearest shore)
@@ -1310,6 +1337,7 @@ class Room {
     }
     const P = [...this.players.values()];
     if (!P.length) { this.emptyFor += dt; return; } this.emptyFor = 0;
+    for (const p of P) this.stepReload(p, dt);
     for (const p of P) if (p.inf) { p.wood = p.stone = p.food = p.scrap = p.meat = p.gold = p.pelt = p.apelt = INF_N; }   // test accounts: bag always full
     if (this.over > 0) { this.over -= dt; if (this.over <= 0) this.endRun(); return; }
     this.c += dt;
@@ -1348,10 +1376,13 @@ class Room {
         if (bt && bt.drv !== p.id && i.hit && p.hitcd <= 0 && !(p.fishing && Date.now() - p.fishing.t < 40000)) {
           if (false) { }
           else {
-            const g = p.gear.rifle ? RC.GUNS.rifle : p.gear.pistol ? RC.GUNS.pistol : { dmg: c.dmg + (p.gear.sword ? 8 : 0), cd: Math.max(0.5, c.cd), speed: 800, ttl: 0.6 };   // no gun: a plain thrown shot
-            p.hitcd = g.cd; let ang = p.fa, bd = 700;
-            if (i.am) ang = i.aim; else for (const t of [...this.aliens, ...(this.wolves || [])]) if (t.hp > 0 && t.k !== 2 && !t.air) { const dd = dist(p, t); if (dd < bd) { bd = dd; ang = Math.atan2(t.y - p.y, t.x - p.x); } }   // aboard you can aim all around
-            p.sw = (p.sw + 1) & 255; p.swk = 4; p.swa = ang; this.shoot(p, ang, g.dmg * (B.rage > 0 || B.power > 0 ? 2 : 1), g.speed, g.ttl, 3);
+            const gk = this.gunOf(p);
+            if (!gk || this.gunReady(p)) {   // a gun that is empty or being reloaded does not fire
+              const g = gk ? RC.GUNS[gk] : { dmg: c.dmg + (p.gear.sword ? 8 : 0), cd: Math.max(0.5, c.cd), speed: 800, ttl: 0.6 };   // no gun: a plain thrown shot
+              p.hitcd = g.cd; let ang = p.fa, bd = 700;
+              if (i.am) ang = i.aim; else for (const t of [...this.aliens, ...(this.wolves || []), ...(this.rabbits || [])]) if (t.hp > 0 && t.k !== 2 && !t.air) { const dd = dist(p, t); if (dd < bd) { bd = dd; ang = Math.atan2(t.y - p.y, t.x - p.x); } }   // aboard you can aim all around
+              p.sw = (p.sw + 1) & 255; p.swk = 3; p.swa = ang; this.shoot(p, ang, g.dmg * (B.rage > 0 || B.power > 0 ? 2 : 1), g.speed, g.ttl, 3); if (gk) this.gunFired(p);
+            }
           }
         }
         continue;
@@ -1424,10 +1455,11 @@ class Room {
       const fishingNow = p.fishing && Date.now() - p.fishing.t < 40000;   // no swinging while the fishing minigame is up
       if (i.hit && fishingNow) { }
       
-      else if (i.hit && p.hitcd <= 0 && !p.boat && (p.gear.rifle || p.gear.pistol)) {   // guns: ATTACK fires a bullet (auto-aimed at the nearest target in front)
-        const g = p.gear.rifle ? RC.GUNS.rifle : RC.GUNS.pistol; p.hitcd = g.cd; let ang = p.fa, bd = 700;
-        if (!i.am) for (const t of [...this.aliens, ...(this.wolves || [])]) if (t.hp > 0 && t.k !== 2 && !t.air) { const dd = dist(p, t); let da = Math.atan2(t.y - p.y, t.x - p.x) - p.fa; da = Math.atan2(Math.sin(da), Math.cos(da)); if (dd < bd && Math.abs(da) < 1.0) { bd = dd; ang = Math.atan2(t.y - p.y, t.x - p.x); } }
-        p.sw = (p.sw + 1) & 255; p.swk = 4; p.swa = ang; this.shoot(p, ang, g.dmg * (B.rage > 0 || B.power > 0 ? 2 : 1), g.speed, g.ttl, 3);
+      else if (i.hit && p.hitcd <= 0 && !p.boat && this.gunOf(p) && !this.gunReady(p)) { /* reloading or empty: no shot, no swing */ }
+      else if (i.hit && p.hitcd <= 0 && !p.boat && this.gunOf(p)) {   // guns: ATTACK fires a bullet (auto-aimed at the nearest target in front)
+        const g = RC.GUNS[this.gunOf(p)]; p.hitcd = g.cd; let ang = p.fa, bd = 700;
+        if (!i.am) for (const t of [...this.aliens, ...(this.wolves || []), ...(this.rabbits || [])]) if (t.hp > 0 && t.k !== 2 && !t.air) { const dd = dist(p, t); let da = Math.atan2(t.y - p.y, t.x - p.x) - p.fa; da = Math.atan2(Math.sin(da), Math.cos(da)); if (dd < bd && Math.abs(da) < 1.0) { bd = dd; ang = Math.atan2(t.y - p.y, t.x - p.x); } }
+        p.sw = (p.sw + 1) & 255; p.swk = 3; p.swa = ang; this.shoot(p, ang, g.dmg * (B.rage > 0 || B.power > 0 ? 2 : 1), g.speed, g.ttl, 3); this.gunFired(p);
       }
       else if (i.hit && p.hitcd <= 0) {
         p.hitcd = c.cd * (B.flurry > 0 ? 0.5 : 1);
@@ -1591,7 +1623,7 @@ class Room {
     const o = {
       t: 's', c: Math.round(this.c * 10) / 10, n: this.night, ph: this.ph(), o: this.over > 0 ? 1 : 0,
       f: [Math.round(f.fuel), RC.fuelMax(f.lvl), f.lvl, f.fuel > 0 ? RC.camp(f.lvl) : 0],
-      p: [...this.players.values()].map(p => [p.id, p.name, p.cls, Math.round(p.x), Math.round(p.y), Math.round(p.hp), p.mhp, p.wood, p.stone, p.food, p.down, Math.round(p.rev * 10) / 10, p.sw, p.swk, Math.round(p.swa * 100), p.scrap, Math.round(p.fa * 100), Math.round(p.sta), p.tired, p.slots, p.boat || 0, p.meat || 0, p.gold || 0, p.pelt || 0, slotCap(p, this), !p.abilOn ? 0 : p.abilCd > 0 ? Math.ceil(p.abilCd) + 1 : 1, p.apelt || 0, p.fish1 || 0, p.fish2 || 0, p.fish3 || 0, p.prof ? p.prof.bn || 0 : 0, lvOf(p), p.smax || STA.max]),
+      p: [...this.players.values()].map(p => [p.id, p.name, p.cls, Math.round(p.x), Math.round(p.y), Math.round(p.hp), p.mhp, p.wood, p.stone, p.food, p.down, Math.round(p.rev * 10) / 10, p.sw, p.swk, Math.round(p.swa * 100), p.scrap, Math.round(p.fa * 100), Math.round(p.sta), p.tired, p.slots, p.boat || 0, p.meat || 0, p.gold || 0, p.pelt || 0, slotCap(p, this), !p.abilOn ? 0 : p.abilCd > 0 ? Math.ceil(p.abilCd) + 1 : 1, p.apelt || 0, p.fish1 || 0, p.fish2 || 0, p.fish3 || 0, p.prof ? p.prof.bn || 0 : 0, lvOf(p), p.smax || STA.max, this.gunOf(p) === 'pistol' ? 1 : this.gunOf(p) === 'rifle' ? 2 : 0, (() => { const g = this.gunOf(p); return g === 'rifle' ? p.magR || 0 : g === 'pistol' ? p.magP || 0 : 0; })(), (() => { const g = this.gunOf(p); return g === 'rifle' ? p.ammoR || 0 : g === 'pistol' ? p.ammoP || 0 : 0; })(), p.reload ? Math.max(1, Math.round(p.reload.t / p.reload.dur * 100)) : 0]),
       sk: (this.sharks || []).map(s => [s.id, Math.round(s.x), Math.round(s.y), Math.round(s.fa * 100), s.bite > 0 ? 1 : 0]),
       fp: (this.pools || []).map(q => [q.id, q.x, q.y, q.kind, q.left]),
       bt: this.boats.map(b => [b.id, Math.round(b.x), Math.round(b.y), Math.round(b.ang * 100), b.riders.length, b.drv, b.type || 'boat', Math.round(100 * (b.life == null ? 1 : b.life / RC.BOATS[b.type || 'boat'].life)), b.storm || 0]).concat(this.vendor ? [[-this.vendor.id, Math.round(this.vendor.bx), Math.round(this.vendor.by), Math.round(this.vendor.ba * 100), 0, 0, 'boat', 100, 0]] : []), vd: this.vendor ? [this.vendor.id, this.vendor.type, Math.round(this.vendor.x), Math.round(this.vendor.y), this.vendor.st, Math.round(this.vendor.fa * 100), this.vendor.l.id] : undefined, sf: this.scrapFound ? 1 : 0,
@@ -1694,6 +1726,9 @@ wss.on('connection', ws => {
     } else if (m.t === 'abil' && me) {
       const now = Date.now(); if (now - (me.lastAbil || 0) < 300) return; me.lastAbil = now;
       try { room.useAbility(me); } catch (e) { console.error('ability error:', e && e.stack || e); }
+    } else if (m.t === 'reload' && me) { if (!me.down) room.startReload(me);
+    } else if (m.t === 'wpn' && me) {   // pick which weapon ATTACK uses: melee, or a gun you own
+      const w = String(m.w); if (w === 'melee' || (w === 'pistol' && me.gear.pistol) || (w === 'rifle' && me.gear.rifle)) me.wpn = w;
     } else if (m.t === 'use' && me) {
       const now = Date.now(); if (now - (me.lastUse || 0) < 150) return; me.lastUse = now;
       try { room.useSlot(me, m.i | 0); } catch (e) { console.error('use error:', e && e.stack || e); }

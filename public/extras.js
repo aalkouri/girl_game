@@ -142,6 +142,30 @@ function xInit(m) {
     }
   }
 }
+// ---------- weapon switch: one small button above ATTACK shows what ATTACK uses and cycles through the weapons you own (melee, pistol, rifle) ----------
+const WPN = [['melee', () => (GEAR && GEAR.sword ? '🗡️' : '⚔️'), 'Melee'], ['pistol', () => '🔫', 'Pistol'], ['rifle', () => '🎯', 'Rifle']];
+let wpnCur = 0, wpnBtn = null, wpnInfo = { mag: 0, res: 0, rl: 0 };
+const wpnOwned = () => WPN.map((w, i) => i === 0 || (GEAR && GEAR[w[0]]) ? i : -1).filter(i => i >= 0);
+function wpnCycle() {
+  const own = wpnOwned(); if (own.length < 2) return; const nx = own[(own.indexOf(wpnCur) + 1) % own.length];
+  wpnCur = nx; if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'wpn', w: WPN[nx][0] })); wpnShow(); SFX.pickup && SFX.pickup();
+}
+function wpnShow() {
+  if (!wpnBtn) {
+    wpnBtn = document.createElement('button'); wpnBtn.id = 'wpnBtn'; wpnBtn.setAttribute('aria-label', 'Switch weapon');
+    wpnBtn.style.cssText = 'position:fixed;z-index:6;width:38px;height:38px;border-radius:50%;border:2px solid #ffd000;background:#0b1a2adf;font-size:20px;line-height:1;padding:0;touch-action:manipulation;display:none;right:calc(max(16px,env(safe-area-inset-right)) + clamp(52px,15vmin,76px) + 8px + (clamp(44px,12vmin,60px) - 38px) / 2);bottom:calc(max(24px,env(safe-area-inset-bottom)) + clamp(44px,12vmin,60px) + 18px)';
+    wpnBtn.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); wpnCycle(); }); $('btns').appendChild(wpnBtn);
+    addEventListener('keydown', e => { const k = e.key.toLowerCase(); if ((k === 'x' || k === 'v') && !e.repeat && !/INPUT|TEXTAREA/.test((e.target || {}).tagName || '') && $('btns').style.display !== 'none') { if (k === 'x') wpnCycle(); else if (ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'reload' })); } });   // X switches weapon, V reloads
+  }
+  const own = wpnOwned(); if (!own.includes(wpnCur)) wpnCur = 0;
+  wpnBtn.style.display = own.length > 1 && $('btns').style.display !== 'none' ? 'block' : 'none'; wpnBtn.title = WPN[wpnCur][2] + ' - tap (or X) to switch, V to reload';
+  const gun = wpnCur > 0, w = wpnInfo, cap = wpnCur === 2 ? 1 : 6;   // a gun shows rounds loaded / rounds in reserve (a ring fills while it reloads; red when empty)
+  wpnBtn.innerHTML = WPN[wpnCur][1]() + (gun ? '<span style="position:absolute;left:50%;bottom:-9px;transform:translateX(-50%);font-size:10px;font-weight:800;color:' + (w.mag + w.res <= 0 ? '#ff6b6b' : '#fff') + ';text-shadow:0 1px 2px #000,0 0 3px #000;white-space:nowrap">' + (w.rl > 0 ? '⟳' : w.mag + '/' + w.res) + '</span>' : '');
+  wpnBtn.style.background = gun && w.rl > 0 ? 'conic-gradient(#ffd000 ' + w.rl + '%, #0b1a2adf 0)' : '#0b1a2adf';
+}
+function xWeapon(m) {   // follow what the server says is selected (it also auto-selects a gun the moment you buy it)
+  const mp = m.p.find(p => p[0] === myId); if (mp && mp[33] !== undefined) { wpnCur = mp[33]; wpnInfo = { mag: mp[34] || 0, res: mp[35] || 0, rl: mp[36] || 0 }; } wpnShow();
+}
 let VENDOR = null;   // the traveling vendor (drawn here; his stall entry lives in LOOT so ACT / the trade menu work as usual)
 function xVendor(m) {
   const d = m.vd;
@@ -161,7 +185,7 @@ function xVendor(m) {
   const l = LOOT.find(q => q.vend); if (l) { l.tx = x; l.ty = y; l.x = x; l.y = y; l.id = lid; l.trader = (st === 2 || st === 6) ? type : 0; }
 }
 function xSnap(m) {
-  xVendor(m);
+  xVendor(m); xWeapon(m);
   const op = new Set(m.lo || []);
   const firstLoot = !window._lootSeen; window._lootSeen = 1;
   for (const id in lootE) { const e = lootE[id]; if (!e.open && op.has(+id)) { e.open = 1; e.openAt = firstLoot ? -1e9 : Date.now(); e.sp.texture = (e.tx || T_LCHEST[e.tier])[1]; }
@@ -327,8 +351,8 @@ function xActLabel(me) {
     '<div id="pmInfo" style="font-size:12px;opacity:.85;min-height:34px;margin:4px 0 6px;line-height:1.35">Saves this whole game (every player, everything built and collected) to your account. One save per account; a new save replaces the old one.</div>' +
     '<button class="mini gray" id="pmKeys" style="display:block;width:100%;margin:6px 0;padding:11px">🎮 Controls</button>' +
     '<div id="pmCtl" style="display:none;text-align:left;font-size:12.5px;line-height:1.55;margin:6px 0 4px;background:#0b1a2a;border-radius:10px;padding:10px 12px">' +
-    '<b>Keyboard + mouse</b><br>W A S D / arrows - move &nbsp;·&nbsp; Shift - run<br>Mouse - aim (your character faces the crosshair)<br>Click / Q / F / J - attack &nbsp;·&nbsp; Space / E - ACT (chop, mine, pick, open, refuel)<br>R - rotate what you are placing, or use your ability<br>1-7 - use the item in that slot &nbsp;·&nbsp; M - map &nbsp;·&nbsp; Esc - this menu<br>' +
-    '<b style="display:block;margin-top:6px">Touch</b>Left side of the screen: drag to move, push past the ring to run<br>ACT button: chop, mine, pick, open, refuel<br>ATTACK button: hold to keep attacking, drag it to aim<br>Slot buttons (right edge): tap to use an item &nbsp;·&nbsp; + / − zoom &nbsp;·&nbsp; 🗺️ map &nbsp;·&nbsp; ☰ this menu</div>' +
+    '<b>Keyboard + mouse</b><br>W A S D / arrows - move &nbsp;·&nbsp; Shift - run<br>Mouse - aim (your character faces the crosshair)<br>Click / Q / F / J - attack &nbsp;·&nbsp; Space / E - ACT (chop, mine, pick, open, refuel)<br>R - rotate what you are placing, or use your ability &nbsp;·&nbsp; X - switch weapon &nbsp;·&nbsp; V - reload<br>1-7 - use the item in that slot &nbsp;·&nbsp; M - map &nbsp;·&nbsp; Esc - this menu<br>' +
+    '<b style="display:block;margin-top:6px">Touch</b>Left side of the screen: drag to move, push past the ring to run<br>ACT button: chop, mine, pick, open, refuel<br>ATTACK button: hold to keep attacking, drag it to aim<br>Weapon button (above ATTACK): tap to switch between melee and the guns you own<br>Slot buttons (right edge): tap to use an item &nbsp;·&nbsp; + / − zoom &nbsp;·&nbsp; 🗺️ map &nbsp;·&nbsp; ☰ this menu</div>' +
     '<button class="mini gray" id="pmExit" style="display:block;width:100%;margin:6px 0;padding:11px">Exit to main menu</button></div>';
   document.body.appendChild(d);
   d.querySelector('#pmResume').onclick = () => xPause(false);

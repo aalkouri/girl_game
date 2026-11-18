@@ -94,8 +94,10 @@
       { id: 'rod', n: 'Fishing Rod', e: '🎣', cost: { scrap: 4, gold: 1 }, gear: 'rod', d: 'Press ACT at the shore to fish: you reel in berries from the sea.' }] },
     3: { n: 'Blacksmith', e: '⚒️', d: 'Trades scrap for weapons, guns included.', offers: [
       { id: 'sword', n: 'Iron Sword', e: '🗡️', cost: { scrap: 6 }, gear: 'sword', d: '+8 melee damage.' },
-      { id: 'pistol', n: 'Pistol', e: '🔫', cost: { scrap: 10 }, gear: 'pistol', d: 'ATTACK fires bullets: 18 damage, fast, long range.' },
-      { id: 'rifle', n: 'Rifle', e: '🎯', cost: { scrap: 18 }, gear: 'rifle', d: 'ATTACK fires a slow, heavy shot: 40 damage, very long range.' }] },
+      { id: 'pistol', n: 'Pistol', e: '🔫', cost: { scrap: 10 }, gear: 'pistol', d: 'ATTACK fires bullets: 18 damage, fast, long range. Holds 6 rounds, then reloads. Comes with 24 rounds.' },
+      { id: 'rifle', n: 'Rifle', e: '🎯', cost: { scrap: 18 }, gear: 'rifle', d: 'ATTACK fires one slow, heavy shot: 40 damage, very long range. One round, then a long reload. Comes with 10 rounds.' },
+      { id: 'ammoP', n: 'Pistol rounds', e: '🔸', cost: { scrap: 2 }, ammo: 'P', amt: 20, d: '20 rounds for the pistol.' },
+      { id: 'ammoR', n: 'Rifle rounds', e: '🔹', cost: { scrap: 3 }, ammo: 'R', amt: 8, d: '8 heavy rounds for the rifle.' }] },
     4: { n: 'Boat Dealer', e: '⚓', d: 'Sells bigger, faster boats that carry more loot.', offers: [
       { id: 'sloop', n: 'Sloop', e: '🚤', cost: { scrap: 8, gold: 2 }, item: 'sloop', d: 'Speed 250, 3 riders, +2 item slots while aboard. Goes into a slot; use it at the shore.' },
       { id: 'galleon', n: 'Galleon', e: '🛳️', cost: { scrap: 20, gold: 6 }, item: 'galleon', d: 'Speed 320, 4 riders, +4 item slots while aboard. Goes into a slot; use it at the shore.' }] },

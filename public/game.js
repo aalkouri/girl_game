@@ -1422,6 +1422,16 @@ app.ticker.add(() => {
           if (!sw.hit && sw.t >= .2) { sw.hit = true; const sl = new PIXI.Sprite(T_SLASH); sl.anchor.set(.1, .5); sl.rotation = sw.ang; sl.position.set(e.x + Math.cos(sw.ang) * 16, e.y + Math.sin(sw.ang) * 16); sl.blendMode = BM.ADD; sl.scale.set(.75); overL.addChild(sl); parts.push({ s: sl, vx: 0, vy: 0, life: .16, max: .16, s0: .75, s1: 1, a0: .75, g: 0 }); }
         }
       }
+      { const rl = p[36] || 0;   // reloading: a ring fills around the feet and the magazine slides out, wobbles and snaps back in
+        if (rl > 0 && !down) {
+          if (!e.rlg) { e.rlg = new PIXI.Graphics(); e.c.addChild(e.rlg); }
+          if (!e.rl) { e.rl = 1; SFX.reloadStart(Math.hypot(e.x - me.x, e.y - me.y), e.x - me.x); }
+          const f = rl / 100, a = e.ang, g = e.rlg, out = Math.sin(Math.min(1, f) * Math.PI), wob = Math.sin(f * 22) * 2 * out;
+          g.clear(); g.lineStyle(3, 0x000000, .45); g.arc(0, 8, 24, 0, TAU); g.lineStyle(3, 0xffd000, .95); g.arc(0, 8, 24, -Math.PI / 2, -Math.PI / 2 + TAU * f);
+          const ox = Math.cos(a) * (14 + out * 14) - Math.sin(a) * wob, oy = Math.sin(a) * (14 + out * 14) + Math.cos(a) * wob + 2 + out * 4;
+          g.lineStyle(1.5, 0x000000, .85); g.beginFill(0xb8bec6); g.drawRoundedRect(ox - 4, oy - 7, 8, 14, 2); g.endFill(); g.lineStyle(0); g.beginFill(0xd9a441); g.drawRect(ox - 3, oy - 10, 6, 3.5); g.endFill();
+        } else if (e.rlg && e.rl) { e.rlg.clear(); e.rl = 0; if (!down) SFX.reloadEnd(Math.hypot(e.x - me.x, e.y - me.y), e.x - me.x); }
+      }
       e.fall = Math.max(0, Math.min(1, (e.fall === undefined ? (down ? 1 : 0) : e.fall) + (down ? dt * 2.2 : -dt * 3)));   // 0 = standing, 1 = lying on the ground: tips over with a little stumble
       if (down && !e.wasDown) { burst(e.x, e.y + 6, 8, 0xd9c79a, 70, false, .12); } e.wasDown = down;
       const fu = ease(e.fall), tint = Math.round(255 - (255 - 0x77) * fu) & 255;
