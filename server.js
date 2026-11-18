@@ -148,6 +148,7 @@ const srv = http.createServer((q, s) => {
 const R = 3600;                      // home island radius (doubled again from 1800)
 const ALIEN_R = 950;                 // aliens come ashore this far from the fire
 const DAY = 90, DUSK = 30, NIGHT = 60, CYC = DAY + DUSK + NIGHT;
+const BLOCK_SEC = 5, WALL_SEC = 8;   // an enemy that cannot find a way to (or a clear shot at) you for BLOCK_SEC seconds attacks the nearest wall for up to WALL_SEC seconds, then tries to path to you again
 const ACT_R = 2600, VIL_ACT = 3000;   // an island's animals exist while a player is within ACT_R of its shore; villagers while one is within VIL_ACT of their camp
 const MAXP = 8;
 const ROOM_IDLE_SEC = +process.env.ROOM_IDLE_SEC || 20 * 60;   // an empty room is kept this long; any join resets the timer
@@ -466,6 +467,10 @@ class Room {
     for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) { if (!di && !dj) continue; const ni = i + di, nj = j + dj; if (ni < 0 || nj < 0 || ni >= N || nj >= N) continue; const dv = dist[ni * N + nj]; if (dv >= 0 && dv < bd) { bd = dv; best = [ni, nj]; } }
     if (!best) return { blocked: true, dir: null };
     const cx = ox + (best[0] + .5) * CELL, cy = oy + (best[1] + .5) * CELL, d = Math.hypot(cx - x, cy - y) || 1; return { blocked: true, dir: [(cx - x) / d, (cy - y) / d] };
+  }
+  wallToBreak(x, y) {   // the closest wall / closed gate to an enemy that has been stuck behind walls for a while (as a { st, qx, qy, qr } target)
+    const list = this.struct.filter(st => (st.k === 'wall' || (st.k === 'gate' && !st.open)) && st.hp > 0 && Math.abs(st.x - x) < 500 && Math.abs(st.y - y) < 500);
+    return list.length ? this.nearWall(list, x, y) : null;
   }
   nearWall(list, x, y) {   // the closest wall of an enclosure to (x, y): { st, qx, qy, qr }
     let best = null, bd = 1e9; for (const st of list) { const [qx, qy, qr] = solidPt(st, x, y), d = Math.hypot(qx - x, qy - y); if (d < bd) { bd = d; best = { st, qx, qy, qr }; } } return best;
@@ -985,8 +990,9 @@ class Room {
         if (!tg) { let nd = w.see || WOLF.see; for (const p of P) if (!p.down && !p.boat && this.onIsland(p, wi)) { const d = Math.hypot(p.x - w.x, p.y - w.y); if (d < nd) { nd = d; tg = p; } } }
         if (tg && !nearFire(tg.x, tg.y)) {
           w.st = 1; w.tg = tg.id; let tp = tg, wl = null; const E = this.enclosure(tg); if (E) { wl = this.nearWall(E, w.x, w.y); if (wl) tp = { x: wl.qx, y: wl.qy }; }   // walled in: go for the nearest wall
+          if (!wl && w.wallTg) { if (w.wallTg.dead || w.wallTg.hp <= 0 || (w.wallT -= dt) <= 0) { w.wallTg = null; w.blkT = 0; } else { const [qx, qy, qr] = solidPt(w.wallTg, w.x, w.y); wl = { st: w.wallTg, qx, qy, qr }; tp = { x: qx, y: qy }; } }   // stuck behind walls for a while: break this one, then path again
           const d = Math.hypot(tp.x - w.x, tp.y - w.y) || 1; dx = (tp.x - w.x) / d; dy = (tp.y - w.y) / d;
-          if (!wl) { const ps = this.pathStep(tg, w.x, w.y); if (ps && ps.dir) { dx = ps.dir[0]; dy = ps.dir[1]; } }   // a wall is in the way: go around it
+          if (!wl) { const ps = this.pathStep(tg, w.x, w.y); if (ps && ps.dir) { dx = ps.dir[0]; dy = ps.dir[1]; } if (ps) { if ((w.blkT = (w.blkT || 0) + dt) > BLOCK_SEC) { const bw = this.wallToBreak(w.x, w.y); if (bw) { w.wallTg = bw.st; w.wallT = WALL_SEC; } w.blkT = 0; } } else w.blkT = 0; }   // a wall is in the way: go around it
           if (d - (wl ? wl.qr : 0) > (w.reach || WOLF.reach) * (w.alpha ? 1.25 : 1)) spd = w.run || WOLF.run;
           else if (w.cd <= 0) { w.cd = w.bcd || WOLF.cd; w.bite = 0.25; if (wl) this.hitWall(wl.st, w.dmg || WOLF.dmg); else this.hurt(tg, w.dmg || WOLF.dmg); }
         } else if (w.st === 1) { w.st = 2; w.rt = 0; continue; }   // lost them (or they reached the fire): head home
@@ -1280,6 +1286,10 @@ class Room {
         const sl = GC.BY[p.cls].slow; if (sl > slow && dd < 110) slow = sl;
       }
       if (!tgt && sealed) { const w = this.nearWall(sealed, a.x, a.y); if (w) tgt = { x: w.qx, y: w.qy, wall: w.st, qr: w.qr }; }   // cannot reach anyone: attack the nearest wall of the enclosure
+      if (a.wallTg) {   // it gave up on a way round: breaking this wall first (up to WALL_SEC), then it paths to you again
+        const ws = a.wallTg; if (ws.dead || ws.hp <= 0 || (a.wallT -= dt) <= 0 || !tgt) { a.wallTg = null; a.blkT = 0; }
+        else { const [qx, qy, qr] = solidPt(ws, a.x, a.y); tgt = { x: qx, y: qy, wall: ws, qr }; }
+      }
       if (a.vil) a.chase = tgt ? 1 : 0;
       const sp = a.sp * (1 - slow) * (a.slowT > 0 ? 0.45 : 1);
       const tx = tgt ? tgt.x : a.vil ? a.hx : own.x, ty = tgt ? tgt.y : a.vil ? a.hy : own.y, d = Math.max(1, Math.hypot(tx - a.x, ty - a.y));   // with nobody to chase they drift to the fire (home) or the island's middle
@@ -1296,8 +1306,12 @@ class Room {
         }
       }
       let pathBlocked = false;
-      if (tgt && !tgt.wall && tgt.cls) { const ps = this.pathStep(tgt, a.x, a.y); if (ps) { pathBlocked = true; if (ps.dir) { mx = ps.dir[0]; my = ps.dir[1]; } } }   // a wall is in the way: walk around it (ranged enemies do not shoot until they can see you)
-      if (a.spit && tgt && !tgt.wall && !pathBlocked && d < 440) {   // spitter: every few seconds it lobs a slow glob toward you (walls stop it)
+      if (tgt && !tgt.wall && tgt.cls) {
+        const ps = this.pathStep(tgt, a.x, a.y);
+        if (ps) { pathBlocked = true; if (ps.dir) { mx = ps.dir[0]; my = ps.dir[1]; } if ((a.blkT = (a.blkT || 0) + dt) > BLOCK_SEC) { const w = this.wallToBreak(a.x, a.y); if (w) { a.wallTg = w.st; a.wallT = WALL_SEC; } a.blkT = 0; } }
+        else a.blkT = 0;
+      }   // a wall is in the way: walk around it (ranged enemies do not shoot until they can see you)
+      if (a.spit && tgt && !pathBlocked && d < 440) {   // spitter: every few seconds it lobs a slow glob toward you (walls stop it)
         a.spitCd = (a.spitCd === undefined ? 3 : a.spitCd) - dt;
         if (a.spitCd <= 0) { a.spitCd = 4 + Math.random() * 3; const ang = Math.atan2(ty - a.y, tx - a.x); this.arrows.push({ id: this.nid++, x: a.x, y: a.y, vx: Math.cos(ang) * 150, vy: Math.sin(ang) * 150, dmg: 12 + Math.min(12, (this.night - 16) * 0.5), ttl: 4.5, slow: 1 }); }
       }
