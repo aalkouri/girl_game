@@ -826,14 +826,19 @@ function syncArrows(m) {
   const seen = {}, now = performance.now();
   for (const w of m.ar || []) {
     seen[w[0]] = 1; let e = arrowE[w[0]];
-    if (!e) { const slow = !!w[4], s = new PIXI.Sprite(slow ? T_GLOW : T_ARROW); if (slow) { s.anchor.set(.5); s.scale.set(.42); s.tint = 0x9dff4a; s.blendMode = BM.ADD; } else { s.anchor.set(.9, .5); s.scale.set(.9); } ents.addChild(s); e = arrowE[w[0]] = { s, slow }; }
+    if (!e) { const slow = !!w[4]; let s;
+      if (slow) {   // the spitter's slow shot: a solid acid-green blob with a dark rim and a bright core, so it reads clearly against any ground
+        s = new PIXI.Container(); const gl = new PIXI.Sprite(T_GLOW); gl.anchor.set(.5); gl.scale.set(.5); gl.tint = 0x9dff4a; gl.blendMode = BM.ADD; gl.alpha = .55;
+        const g = new PIXI.Graphics(); g.lineStyle(3, 0x0d3b0d, 1).beginFill(0x6fdc1e).drawCircle(0, 0, 10).endFill(); g.lineStyle(0).beginFill(0xd4ff7a, .95).drawCircle(-3, -3, 4).endFill(); g.beginFill(0x2e7d12, .8).drawCircle(4, 4, 3).endFill();
+        s.addChild(gl, g);
+      } else { s = new PIXI.Sprite(T_ARROW); s.anchor.set(.9, .5); s.scale.set(.9); } ents.addChild(s); e = arrowE[w[0]] = { s, slow }; }
     e.x = w[1]; e.y = w[2]; e.a = w[3] / 100; e.t0 = now; if (!e.slow) e.s.rotation = e.a;
   }
   for (const id in arrowE) if (!seen[id]) { arrowE[id].s.destroy(); delete arrowE[id]; }
 }
 function stepArrows() {
   const now = performance.now();
-  for (const id in arrowE) { const e = arrowE[id], el = Math.min(.12, (now - e.t0) / 1000); { const v = e.slow ? 150 : 520; e.s.position.set(e.x + Math.cos(e.a) * v * el, e.y + Math.sin(e.a) * v * el); if (e.slow) e.s.alpha = .75 + Math.sin(performance.now() / 70) * .25; } e.s.zIndex = e.s.y; }   // keep flying between snapshots
+  for (const id in arrowE) { const e = arrowE[id], el = Math.min(.12, (now - e.t0) / 1000); { const v = e.slow ? 150 : 520; e.s.position.set(e.x + Math.cos(e.a) * v * el, e.y + Math.sin(e.a) * v * el); if (e.slow) { const pu = 1 + Math.sin(performance.now() / 90) * .12; e.s.scale.set(pu); } } e.s.zIndex = e.s.y; }   // keep flying between snapshots
   aimG.clear();
   for (const k in ents2) { const e = ents2[k]; if (e.kind !== 'a' || !e.d || !(e.d[8] > 0)) continue; const f = e.d[8] / 100, a = e.d[6] != null ? e.d[6] / 100 : e.ang; aimG.lineStyle(1.5 + f * 2.5, 0xff5252, .25 + f * .55); aimG.moveTo(e.x, e.y); aimG.lineTo(e.x + Math.cos(a) * 300, e.y + Math.sin(a) * 300); }
 }
