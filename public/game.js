@@ -1882,7 +1882,7 @@ app.view.addEventListener('touchstart', e => { if (e.touches.length >= 2) { joy 
 app.view.addEventListener('contextmenu', e => e.preventDefault());
 let actBlock = false;   // set after placing something so a still-held ACT doesn't instantly act again (e.g. hop into the boat you just put down)
 // ---- aiming: you face where you aim and ATTACK goes that way. Mouse: the cursor. Touch: the aim stick next to ATTACK (drag, release to attack); without it, attacks auto-aim as before ----
-const mouse = { on: false, x: 0, y: 0, down: false }; let aimStick = null, aimHold = { until: 0, ang: 0 }, hitPulse = 0, crossEl = null;
+const mouse = { on: false, x: 0, y: 0, down: false }; let aimStick = null, aimHold = { until: 0, ang: 0 }, hitPulse = 0, crossEl = null, handEl = null;
 function mouseAngle() { const me = ents2['p' + myId]; if (!me) return null; return Math.atan2(mouse.y - (H / 2 + (me.y - camY) * Z), mouse.x - (W / 2 + (me.x - camX) * Z)); }
 function aimPadDraw() {   // touch: the ATTACK button itself is the stick - it slides toward where you drag
   const b = $('hit'); if (!b) return;
@@ -1894,8 +1894,14 @@ function aimPadDraw() {   // touch: the ATTACK button itself is the stick - it s
   crossEl = document.createElement('div'); crossEl.style.cssText = 'position:fixed;width:26px;height:26px;margin:-13px 0 0 -13px;pointer-events:none;z-index:99;display:none;border:2px solid #ff5252;border-radius:50%;box-shadow:0 0 6px #000a,inset 0 0 4px #000a;';
   crossEl.innerHTML = '<div style="position:absolute;left:50%;top:-7px;width:2px;height:8px;margin-left:-1px;background:#ff5252"></div><div style="position:absolute;left:50%;bottom:-7px;width:2px;height:8px;margin-left:-1px;background:#ff5252"></div><div style="position:absolute;top:50%;left:-7px;height:2px;width:8px;margin-top:-1px;background:#ff5252"></div><div style="position:absolute;top:50%;right:-7px;height:2px;width:8px;margin-top:-1px;background:#ff5252"></div>';
   document.body.appendChild(crossEl);
-  const mv = e => { if (e.pointerType !== 'mouse') return; mouse.on = true; mouse.x = e.clientX; mouse.y = e.clientY; crossEl.style.display = document.body.classList.contains('ingame') ? 'block' : 'none'; crossEl.style.left = e.clientX + 'px'; crossEl.style.top = e.clientY + 'px'; };
-  addEventListener('pointermove', mv, true); document.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') crossEl.style.display = 'none'; }, true); document.documentElement.addEventListener('mouseleave', () => { crossEl.style.display = 'none'; });
+  handEl = document.createElement('div'); handEl.textContent = '👆'; handEl.style.cssText = 'position:fixed;font-size:26px;line-height:1;margin:-3px 0 0 -13px;pointer-events:none;z-index:99;display:none;filter:drop-shadow(0 1px 2px #000a)';   // over a button or menu item the crosshair becomes a hand
+  document.body.appendChild(handEl);
+  const CLICKY = 'button,a,label,select,[role=button],.btn,.zb,.slot,.mini,.card,.link,.tier+.row>*,#rm,#snd,#chooseBtn,#mapBtn';
+  const clicky = t => { for (let el = t, n = 0; el && el !== document.body && n < 7; el = el.parentElement, n++) { if (el === app.view) return false; if (el.matches && el.matches(CLICKY)) return true; if (typeof el.onclick === 'function') return true; } return false; };
+  const mv = e => { if (e.pointerType !== 'mouse') return; mouse.on = true; mouse.x = e.clientX; mouse.y = e.clientY; const ing = document.body.classList.contains('ingame'), hand = ing && clicky(e.target);
+    crossEl.style.display = ing && !hand ? 'block' : 'none'; crossEl.style.left = e.clientX + 'px'; crossEl.style.top = e.clientY + 'px';
+    handEl.style.display = hand ? 'block' : 'none'; handEl.style.left = e.clientX + 'px'; handEl.style.top = e.clientY + 'px'; };
+  addEventListener('pointermove', mv, true); document.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') { crossEl.style.display = 'none'; handEl.style.display = 'none'; } }, true); document.documentElement.addEventListener('mouseleave', () => { crossEl.style.display = 'none'; handEl.style.display = 'none'; });
   app.view.addEventListener('pointerdown', e => { if (e.pointerType === 'mouse' && e.button === 0) { mouse.down = true; mv(e); if (placingId) actPress(); } });
   addEventListener('pointerup', e => { if (e.pointerType === 'mouse' && e.button === 0) mouse.down = false; });
 })();
