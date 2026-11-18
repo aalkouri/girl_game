@@ -51,13 +51,24 @@ function claimLegacy(email, pid) {
   delete profiles[pid]; pcount--; dirty = true;
 }
 const ownedOf = p => GC.DEFAULT_OWNED.concat(p ? p.owned : []);
-const view = p => ({ save: p && p.save ? { at: p.save.at, n: p.save.n, bytes: p.save.bytes, gz: p.save.gz } : null, abil: p && p.abil ? Object.keys(p.abil) : [], d: p ? p.d : 0, owned: ownedOf(p), last: p && ownedOf(p).includes(p.last) ? p.last : 'forester', n: p ? p.n : 0 });
+const view = p => ({ save: p && p.save ? { at: p.save.at, n: p.save.n, bytes: p.save.bytes, gz: p.save.gz } : null, abil: p && p.abil ? Object.keys(p.abil) : [], d: p ? p.d : 0, owned: ownedOf(p), last: p && ownedOf(p).includes(p.last) ? p.last : 'forester', n: p ? p.n : 0, bn: p ? p.bn || 0 : 0, xp: p && p.xp ? p.xp : {} });
 const send = (ws, o) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); };
 function award(pl, amount, why) {
   if (!pl.prof) return;
   const n = Math.max(1, Math.round(amount * GC.BY[pl.cls].dia));
   pl.prof.d += n; dirty = true; send(pl.ws, { t: 'dia', n, d: pl.prof.d, why });
   pl.runBy = pl.runBy || {}; pl.runBy[why] = (pl.runBy[why] || 0) + n;   // where this run's gems came from (for the game-over screen)
+}
+
+// ---------- levels: XP is earned per class (nights survived + kills); level 99 is the cap ----------
+const KILL_XP = { rabbit: 1, scorpion: 1, penguin: 1, sal: 1, alien: 3, wolf: 4, imp: 5, villager: 5, boar: 6, spitter: 6, vulture: 8, brute: 10, charger: 12, alpha: 14, golem: 25, bear: 40, mammoth: 80 };
+const lvOf = p => GC.lvlOf(p.prof && p.prof.xp ? p.prof.xp[p.cls] : 0);
+function gainXp(p, amt) {
+  if (!p.prof || !(amt > 0)) return;
+  const xp = p.prof.xp = p.prof.xp || {}, before = GC.lvlOf(xp[p.cls]); xp[p.cls] = (xp[p.cls] || 0) + Math.round(amt); dirty = true;
+  const lv = GC.lvlOf(xp[p.cls]); p.smax = GC.staMax(lv);
+  if (lv > before) p.sta = Math.min(p.smax, (p.sta || 0) + (p.smax - GC.staMax(before)));   // a level-up tops up the extra stamina it gives
+  send(p.ws, { t: 'xp', xp: xp[p.cls], lv, up: lv > before ? 1 : 0, g: Math.round(amt) });
 }
 
 const MAXBODY = 8192;
@@ -315,7 +326,7 @@ class Room {
     for (const p of this.players.values()) { this.respawn(p); p.gear = {}; p.buff = { speed: 0, regen: 0, dmg: 0 }; p.kb = null; p.slots = []; }
   }
   respawn(p) {
-    const c = GC.BY[p.cls]; p.mhp = c.hp; p.hp = c.hp; p.down = 0; p.rev = 0; p.sta = STA.max; p.tired = 0; p.staCd = 0;
+    const c = GC.BY[p.cls]; p.mhp = c.hp; p.hp = c.hp; p.down = 0; p.rev = 0; p.smax = GC.staMax(lvOf(p)); p.sta = p.smax; p.tired = 0; p.staCd = 0;
     const a = Math.random() * 6.283; p.x = Math.cos(a) * 100; p.y = Math.sin(a) * 100;
     if (process.env.START_TRADER) { const l = (this.loot || []).find(x => x.trader === +process.env.START_TRADER); if (l) { p.x = l.tx - 30; p.y = l.ty; return; } }   // (test hook: start next to a trader)
     if (process.env.START_ISL) { const is = this.islands[+process.env.START_ISL]; if (is) { p.x = is.x; p.y = is.y; } }   // (test hook: start on an outer island)
@@ -565,7 +576,7 @@ class Room {
     if (a.rab) return a.crit || 'rabbit'; if (a.vul) return 'vulture'; if (a.sp) return a.sp; if (a.big === 1) return 'bear'; if (a.big === 2) return 'mammoth'; if (a.wolf) return a.alpha ? 'alpha' : 'wolf';
     if (a.spit) return 'spitter'; if (a.k === 1) return 'brute'; if (a.k >= 3) return 'villager'; return 'alien';
   }
-  tally(p, a) { p.runK = p.runK || {}; const k = this.killKey(a); p.runK[k] = (p.runK[k] || 0) + 1; }
+  tally(p, a) { p.runK = p.runK || {}; const k = this.killKey(a); p.runK[k] = (p.runK[k] || 0) + 1; gainXp(p, a.k === 2 && !a.wolf && !a.rab ? KILL_XP.charger : KILL_XP[k] || 2); }
   killCredit(p, a) { if (a.hp <= 0 && !a.cred) { a.cred = 1; this.tally(p, a); if (p.prof) { p.prof.k++; dirty = true; if (p.prof.k % 10 === 0) award(p, 1, 'kills'); } } }
   aoe(p, x, y, r, dmg, stun) {   // damage (and stun) every alien and wolf in a circle; the Charger cannot be hurt
     for (const a of this.aliens) if (a.hp > 0 && a.k !== 2 && Math.hypot(a.x - x, a.y - y) < r) { a.hp -= dmg; if (stun) a.stunT = stun; this.killCredit(p, a); }
@@ -1022,7 +1033,7 @@ class Room {
     this.c += dt;
     if (this.c >= CYC) {
       this.c -= CYC; this.night++;
-      for (const p of P) if (p.prof) { p.prof.n++; dirty = true; }   // diamonds are paid when the run ends, not per night
+      for (const p of P) if (p.prof) { p.prof.n++; p.prof.bn = Math.max(p.prof.bn || 0, this.night - 1); dirty = true; gainXp(p, 40 + 8 * (this.night - 1)); }   // diamonds are paid when the run ends, not per night; XP for the night survived; bn = best nights survived in one run
     }
     const ph = this.ph(), f = this.fire, maxF = RC.fuelMax(f.lvl);
     let burn = 1; for (const p of P) if (!p.down) burn = Math.min(burn, GC.BY[p.cls].burn);
@@ -1073,8 +1084,8 @@ class Room {
         p.sta = Math.max(0, p.sta - STA.drain * rn * dt); p.staCd = STA.delay; spd *= 1 + (STA.sprint - 1) * rn;
         if (p.sta <= 0) { p.tired = 1; p.staCd = STA.tiredDelay; }
       } else {
-        p.staCd -= dt; if (p.staCd <= 0) p.sta = Math.min(STA.max, p.sta + STA.regen * dt);
-        if (p.tired && p.sta >= STA.resume) p.tired = 0;
+        p.staCd -= dt; if (p.staCd <= 0) p.sta = Math.min(p.smax || STA.max, p.sta + STA.regen * dt);
+        if (p.tired && p.sta >= STA.resume * (p.smax || STA.max) / STA.max) p.tired = 0;
       }
       let flying = false;
       if (p.kb) { p.kb.t += dt; const u = p.kb.t / CHARGER.stunSec; if (u >= 1) p.kb = null; else { const v = p.kb.v0 * (1 - u) * (1 - u); p.x += p.kb.dx * v * dt; p.y += p.kb.dy * v * dt; flying = true; } }   // knocked back: no steering until it wears off
@@ -1274,7 +1285,7 @@ class Room {
     const o = {
       t: 's', c: Math.round(this.c * 10) / 10, n: this.night, ph: this.ph(), o: this.over > 0 ? 1 : 0,
       f: [Math.round(f.fuel), RC.fuelMax(f.lvl), f.lvl, f.fuel > 0 ? RC.camp(f.lvl) : 0],
-      p: [...this.players.values()].map(p => [p.id, p.name, p.cls, Math.round(p.x), Math.round(p.y), Math.round(p.hp), p.mhp, p.wood, p.stone, p.food, p.down, Math.round(p.rev * 10) / 10, p.sw, p.swk, Math.round(p.swa * 100), p.scrap, Math.round(p.fa * 100), Math.round(p.sta), p.tired, p.slots, p.boat || 0, p.meat || 0, p.gold || 0, p.pelt || 0, slotCap(p, this), !p.abilOn ? 0 : p.abilCd > 0 ? Math.ceil(p.abilCd) + 1 : 1, p.apelt || 0, p.fish1 || 0, p.fish2 || 0, p.fish3 || 0]),
+      p: [...this.players.values()].map(p => [p.id, p.name, p.cls, Math.round(p.x), Math.round(p.y), Math.round(p.hp), p.mhp, p.wood, p.stone, p.food, p.down, Math.round(p.rev * 10) / 10, p.sw, p.swk, Math.round(p.swa * 100), p.scrap, Math.round(p.fa * 100), Math.round(p.sta), p.tired, p.slots, p.boat || 0, p.meat || 0, p.gold || 0, p.pelt || 0, slotCap(p, this), !p.abilOn ? 0 : p.abilCd > 0 ? Math.ceil(p.abilCd) + 1 : 1, p.apelt || 0, p.fish1 || 0, p.fish2 || 0, p.fish3 || 0, p.prof ? p.prof.bn || 0 : 0, lvOf(p), p.smax || STA.max]),
       sk: (this.sharks || []).map(s => [s.id, Math.round(s.x), Math.round(s.y), Math.round(s.fa * 100), s.bite > 0 ? 1 : 0]),
       fp: (this.pools || []).map(q => [q.id, q.x, q.y, q.kind, q.left]),
       bt: this.boats.map(b => [b.id, Math.round(b.x), Math.round(b.y), Math.round(b.ang * 100), b.riders.length, b.drv, b.type || 'boat', Math.round(100 * (b.life == null ? 1 : b.life / RC.BOATS[b.type || 'boat'].life)), b.storm || 0]), sf: this.scrapFound ? 1 : 0,

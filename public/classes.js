@@ -61,5 +61,10 @@
   const abilCost = c => ({ 0: { scrap: 6, gold: 1 }, 50: { scrap: 10, gold: 2 }, 120: { scrap: 16, gold: 3, pelt: 2 }, 250: { scrap: 24, gold: 5, pelt: 4 }, 400: { scrap: 32, gold: 8, pelt: 6, apelt: 1 } })[c.price];
   const LIST = RAW.map(c => Object.assign({}, DEF, c));
   const BY = {}; LIST.forEach(c => BY[c.id] = c);
-  return { ABIL, abilCost, LIST, BY, DEF, DEFAULT_OWNED: LIST.filter(c => c.price === 0).map(c => c.id) };
+  // levels (per class, cap 99): total XP for level L is XP_A * (L-1)^2, so level 30 is ~13,500 XP (about 4 hours of play) and level 99 ~154,000
+  const XP_A = 16, LV_MAX = 99;
+  const xpAt = L => XP_A * (L - 1) * (L - 1);
+  const lvlOf = xp => Math.max(1, Math.min(LV_MAX, 1 + Math.floor(Math.sqrt(Math.max(0, xp || 0) / XP_A))));
+  const staMax = L => Math.round(100 * (1 + 4 * (Math.min(LV_MAX, Math.max(1, L)) - 1) / (LV_MAX - 1)));   // max stamina: 100 at level 1 up to 500 (5x) at level 99
+  return { XP_A, LV_MAX, xpAt, lvlOf, staMax, ABIL, abilCost, LIST, BY, DEF, DEFAULT_OWNED: LIST.filter(c => c.price === 0).map(c => c.id) };
 });

@@ -684,10 +684,11 @@ function mkPlayer(p) {
   const c = new PIXI.Container(), sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5); sh.scale.set(.8, .5); sh.y = 8; sh.alpha = .9;
   const body = new PIXI.Sprite(T_PL[p[2]]); body.anchor.set(.5); body.scale.set(.85);
   const name = new PIXI.Text(p[1], { fontFamily: 'system-ui,sans-serif', fontSize: 13, fontWeight: '700', fill: 0xffffff, stroke: 0x000000, strokeThickness: 3 }); name.anchor.set(.5, 1); name.y = -30; name.resolution = 2;
+  const nb = new PIXI.Text('', { fontFamily: 'system-ui,sans-serif', fontSize: 13, fontWeight: '800', fill: 0x4fc3f7, stroke: 0x000000, strokeThickness: 3 }); nb.anchor.set(1, 1); nb.y = -30; nb.resolution = 2;   // most nights survived in one run, in blue, left of the name
   const hp = new PIXI.Graphics(); hp.y = -27; const sta = new PIXI.Graphics(); sta.y = 28; sta.visible = false;   // health bar above the head, stamina bar below the feet
   const tool = new PIXI.Sprite(T_AXE); tool.anchor.set(.08, .5); tool.scale.set(.62); tool.visible = false;
-  c.addChild(sh, body, tool, name, hp, sta); ents.addChild(c);
-  return { c, body, tool, name, hp, sta, stv: 100, ang: 0, lh: -1, ld: -1, dust: 0, kind: 'p', sw: p[12], swing: null };
+  c.addChild(sh, body, tool, name, nb, hp, sta); ents.addChild(c);
+  return { c, body, tool, name, nb, hp, sta, stv: 100, ang: 0, lh: -1, ld: -1, dust: 0, kind: 'p', sw: p[12], swing: null };
 }
 // per-kind look: 0 = normal alien, 1 = brute (every 5th night), 2 = the Charger (3x a normal alien)
 const AK = {
@@ -1384,10 +1385,11 @@ app.ticker.add(() => {
       const fu = ease(e.fall), tint = Math.round(255 - (255 - 0x77) * fu) & 255;
       e.body.rotation = e.ang + (((1.2 - e.ang + Math.PI) % TAU + TAU) % TAU - Math.PI) * fu; e.body.tint = (tint << 16) | (tint << 8) | tint;
       e.body.y = down || e.fall > 0 ? -Math.sin(fu * Math.PI) * 7 : Math.sin(T * 16 + e.ph) * (sp > 12 ? 1.8 : .4); e.body.scale.y = (.85 - .25 * fu) * (1 + (sp > 12 && !down ? Math.sin(T * 16) * .04 : 0));
+      { const bn = p[30] > 0 ? String(p[30]) : ''; if (e.nbT !== bn + '|' + p[1]) { e.nbT = bn + '|' + p[1]; e.nb.text = bn; e.name.text = p[1]; e.nb.x = -e.name.width / 2 - 4; } }
       if (k === 'p' + myId) {   // stamina bar over your own character: shown while it's below full, red when winded
-        const tgt = p[17] === undefined ? 100 : p[17]; e.stv += (tgt - e.stv) * Math.min(1, dt * 14);
-        const show = e.stv < 99 || p[18]; e.sta.visible = !!show && !down && !p[20];
-        if (e.sta.visible) { const f = Math.max(0, e.stv / 100), tired = !!p[18], col = tired ? (Math.sin(T * 12) > 0 ? 0xff5252 : 0xb71c1c) : f < .3 ? 0xffb74d : 0xffee58; if (e.stDraw !== col + ':' + Math.round(f * 60)) { e.stDraw = col + ':' + Math.round(f * 60); drawHp(e.sta, 34, f, col); if (tired) { e.sta.beginFill(0xffffff, .85); e.sta.drawRect(-17 + 34 * .3 - .5, -1, 1, 7); e.sta.endFill(); } } }
+        const smx = p[32] || 100, tgt = p[17] === undefined ? smx : p[17]; e.stv += (tgt - e.stv) * Math.min(1, dt * 14);
+        const show = e.stv < smx * .99 || p[18]; e.sta.visible = !!show && !down && !p[20];
+        if (e.sta.visible) { const f = Math.max(0, e.stv / smx), tired = !!p[18], col = tired ? (Math.sin(T * 12) > 0 ? 0xff5252 : 0xb71c1c) : f < .3 ? 0xffb74d : 0xffee58; if (e.stDraw !== col + ':' + Math.round(f * 60)) { e.stDraw = col + ':' + Math.round(f * 60); drawHp(e.sta, 34, f, col); if (tired) { e.sta.beginFill(0xffffff, .85); e.sta.drawRect(-17 + 34 * .3 - .5, -1, 1, 7); e.sta.endFill(); } } }
       }
       if (e.lh !== p[5] || e.ld !== p[10] || e.lr !== p[11]) { e.lh = p[5]; e.ld = p[10]; e.lr = p[11]; if (p[10]) drawHp(e.hp, 40, Math.min(1, p[11] / 10), 0x4caf50); else drawHp(e.hp, 34, p[5] / p[6], 0xef5350); }
       if (!down && !p[20]) rustleBushes(e, sp);
@@ -1582,14 +1584,18 @@ const BASE = window.GAME_BASE || '', WSBASE = BASE ? BASE.replace(/^http/, 'ws')
 const post = async (path, body) => { try { const r = await fetch(BASE + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); return await r.json(); } catch (e) { return { ok: false, err: 'Network problem. Check your connection.' }; } };
 let token = '', myEmail = '', cfg = {}, runOver = false;
 try { token = localStorage.getItem('tok') || ''; } catch (e) { }
-const PF = { d: 0, owned: GC.DEFAULT_OWNED.slice() };
+function xpHud() {   // top-left: your level for the class you are playing and progress to the next one
+  const el = $('xpL'); if (!el) return; const xp = PF.xp[sel] || 0, lv = GC.lvlOf(xp);
+  el.textContent = lv >= GC.LV_MAX ? '⭐ Lv ' + lv + ' (max)' : '⭐ Lv ' + lv + ' · ' + (xp - GC.xpAt(lv)) + '/' + (GC.xpAt(lv + 1) - GC.xpAt(lv)) + ' xp';
+}
+const PF = { d: 0, owned: GC.DEFAULT_OWNED.slice(), xp: {}, bn: 0 };
 let sel = 'forester', hadCls = false; try { const sc = localStorage.getItem('cls'); if (sc) { sel = sc; hadCls = true; } } catch (e) { }
 function chosen() {
   const c = GC.BY[sel] || GC.BY.forester, ic = $('cIcon');
   ic.textContent = '';
   if (PCAN[c.id]) { const cv = document.createElement('canvas'); cv.width = cv.height = 64; cv.getContext('2d').drawImage(PCAN[c.id], 0, 0); cv.style.cssText = 'width:36px;height:36px;display:block'; ic.appendChild(cv); }
   else ic.textContent = c.e;
-  $('cName').textContent = c.n;
+  $('cName').textContent = c.n + ' · Lv ' + GC.lvlOf(PF.xp[c.id]);
 }
 // ---------- game-over screen: what you killed, how the gems add up, and they fly into your gem pool ----------
 const KILLN = { alien: ['👾', 'Aliens'], brute: ['👹', 'Brutes'], villager: ['🏹', 'Villagers'], spitter: ['🤢', 'Spitters'], wolf: ['🐺', 'Wolves'], alpha: ['🐺', 'Alpha wolves'], bear: ['🐻', 'Bears'], mammoth: ['🦣', 'Mammoths'], boar: ['🐗', 'Boars'], golem: ['🪨', 'Magma golems'], imp: ['👺', 'Fire imps'], vulture: ['🦅', 'Vultures'], rabbit: ['🐇', 'Rabbits'], scorpion: ['🦂', 'Scorpions'], penguin: ['🐧', 'Penguins'], sal: ['🦎', 'Lava salamanders'] };
@@ -1634,7 +1640,7 @@ async function showGameOver(m) {
 }
 function setDia(n) { PF.d = n; document.querySelectorAll('.diaN').forEach(e => e.textContent = n); }
 function applyProfile(pr, useLast) {
-  PF.owned = pr.owned; PF.abil = pr.abil || PF.abil; PF.save = pr.save || null; setDia(pr.d); window.xLobby && xLobby();
+  PF.owned = pr.owned; PF.xp = pr.xp || {}; PF.bn = pr.bn || 0; PF.abil = pr.abil || PF.abil; PF.save = pr.save || null; setDia(pr.d); window.xLobby && xLobby();
   if (useLast || !PF.owned.includes(sel)) sel = PF.owned.includes(pr.last) ? pr.last : 'forester';
   try { localStorage.setItem('cls', sel); } catch (e) { }
   chosen(); buildPicker();
@@ -1653,7 +1659,7 @@ function buildPicker() {
       const owned = PF.owned.includes(c.id), d = document.createElement('div'); d.className = 'card' + (c.id === sel ? ' sel' : '') + (owned ? '' : ' locked');
       const cvs = document.createElement('canvas'); cvs.width = cvs.height = 64; cvs.getContext('2d').drawImage(PCAN[c.id], 0, 0); d.appendChild(cvs);
       const st = '❤' + c.hp + '  ⚔' + c.dmg + '  👟' + c.spd;
-      d.insertAdjacentHTML('beforeend', '<div class="cn">' + c.e + ' ' + c.n + '</div><div class="cd">' + c.d + '</div><div class="cs">' + st + '</div><div class="cb">' + (c.id === sel ? '✔ Selected' : owned ? 'Tap to select' : '🔒 ' + c.price + ' 💎') + '</div>');
+      d.insertAdjacentHTML('beforeend', '<div class="cn">' + c.e + ' ' + c.n + (owned ? ' <span style="color:#ffd54f;font-size:12px">Lv ' + GC.lvlOf(PF.xp[c.id]) + '</span>' : '') + '</div><div class="cd">' + c.d + '</div><div class="cs">' + st + '</div><div class="cb">' + (c.id === sel ? '✔ Selected' : owned ? 'Tap to select' : '🔒 ' + c.price + ' 💎') + '</div>');
       window.xCard && xCard(c, d);
       d.onclick = () => owned ? pick(c.id) : askBuy(c.id);
       row.appendChild(d);
@@ -1774,8 +1780,8 @@ $('go').onclick = () => {
     const m = JSON.parse(e.data);
     if (m.t === 'err') { if (m.m === 'auth') logoutUI('Your session expired. Please sign in again.'); else { $('err').textContent = m.m; ws.close(); ws = null; } }
     else if (m.t === 'init') {
-      myId = m.id; RR = m.R; ISL = m.isl ? m.isl.slice(1) : []; roomCode = m.room; GEAR = m.gear || {}; buildWorld(m.res); if (m.prof) { PF.owned = m.prof.owned; PF.abil = m.prof.abil || []; setDia(m.prof.d); } window.xInit && xInit(m);
-      $('lobby').style.display = 'none'; $('hud').style.display = 'block'; $('btns').style.display = 'block';
+      myId = m.id; RR = m.R; ISL = m.isl ? m.isl.slice(1) : []; roomCode = m.room; GEAR = m.gear || {}; buildWorld(m.res); if (m.prof) { PF.owned = m.prof.owned; PF.xp = m.prof.xp || PF.xp; PF.bn = m.prof.bn || 0; PF.abil = m.prof.abil || []; setDia(m.prof.d); } window.xInit && xInit(m);
+      xpHud(); $('lobby').style.display = 'none'; $('hud').style.display = 'block'; $('btns').style.display = 'block';
       $('rm').textContent = 'Room ' + roomCode + ' (tap to copy link)'; tipUntil = performance.now() + 14000; history.replaceState(null, '', '?room=' + roomCode);
     } else if (m.t === 'crafted') {
       GEAR = m.gear || GEAR; const msg = $('craftMsg'); msg.textContent = m.msg || ''; msg.style.color = m.ok ? '#7fe9a0' : '#ff8a80';
@@ -1818,6 +1824,10 @@ $('go').onclick = () => {
       runOver = true; try { sessionStorage.setItem('runres', JSON.stringify({ n: m.n, d: m.d })); sessionStorage.removeItem('rejoin'); } catch (e) { }
       showGameOver(m);
     } else if (window.xMsg && ['loot', 'camped', 'fish', 'fx', 'abilUsed', 'traded', 'saved'].includes(m.t)) { xMsg(m);
+    } else if (m.t === 'xp') {
+      PF.xp[sel] = m.xp; const me = ents2['p' + myId]; if (me && m.g >= 3) floatText(me.x + 18, me.y - 40, '+' + m.g + ' xp', 0xb39ddb);
+      if (m.up && me) { floatText(me.x, me.y - 56, '⭐ Level ' + m.lv + '!', 0xffd54f); SFX.coin(); }
+      xpHud();
     } else if (m.t === 'dia') {
       setDia(m.d); const me = ents2['p' + myId];
       if (me) floatText(me.x, me.y - 24, '+' + m.n + ' 💎' + (m.why === 'milestone' ? ' milestone!' : ''), 0x7fe9ff);
