@@ -31,7 +31,11 @@ jobs:
           SHA="${GITHUB_SHA}"
           cat > cmd.sh <<EOF
           set -euo pipefail
-          W=\$(mktemp -d); cd "\$W"
+          # housekeeping first, so a full /tmp (RAM-backed) or old leftovers can never block a deploy
+          find /tmp /var/tmp -maxdepth 1 -type d \( -name 'tmp.*' -o -name 'deploy.*' \) -mmin +10 -exec rm -rf {} + 2>/dev/null || true
+          ls -1dt /var/backups/island-night/* 2>/dev/null | tail -n +6 | xargs -r rm -rf || true
+          # stage on the real disk (not the RAM /tmp) and always remove the staging dir when done, pass or fail
+          W=\$(mktemp -d /var/tmp/deploy.XXXXXX); trap 'cd /; rm -rf "\$W"' EXIT; cd "\$W"
           curl -fsSL "https://codeload.github.com/${GITHUB_REPOSITORY}/tar.gz/${SHA}" -o src.tgz
           mkdir src && tar xzf src.tgz -C src --strip-components=1
           mkdir -p /var/backups/island-night && cp -a /var/lib/island-night "/var/backups/island-night/\$(date +%s)" || true
