@@ -152,6 +152,7 @@ const HOME_R = 150, HOME_RATE = 1.0;   // a spitter's glob starts to curve towar
 const VIL_DMG = { arrow: 22, melee: 18 };   // raiding / camp villagers: an archer's arrow and a villager's blow (was 6 and 7), before the +4% per night and before armor
 // [infight] experiment: different species fight each other (set to false to switch it off; see the INFIGHT block in Room to remove it)
 const INFIGHT = true, FIGHT_SEE = 280, FIGHT_PLAYER = 380;
+const VEND = { every: 3, boat: 150, walk: 70, sight: 1100, leaveAt: 90 + 30 - 10 };   // traveling vendor: every 3rd day; he leaves 10 s before night (night starts at 120 s)
 const GHOST_SEC = 30;   // a player who disconnects at night / near enemies stays in the world this long
 const BLOCK_SEC = 5, WALL_SEC = 8;   // an enemy that cannot find a way to (or a clear shot at) you for BLOCK_SEC seconds attacks the nearest wall for up to WALL_SEC seconds, then tries to path to you again
 const ACT_R = 2600, VIL_ACT = 3000;   // an island's animals exist while a player is within ACT_R of its shore; villagers while one is within VIL_ACT of their camp
@@ -363,6 +364,83 @@ class Room {
     { const cb = genCabins(this.islands, code, this.loot); this.cabins = cb.cabins; this.loot.push(...cb.loot); this.clearCabinRes(); }
     this.reset();
   }
+  // ===== the traveling vendor: every 3rd day a random vendor sails to the shore nearest a camp (on an island where a player is), walks to the fire, stays until 10 s before night, then
+  // walks back and sails home. Out of sight of every player on the way back = he and his boat vanish; keep him in sight all the way and he leads you to where that vendor lives. =====
+  shoreNear(is, x, y, pref) {   // the point on an island's shore nearest to (x, y) (pref: an angle to prefer when several are about as near), and the outward direction there
+    let best = null, bd = 1e9;
+    for (let k = 0; k < 120; k++) {
+      const a = k / 120 * 6.283, rr = RC.edgeR(is, a), px = is.x + Math.cos(a) * rr, py = is.y + Math.sin(a) * rr;
+      const d = Math.hypot(px - x, py - y) + (pref === undefined ? 0 : 20 * Math.abs(((a - pref + Math.PI) % 6.283 + 6.283) % 6.283 - Math.PI));
+      if (d < bd) { bd = d; best = { x: px, y: py, a }; }
+    }
+    return best;
+  }
+  vendorSail(v, tx, ty, dt) {   // the vendor's boat heads for (tx, ty), steering around islands; returns the distance left
+    const dx = tx - v.bx, dy = ty - v.by, d = Math.hypot(dx, dy); if (d < 6) return d;
+    const h = Math.atan2(dy, dx), step = Math.min(d, VEND.boat * dt);
+    for (const k of [0, 1, -1, 2, -2, 3, -3, 4, -4, 5, -5, 6, -6, 7, -7, 8, -8]) {
+      const a = h + k * 0.3, nx = v.bx + Math.cos(a) * 90, ny = v.by + Math.sin(a) * 90;
+      if (this.isWater(nx, ny) && this.isWater(v.bx + Math.cos(a) * 40, v.by + Math.sin(a) * 40)) { v.bx += Math.cos(a) * step; v.by += Math.sin(a) * step; v.ba += (((a - v.ba + Math.PI) % 6.283 + 6.283) % 6.283 - Math.PI) * Math.min(1, dt * 4); return Math.hypot(tx - v.bx, ty - v.by); }
+    }
+    return d;
+  }
+  vendorGo(v, tx, ty, sp, dt) { const dx = tx - v.x, dy = ty - v.y, d = Math.hypot(dx, dy); if (d > 1) { const m = Math.min(d, sp * dt); v.x += dx / d * m; v.y += dy / d * m; v.fa = Math.atan2(dy, dx); } return Math.hypot(tx - v.x, ty - v.y); }
+  vendorGone() { const v = this.vendor; if (!v) return; this.loot = this.loot.filter(l => l !== v.l); this.vendor = null; }
+  spawnVendor(P) {
+    const cands = [];
+    for (const p of P) if (!p.down && !p.boat) { const i = this.landAt(p.x, p.y, 0); if (i < 0) continue; let f = null;
+      if (i === 0) f = { x: 0, y: 0 }; else for (const c of this.camps) if (c.isl === i && (!f || Math.hypot(c.x - p.x, c.y - p.y) < Math.hypot(f.x - p.x, f.y - p.y))) f = c;
+      if (f) cands.push({ i, f }); }
+    if (!cands.length) return false;
+    const { i, f } = cands[Math.floor(Math.random() * cands.length)], is = this.islands[i];
+    const types = [1, 2, 3, 4, 5].filter(t => this.loot.some(l => l.trader === t)); if (!types.length) return false;
+    const type = types[Math.floor(Math.random() * types.length)], hl = this.loot.find(l => l.trader === type), hi = hl.isl, his = this.islands[hi] || this.islands[0];
+    const S = this.shoreNear(is, f.x, f.y, Math.atan2(his.y - is.y, his.x - is.x)), ux = Math.cos(S.a), uy = Math.sin(S.a);
+    let B0 = null; for (const dd of [1500, 1300, 1700, 1900, 1100, 2100]) { const bx = S.x + ux * dd, by = S.y + uy * dd; if (this.isWater(bx, by) && this.isWater(S.x + ux * dd * .5, S.y + uy * dd * .5)) { B0 = [bx, by]; break; } }
+    if (!B0) return false;
+    const v = { id: this.nid++, type, i, f, S, ux, uy, L: [S.x + ux * 70, S.y + uy * 70], hl, hi, st: 0, bx: B0[0], by: B0[1], ba: Math.atan2(-uy, -ux), x: B0[0], y: B0[1], fa: Math.atan2(-uy, -ux), t: 0, prog: 1e9, pt: 0 };
+    v.l = { id: this.nid++, isl: -1, x: v.x, y: v.y, b: 'f', seed: 0, tier: 0, cx: 0, cy: 0, trader: 0, tx: v.x, ty: v.y, visit: 1 }; this.loot.push(v.l); this.vendor = v;
+    for (const p of P) if (this.onIsland(p, i)) send(p.ws, { t: 'toast', msg: '⛵ A traveling merchant (' + RC.TRADERS[type].n + ') is sailing in...' });
+    return true;
+  }
+  stepVendor(P, dt) {
+    const ph = this.ph();
+    if (!this.vendor) {
+      if (this.night % VEND.every === 0 && this.vSched !== this.night && ph === 0 && this.c > 10) { if (this.spawnVendor(P) || this.c > 70) this.vSched = this.night; }
+      return;
+    }
+    const v = this.vendor; v.t += dt;
+    const tell = (msg, i) => { for (const p of P) if (this.onIsland(p, i)) send(p.ws, { t: 'toast', msg }); };
+    if (v.t > 900) return this.vendorGone();   // (safety net)
+    if (v.st === 0) {   // sailing in
+      v.x = v.bx; v.y = v.by; v.fa = v.ba;
+      if (this.vendorSail(v, v.L[0], v.L[1], dt) < 10) { v.st = 1; v.x = v.S.x - v.ux * 25; v.y = v.S.y - v.uy * 25; tell('🧳 The ' + RC.TRADERS[v.type].n + ' has landed and is walking to your camp.', v.i); }
+      else { v.prog = Math.min(v.prog, Math.hypot(v.L[0] - v.bx, v.L[1] - v.by)); v.pt += dt; if (v.pt > 25) { v.pt = 0; if (v.prog > 1e8) return this.vendorGone(); } }
+    } else if (v.st === 1) {   // walking up to the camp
+      const sx = v.S.x - v.f.x, sy = v.S.y - v.f.y, sl = Math.hypot(sx, sy) || 1, stop = [v.f.x + sx / sl * 115, v.f.y + sy / sl * 115];
+      if (this.vendorGo(v, stop[0], stop[1], VEND.walk, dt) < 6) v.st = 2;
+    } else if (v.st === 2) {   // waiting at the camp, open for trade
+      v.fa = Math.atan2(v.f.y - v.y, v.f.x - v.x);
+      if (this.c >= VEND.leaveAt || ph >= 2) { v.st = 3; tell('🧳 The ' + RC.TRADERS[v.type].n + ' is heading back to his boat.', v.i); }
+    } else if (v.st === 3) {   // walking back to the boat
+      if (this.vendorGo(v, v.S.x, v.S.y, VEND.walk * 1.15, dt) < 8) {
+        v.st = 4; v.x = v.bx; v.y = v.by;
+        const Sh = this.shoreNear(v.hi === 0 ? this.islands[0] : this.islands[v.hi], v.hl.tx, v.hl.ty); v.H = [Sh.x + Math.cos(Sh.a) * 70, Sh.y + Math.sin(Sh.a) * 70]; v.Sh = Sh; v.prog = 1e9; v.pt = 0;
+      }
+    } else if (v.st === 4) {   // sailing home
+      v.x = v.bx; v.y = v.by; v.fa = v.ba;
+      const left = this.vendorSail(v, v.H[0], v.H[1], dt);
+      if (left < 12) { v.st = 5; v.x = v.Sh.x - Math.cos(v.Sh.a) * 25; v.y = v.Sh.y - Math.sin(v.Sh.a) * 25; }
+      else { v.pt += dt; if (left < v.prog - 30) { v.prog = left; v.pt = 0; } else if (v.pt > 14) return this.vendorGone(); }   // (no progress: give up)
+    } else if (v.st === 5) {   // walking to where his stall is
+      if (this.vendorGo(v, v.hl.tx, v.hl.ty, VEND.walk * 1.4, dt) < 8) { v.st = 6; v.t = 0; for (const p of P) if (!p.down && Math.hypot(p.x - v.x, p.y - v.y) < VEND.sight) send(p.ws, { t: 'vendHome', x: Math.round(v.hl.tx), y: Math.round(v.hl.ty), ty: v.type }); }
+    } else if (v.st === 6) {   // home: he is the stall now for a moment, then he and the boat vanish
+      v.fa = Math.atan2(v.hl.y - v.y, v.hl.x - v.x); if (v.t > 6) return this.vendorGone();
+    }
+    v.l.tx = v.x; v.l.ty = v.y; v.l.x = v.x; v.l.y = v.y; v.l.trader = v.st === 2 ? v.type : 0;
+    if (v.st >= 3 && v.st <= 6 && v.st !== 6 && !P.some(p => !p.down && (Math.hypot(p.x - v.x, p.y - v.y) < VEND.sight || Math.hypot(p.x - v.bx, p.y - v.by) < VEND.sight))) return this.vendorGone();   // out of sight of everybody: he and his boat disappear
+  }
+  // ===== end of the traveling vendor =====
   clearCabinRes() {   // no trees, rocks or bushes inside a cabin (or right up against its walls)
     for (const c of this.cabins || []) for (const q of this.res) if ((q.isl | 0) === c.isl && Math.abs(q.x - c.x) < c.w / 2 + 40 && Math.abs(q.y - c.y) < c.h / 2 + 40) { q.hp = 0; q.mhp = 0; q.rt = 1e9; }
   }
@@ -387,7 +465,7 @@ class Room {
     if (process.env.START_BREAKALL) for (const r of this.res) { r.hp = 0; r.rt = 1e9; }   // (test hook: size a worst-case save)
     this.drops = []; this.pend = []; this.struct = []; this.chargerNight = 0; this.islNight = {}; this.boats = []; this.camps = []; this.bullets = []; this.zones = []; this.turrets = []; for (const l of this.loot || []) l.open = 0; this.arrows = []; this.rabbits = []; this.rabT = 0; this.rabFull = 0; this.wolves = []; this.wolfT = 0; this.raidNight = 0; this.scrapFound = !!process.env.START_SCRAPFOUND;
     if (process.env.START_BENCH) this.struct.push({ id: this.nid++, k: 'bench', x: 110, y: 0, r: RC.RADIUS.bench, hp: 0, mhp: 0, rot: 0 });   // (test hook)
-    this.addCabinWalls();
+    this.vendorGone(); this.vSched = 0; this.addCabinWalls();
     for (const p of this.players.values()) { this.respawn(p); p.gear = {}; p.buff = { speed: 0, regen: 0, dmg: 0 }; p.kb = null; p.slots = []; }
   }
   respawn(p) {
@@ -1407,7 +1485,7 @@ class Room {
         e.spk = (e.spk || 0) - dt; if (e.spk > 0) continue; e.spk = 0.5; e.hp -= 10; if (e.wolf) { e.st = 1; } this.hitWall(st, 3); if (st.dead) break;
       }
     }
-    this.stepRabbits(P, dt); this.stepWolves(P, dt); this.stepPools(dt);
+    this.stepRabbits(P, dt); this.stepWolves(P, dt); this.stepPools(dt); this.stepVendor(P, dt);
     // aliens
     if (ph === 2) for (let i = 0; i < this.islands.length; i++) this.nightSpawns(i, P, dt);
     for (const a of this.aliens) {
@@ -1516,7 +1594,7 @@ class Room {
       p: [...this.players.values()].map(p => [p.id, p.name, p.cls, Math.round(p.x), Math.round(p.y), Math.round(p.hp), p.mhp, p.wood, p.stone, p.food, p.down, Math.round(p.rev * 10) / 10, p.sw, p.swk, Math.round(p.swa * 100), p.scrap, Math.round(p.fa * 100), Math.round(p.sta), p.tired, p.slots, p.boat || 0, p.meat || 0, p.gold || 0, p.pelt || 0, slotCap(p, this), !p.abilOn ? 0 : p.abilCd > 0 ? Math.ceil(p.abilCd) + 1 : 1, p.apelt || 0, p.fish1 || 0, p.fish2 || 0, p.fish3 || 0, p.prof ? p.prof.bn || 0 : 0, lvOf(p), p.smax || STA.max]),
       sk: (this.sharks || []).map(s => [s.id, Math.round(s.x), Math.round(s.y), Math.round(s.fa * 100), s.bite > 0 ? 1 : 0]),
       fp: (this.pools || []).map(q => [q.id, q.x, q.y, q.kind, q.left]),
-      bt: this.boats.map(b => [b.id, Math.round(b.x), Math.round(b.y), Math.round(b.ang * 100), b.riders.length, b.drv, b.type || 'boat', Math.round(100 * (b.life == null ? 1 : b.life / RC.BOATS[b.type || 'boat'].life)), b.storm || 0]), sf: this.scrapFound ? 1 : 0,
+      bt: this.boats.map(b => [b.id, Math.round(b.x), Math.round(b.y), Math.round(b.ang * 100), b.riders.length, b.drv, b.type || 'boat', Math.round(100 * (b.life == null ? 1 : b.life / RC.BOATS[b.type || 'boat'].life)), b.storm || 0]).concat(this.vendor ? [[-this.vendor.id, Math.round(this.vendor.bx), Math.round(this.vendor.by), Math.round(this.vendor.ba * 100), 0, 0, 'boat', 100, 0]] : []), vd: this.vendor ? [this.vendor.id, this.vendor.type, Math.round(this.vendor.x), Math.round(this.vendor.y), this.vendor.st, Math.round(this.vendor.fa * 100), this.vendor.l.id] : undefined, sf: this.scrapFound ? 1 : 0,
       a: this.aliens.map(a => [a.id, Math.round(a.x), Math.round(a.y), Math.round(a.hp), a.mhp, a.k, a.fa === undefined ? null : Math.round(a.fa * 100), Math.ceil(a.trapT > 0 ? a.trapT : 0), a.aim > 0 ? Math.round(Math.min(1, a.aim / 1.5) * 100) : 0, a.spit ? 1 : 0]),
       wf: (this.wolves || []).map(w => [w.id, Math.round(w.x), Math.round(w.y), Math.round(w.fa * 100), Math.round(w.hp), w.mhp, w.st, w.bite > 0 ? 1 : 0, w.alpha || 0, w.big || 0, w.vul ? (w.air ? 1 : 2) : 0, w.sp ? MOBS[w.sp].idx : 0]),
       rb: this.rabbits.map(b => [b.id, Math.round(b.x), Math.round(b.y), Math.round(b.fa * 100), b.run ? 1 : b.sit ? 0 : 2, CRIT[b.crit || 'rabbit'].idx]),
@@ -1581,7 +1659,7 @@ wss.on('connection', ws => {
       if (room.players.size >= MAXP) { send(ws, { t: 'err', m: 'Room is full' }); return; }
       const ghost = email && [...room.players.values()].find(p => p.ghost && p.email === email);   // you dropped out in danger and are back within the grace period
       if (ghost) { me = ghost; me.ghost = 0; me.ws = ws; me.name = name; } else me = room.add(ws, name, cls, pf, email);
-      send(ws, { t: 'init', id: me.id, room: rc, R, cls, gear: me.gear, prof: view(pf), res: room.res.map(r => [r.k, Math.round(r.x), Math.round(r.y)]), isl: room.islands.map(i => [i.x, i.y, i.r, i.b, i.s || 0]), loot: room.loot.map(l => [l.id, l.x, l.y, l.b, l.seed, l.tier, l.cx, l.cy, l.trader, l.tx, l.ty, l.cab || 0, l.kind || '']), cab: (room.cabins || []).map(c => [c.id, c.isl, c.x, c.y, c.w, c.h, c.side, c.door]), vg: (room.villages || []).map(v => [v.id, v.x, v.y, v.seed]), lv: (room.lava || []).map(l => [l.x, l.y, l.r]) });
+      send(ws, { t: 'init', id: me.id, room: rc, R, cls, gear: me.gear, prof: view(pf), res: room.res.map(r => [r.k, Math.round(r.x), Math.round(r.y)]), isl: room.islands.map(i => [i.x, i.y, i.r, i.b, i.s || 0]), loot: room.loot.filter(l => !l.visit).map(l => [l.id, l.x, l.y, l.b, l.seed, l.tier, l.cx, l.cy, l.trader, l.tx, l.ty, l.cab || 0, l.kind || '']), cab: (room.cabins || []).map(c => [c.id, c.isl, c.x, c.y, c.w, c.h, c.side, c.door]), vg: (room.villages || []).map(v => [v.id, v.x, v.y, v.seed]), lv: (room.lava || []).map(l => [l.x, l.y, l.r]) });
     } else if (m.t === 'craft' && me) {
       const now = Date.now(); if (now - (me.lastCraft || 0) < 200) { send(ws, { t: 'crafted', id: String(m.id || ''), ok: false, msg: 'Slow down a little.', gear: me.gear }); return; } me.lastCraft = now;
       let res; try { res = room.craft(me, String(m.id || ''), m.rot); } catch (e) { console.error('craft error:', e && e.stack || e); res = { ok: false, msg: 'Could not craft that.' }; }

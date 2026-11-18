@@ -1510,7 +1510,7 @@ app.ticker.add(() => {
       if (st && Math.hypot(me.x, me.y) < 80 && Math.hypot(me.x, me.y) < sd) st = null;   // the fire is closer than the station
       let gt = null, gd = 70; for (const t of S.st || []) if (t[1] === 'gate') { const a = (t[7] || 0) * Math.PI / 4, ux = Math.cos(a), uy = Math.sin(a), u = Math.max(-52, Math.min(52, (me.x - t[2]) * ux + (me.y - t[3]) * uy)), d = Math.hypot(me.x - (t[2] + ux * u), me.y - (t[3] + uy * u)); if (d < gd) { gd = d; gt = t; } }   // a gate in reach: ACT swings it open / shut
       const pool = GEAR.rod && (S.fp || []).find(q => dist(q[1], q[2]) < 150);
-      const nb = (S.bt || []).find(b => dist(b[1], b[2]) < 125);
+      const nb = (S.bt || []).find(b => b[0] > 0 && dist(b[1], b[2]) < 125);   // (the visiting vendor's boat, id < 0, cannot be boarded)
       if (S.p.some(q => q[10] && q[0] !== myId && dist(q[3], q[4]) < 60)) lab = 'REVIVE';
       else if (nb) lab = nb[4] >= 2 ? 'FULL' : 'ENTER';
       else if (window.xActLabel && xActLabel(me)) lab = xActLabel(me);
@@ -1868,7 +1868,7 @@ $('go').onclick = () => {
     } else if (m.t === 'over') {   // everyone went down: remember the result, then back to the title screen
       runOver = true; try { sessionStorage.setItem('runres', JSON.stringify({ n: m.n, d: m.d })); sessionStorage.removeItem('rejoin'); } catch (e) { }
       showGameOver(m);
-    } else if (window.xMsg && ['loot', 'camped', 'fish', 'fx', 'abilUsed', 'traded', 'saved'].includes(m.t)) { xMsg(m);
+    } else if (window.xMsg && ['loot', 'camped', 'fish', 'fx', 'abilUsed', 'traded', 'saved', 'vendHome'].includes(m.t)) { xMsg(m);
     } else if (m.t === 'xp') {
       PF.xp[sel] = m.xp; const me = ents2['p' + myId]; if (me && m.g >= 3) floatText(me.x + 18, me.y - 40, '+' + m.g + ' xp', 0xb39ddb);
       if (m.up && me) { floatText(me.x, me.y - 56, '⭐ Level ' + m.lv + '!', 0xffd54f); SFX.coin(); }

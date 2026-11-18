@@ -100,10 +100,10 @@ function drawMap() {
   };
   g.fillText('🔥', X(0), Y(0)); if (S.f) fireBar(X(0), Y(0), S.f[0], S.f[1]);
   for (const c of S.cf || []) { g.fillText('🔥', X(c[1]), Y(c[2])); fireBar(X(c[1]), Y(c[2]), c[3], c[4]); }
-  for (const l of (typeof LOOT !== 'undefined' ? LOOT : [])) if (l.trader && revealed(l.tx, l.ty)) {   // a discovered trader stays on the map, each kind with its own icon
+  for (const l of (typeof LOOT !== 'undefined' ? LOOT : [])) if (l.trader && !l.vend && revealed(l.tx, l.ty)) {   // a discovered trader stays on the map, each kind with its own icon
     const T = RC.TRADERS[l.trader]; g.beginPath(); g.arc(X(l.tx), Y(l.ty), 22, 0, TAU); g.fillStyle = '#14304af0'; g.fill(); g.lineWidth = 3; g.strokeStyle = '#ffd000'; g.stroke(); g.font = '28px system-ui,sans-serif'; g.fillStyle = '#fff'; g.fillText(T.e, X(l.tx), Y(l.ty) + 2); g.font = '16px system-ui,sans-serif';
   }
-  for (const b of S.bt || []) g.fillText('⛵', X(b[1]), Y(b[2]));
+  for (const b of S.bt || []) if (b[0] > 0) g.fillText('⛵', X(b[1]), Y(b[2]));   // (the visiting vendor's boat, id < 0, is not on the map)
   mapSc = { size, s, cx: mapV.cx, cy: mapV.cy };   // the players are drawn on the overlay canvas (drawMarkers), so they can pulse
 }
 addEventListener('keydown', e => { if (e.key.toLowerCase() === 'm' && !/INPUT|TEXTAREA/.test((e.target || {}).tagName || '') && $('btns') && $('btns').style.display !== 'none') toggleMap(); else if (e.key === 'Escape' && mapOpen) toggleMap(false); });
@@ -127,3 +127,6 @@ function drawMarkers() {
     }
   }
 }
+
+// the traveling vendor led you home: reveal the ground around where he lives so his icon appears on the map
+function mapReveal(x, y) { const cx = Math.round(x / MCELL), cy = Math.round(y / MCELL); for (let dx = -2; dx <= 2; dx++) for (let dy = -2; dy <= 2; dy++) { const k = mkey(cx + dx, cy + dy); if (!mapCells.has(k)) { mapCells.add(k); mapDirty = true; } } }

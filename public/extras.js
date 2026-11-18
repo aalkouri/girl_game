@@ -142,7 +142,26 @@ function xInit(m) {
     }
   }
 }
+let VENDOR = null;   // the traveling vendor (drawn here; his stall entry lives in LOOT so ACT / the trade menu work as usual)
+function xVendor(m) {
+  const d = m.vd;
+  if (!d) { if (VENDOR) { VENDOR.c.destroy({ children: true }); const k = LOOT.findIndex(l => l.vend); if (k >= 0) LOOT.splice(k, 1); VENDOR = null; } return; }
+  const [id, type, x, y, st, fa, lid] = d;
+  if (!VENDOR || VENDOR.id !== id) {
+    if (VENDOR) { VENDOR.c.destroy({ children: true }); const k = LOOT.findIndex(l => l.vend); if (k >= 0) LOOT.splice(k, 1); }
+    const c = new PIXI.Container(), sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5); sh.scale.set(.8, .5); sh.y = 8;
+    const body = new PIXI.Sprite(T_TRADER[type]); body.anchor.set(.5); body.scale.set(.95);
+    const tag = new PIXI.Text(RC.TRADERS[type].e + ' ' + RC.TRADERS[type].n, { fontFamily: 'system-ui,sans-serif', fontSize: 13, fontWeight: '800', fill: 0xffe082, stroke: 0x000000, strokeThickness: 4 }); tag.anchor.set(.5, 1); tag.y = -34; tag.resolution = 2;
+    const ex = new PIXI.Text('!', { fontFamily: 'system-ui,sans-serif', fontSize: 22, fontWeight: '900', fill: 0xffd000, stroke: 0x000000, strokeThickness: 4 }); ex.anchor.set(.5, 1); ex.y = -52; ex.visible = false;
+    c.addChild(sh, body, tag, ex); c.position.set(x, y); ents.addChild(c);
+    VENDOR = { id, type, c, body, ex, x, y, tx: x, ty: y };
+    LOOT.push({ id: lid, vend: 1, trader: 0, tx: x, ty: y, x, y, tier: 0, cx: 0, cy: 0, b: 'f', seed: 0, cab: 0, kind: '' });
+  }
+  VENDOR.tx = x; VENDOR.ty = y; VENDOR.body.rotation = fa / 100; VENDOR.st = st;
+  const l = LOOT.find(q => q.vend); if (l) { l.tx = x; l.ty = y; l.x = x; l.y = y; l.id = lid; l.trader = (st === 2 || st === 6) ? type : 0; }
+}
 function xSnap(m) {
+  xVendor(m);
   const op = new Set(m.lo || []);
   const firstLoot = !window._lootSeen; window._lootSeen = 1;
   for (const id in lootE) { const e = lootE[id]; if (!e.open && op.has(+id)) { e.open = 1; e.openAt = firstLoot ? -1e9 : Date.now(); e.sp.texture = (e.tx || T_LCHEST[e.tier])[1]; }
@@ -176,6 +195,7 @@ function xSnap(m) {
 }
 function xStep(dt, me) {
   const now = performance.now(), cr = Math.max(W, H) / Z / 2 + 160;
+  if (VENDOR) { const k = Math.min(1, dt * 9); VENDOR.x += (VENDOR.tx - VENDOR.x) * k; VENDOR.y += (VENDOR.ty - VENDOR.y) * k; VENDOR.c.position.set(VENDOR.x, VENDOR.y); VENDOR.c.zIndex = VENDOR.y + 2; VENDOR.ex.visible = VENDOR.st === 2 || VENDOR.st === 6; VENDOR.ex.y = -52 + Math.sin(T * 5) * 3; VENDOR.body.y = Math.sin(T * 9) * (VENDOR.st === 1 || VENDOR.st === 3 || VENDOR.st === 5 ? 1.5 : .3); }
   for (const c of CABINS) { const inside = me && Math.abs(me.x - c.x) < c.w / 2 + 4 && Math.abs(me.y - c.y) < c.h / 2 + 4; c.a += ((inside ? .08 : 1) - c.a) * Math.min(1, dt * 6); c.roof.alpha = c.a; }   // the roof goes see-through while you are inside
   for (const o of cullList) { const cm = cr + (o.m || 0), nr = Math.abs(o.x - camX) < cm && Math.abs(o.y - camY) < cm; if (nr) { if (!o.c.parent) ents.addChild(o.c); } else if (o.c.parent && (Math.abs(o.x - camX) > cm * 1.3 || Math.abs(o.y - camY) > cm * 1.3)) ents.removeChild(o.c); }   // decorations, chests, traders: in the scene only near the camera
   for (const id in bulletE) { const e = bulletE[id], el = Math.min(.1, (now - e.t0) / 1000), a = e.d[3] / 100, v = BSPEED[e.d[4]] || 800; e.s.position.set(e.d[1] + Math.cos(a) * v * el, e.d[2] + Math.sin(a) * v * el); e.s.rotation = a; e.s.zIndex = e.s.y + 40; }
@@ -270,6 +290,7 @@ function xCard(c, el) {
 function xMsg(m) {
   const me = ents2['p' + myId];
   if (m.t === 'loot') { SFX.levelup(); if (me) floatText(me.x, me.y - 24, m.msg, 0xffe082); notice(m.msg); }
+  else if (m.t === 'vendHome') { window.mapReveal && mapReveal(m.x, m.y); notice('🧳 You followed the ' + RC.TRADERS[m.ty].n + ' home - he is now marked on your map!'); SFX.levelup(); }
   else if (m.t === 'camped') { notice('Campfire lit! Feed it wood to keep it burning.'); SFX.levelup(); }
   else if (m.t === 'fish') { if (me) floatText(me.x, me.y - 14, m.n ? '+' + m.n + ' 🍓 fish!' : 'Nothing bit...', m.n ? 0x9be7ff : 0xcfd8dc); if (m.n) SFX.pickup(); }
   else if (m.t === 'fx') {
