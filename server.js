@@ -150,6 +150,8 @@ const ALIEN_R = 950;                 // aliens come ashore this far from the fir
 const DAY = 90, DUSK = 30, NIGHT = 60, CYC = DAY + DUSK + NIGHT;
 const HOME_R = 150, HOME_RATE = 1.0;   // a spitter's glob starts to curve toward you within HOME_R px, turning at most HOME_RATE rad/s, and only once
 const VIL_DMG = { arrow: 22, melee: 18 };   // raiding / camp villagers: an archer's arrow and a villager's blow (was 6 and 7), before the +4% per night and before armor
+// [infight] experiment: different species fight each other (set to false to switch it off; see the INFIGHT block in Room to remove it)
+const INFIGHT = true, FIGHT_SEE = 280, FIGHT_PLAYER = 380;
 const BLOCK_SEC = 5, WALL_SEC = 8;   // an enemy that cannot find a way to (or a clear shot at) you for BLOCK_SEC seconds attacks the nearest wall for up to WALL_SEC seconds, then tries to path to you again
 const ACT_R = 2600, VIL_ACT = 3000;   // an island's animals exist while a player is within ACT_R of its shore; villagers while one is within VIL_ACT of their camp
 const MAXP = 8;
@@ -823,6 +825,7 @@ class Room {
     }
     for (const b of this.rabbits) {
       const is = this.islands[b.isl], C = CRIT[b.crit || 'rabbit']; let near = null, nd = C.see;
+      if (INFIGHT && this.fleeHostile(b, C, is, dt)) continue;   // [infight]
       for (const p of P) if (!p.down && !p.boat) { const d = Math.hypot(p.x - b.x, p.y - b.y); if (d < nd) { nd = d; near = p; } }
       let dx, dy, spd;
       if (near) { dx = b.x - near.x; dy = b.y - near.y; const L = Math.hypot(dx, dy) || 1; dx /= L; dy /= L; spd = C.run; b.run = 1; b.sit = 0; b.wt = 0; }
@@ -908,6 +911,53 @@ class Room {
       const n0 = this.aliens.length; this.aliens = this.aliens.filter(a => a.vil !== v.id); if (this.aliens.length !== n0 || v.spawned) { v.spawned = 0; v.rt = 0; }
     }
   }
+  // ===== INFIGHT: different species fight each other. To remove: delete this block, the INFIGHT const near the top and the three lines tagged [infight] =====
+  // Species: wolf (alphas too), bear, mammoth, boar, golem, imp, and the night aliens (as one species). Same species never fight. Villagers neither attack nor are attacked.
+  // Scorpions are never attacked. Other passive critters are fair prey and flee from anything hostile. Anything near a player carries on with the player instead.
+  fightSpecies(c, kind) {
+    if (kind === 'a') return c.vil || c.k >= 3 ? null : 'alien';   // villagers (camp and raiders) stay out of it
+    if (c.vul) return null;   // vultures are left alone (and leave others alone)
+    return c.sp || (c.big === 1 ? 'bear' : c.big === 2 ? 'mammoth' : 'wolf');
+  }
+  fightPrey(c, kind, sp) {   // the nearest creature of another species within sight (same island), or null
+    const ci = c.isl | 0; let best = null, bd = FIGHT_SEE;
+    const look = (o, osp, r0) => { const d = Math.hypot(o.x - c.x, o.y - c.y); if (d < bd) { bd = d; best = { o, r: r0 }; } };
+    for (const w of this.wolves) if (w !== c && w.hp > 0 && (w.isl | 0) === ci) { const osp = this.fightSpecies(w, 'w'); if (osp && osp !== sp) look(w, osp, w.big ? 26 : 12); }
+    for (const a of this.aliens) if (a !== c && a.hp > 0 && (a.isl | 0) === ci && !(a.trapT > 0)) { const osp = this.fightSpecies(a, 'a'); if (osp && osp !== sp) look(a, osp, a.rad || 12); }
+    for (const b of this.rabbits) if (b.hp > 0 && b.crit !== 'scorpion' && (b.isl | 0) === ci) look(b, 'critter', 8);
+    return best;
+  }
+  fightStep(c, kind, dt, P) {   // true = this creature spent the tick fighting (the caller skips its normal behaviour)
+    const sp = this.fightSpecies(c, kind); if (!sp) return false;
+    if (kind === 'w' && (c.st === 1 || c.st === 2)) return false;   // chasing a player / running home: normal behaviour
+    const ci = c.isl | 0; for (const p of P) if (!p.down && !p.boat && (this.onIsland(p, ci)) && Math.hypot(p.x - c.x, p.y - c.y) < FIGHT_PLAYER) return false;   // a player is close: deal with the player
+    const f = this.fightPrey(c, kind, sp); if (!f) return false;
+    const t = f.o, d = Math.max(1, Math.hypot(t.x - c.x, t.y - c.y)), ux = (t.x - c.x) / d, uy = (t.y - c.y) / d, is = this.islands[ci] || this.islands[0];
+    c.fa = Math.atan2(uy, ux);
+    const reach = (kind === 'w' ? (c.reach || WOLF.reach) : Math.max(26, c.reach || 0)) + f.r;
+    if (d > reach) {   // close in
+      const spd = kind === 'w' ? (c.run || WOLF.run) : (c.sp || 70), nx = c.x + ux * spd * dt, ny = c.y + uy * spd * dt;
+      if (kind === 'w' && !this.mobBiomeOk(c, ci, is, nx, ny)) return true;   // never leaves its own ground: it just waits at the edge
+      const ex = nx - is.x, ey = ny - is.y, L = Math.hypot(ex, ey), er = RC.edgeRat(is, nx, ny) - 45;
+      if (L > er) { c.x = is.x + ex * er / L; c.y = is.y + ey * er / L; } else { c.x = nx; c.y = ny; }
+      if (kind === 'w') c.st = 0;
+    } else if (c.cd <= 0) {   // bite / hit
+      c.cd = kind === 'w' ? (c.bcd || WOLF.cd) : (c.atkCd || 1); if (kind === 'w') c.bite = 0.25;
+      t.hp -= kind === 'w' ? (c.dmg || WOLF.dmg) : Math.max(6, c.dmg || 0);
+    }
+    return true;
+  }
+  fleeHostile(b, C, is, dt) {   // passive critters run from any hostile that gets close
+    let h = null, hd = 190; const ci = b.isl | 0;
+    for (const w of this.wolves) if (w.hp > 0 && !w.vul && (w.isl | 0) === ci) { const d = Math.hypot(w.x - b.x, w.y - b.y); if (d < hd) { hd = d; h = w; } }
+    for (const a of this.aliens) if (a.hp > 0 && !a.vil && a.k < 3 && (a.isl | 0) === ci) { const d = Math.hypot(a.x - b.x, a.y - b.y); if (d < hd) { hd = d; h = a; } }
+    if (!h) return false;
+    const dx = (b.x - h.x) / hd, dy = (b.y - h.y) / hd, nx = b.x + dx * C.run * 1.1 * dt, ny = b.y + dy * C.run * 1.1 * dt;
+    b.run = 1; b.sit = 0; b.fa = Math.atan2(dy, dx);
+    const lim = RC.edgeRat(is, nx, ny) - RAB.edge; if (Math.hypot(nx - is.x, ny - is.y) < lim && this.critOk(b, nx, ny)) { b.x = nx; b.y = ny; }
+    return true;
+  }
+  // ===== end of INFIGHT =====
   stepWolves(P, dt) {
     if (!this.wolves) this.wolves = [];
     this.refreshActive(P, dt);
@@ -986,6 +1036,7 @@ class Room {
     for (const w of this.wolves) {
       if (w.vul) { this.stepVulture(w, P, dt); continue; }
       w.cd -= dt; w.bite -= dt; let dx = 0, dy = 0, spd = 0; const wi = w.isl | 0, is = this.islands[wi] || this.islands[0];
+      if (INFIGHT && this.fightStep(w, 'w', dt, P)) continue;   // [infight]
       const home = Math.hypot(w.x - w.hx, w.y - w.hy);
       if (w.st === 2) {   // running home; after 3 s of that, anyone who comes close (away from the fire) gets chased again
         w.rt = (w.rt || 0) + dt; let re = null;
@@ -1284,6 +1335,7 @@ class Room {
       if (a.k === 2 && !(a.trapT > 0)) { const tr = this.struct.find(st => st.k === 'trap' && Math.hypot(a.x - st.x, a.y - st.y) < 34); if (tr) { a.trapT = TRAP_SEC; this.struct = this.struct.filter(s => s !== tr); for (const q of P) send(q.ws, { t: 'trapped' }); } }   // the big monster ran over a trap: stuck for 20 s
       if (a.trapT > 0) { a.trapT -= dt; a.cd = Math.max(a.cd, 0.3); continue; }   // stuck: no moving, no attacking
       if (a.stunT > 0) { a.stunT -= dt; a.cd = Math.max(a.cd, 0.3); continue; }   // stunned by an ability
+      if (INFIGHT && this.fightStep(a, 'a', dt, P)) continue;   // [infight]
       if (a.slowT > 0) a.slowT -= dt;
       let tgt = null, bd = 1e9, slow = 0; const ai = a.isl | 0, home = ai === 0, own = this.islands[ai] || this.islands[0];
       let sealed = null, sbd = 1e9;   // players walled in where the enemy cannot path to them
