@@ -1020,7 +1020,7 @@ const mkGateO = P => tex(168, 72, g => {   // the same gate swung open: just the
   post(2); post(152);
 });
 // wall / gate looks per material: wood (''), rock ('r') and metal ('m') - same shapes, different colours
-const WPAL = { '': { d: '#5a3a1c', m: '#7a4a22', l: '#a56b34', m2: '#8a5a2b' }, r: { d: '#40454b', m: '#646c75', l: '#a2abb4', m2: '#7e8790' }, m: { d: '#2f3f48', m: '#566f7d', l: '#c3d2da', m2: '#7893a2' } };
+const WPAL = { c: { d: '#25160a', m: '#46290f', l: '#7c4f22', m2: '#5c3a18' }, '': { d: '#5a3a1c', m: '#7a4a22', l: '#a56b34', m2: '#8a5a2b' }, r: { d: '#40454b', m: '#646c75', l: '#a2abb4', m2: '#7e8790' }, m: { d: '#2f3f48', m: '#566f7d', l: '#c3d2da', m2: '#7893a2' } };
 const T_WALLS = {}, T_GATES = {}, T_GATEOS = {};
 for (const k in WPAL) { T_WALLS[k] = mkWall(WPAL[k]); T_GATES[k] = mkGate(WPAL[k]); T_GATEOS[k] = mkGateO(WPAL[k]); }
 const T_WALL = T_WALLS[''], T_GATE = T_GATES[''], T_GATEO = T_GATEOS[''];

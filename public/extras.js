@@ -99,33 +99,93 @@ function xVillages(m) {
 }
 // ---------- cabins: log walls and a plank floor on the ground; the roof sits on top and fades out while you are inside ----------
 const CABINS = [];
+const CAB_FIRES = [];   // fireplace glows, so they can flicker
 function xCabins(m) {
-  for (const c of CABINS) { try { c.roof.destroy({ children: true }); } catch (e) { } } CABINS.length = 0;
-  for (const [id, isl, x, y, w, h, side, door] of m.cab || []) {
-    const hw = w / 2, hh = h / 2, T = 22, DW = 84, rng = mulberry(id * 7919 + 13);
+  for (const c of CABINS) { try { c.roof.destroy({ children: true }); } catch (e) { } } CABINS.length = 0; CAB_FIRES.length = 0;
+  const DW = 104, GAPW = 84;   // a door is 104 wide (a gate); inner doorways are open gaps
+  for (const [id, isl, x, y, w, h, doors, divs, decor] of m.cab || []) {
+    const hw = w / 2, hh = h / 2, T = 22, rng = mulberry(id * 7919 + 13), sides = new Set(doors.map(d => d[0]));
+    // ---- floor ----
     const fl = new PIXI.Graphics(); fl.beginFill(0x8a6a3f); fl.drawRect(x - hw, y - hh, w, h); fl.endFill();
     for (let yy = y - hh + 14; yy < y + hh; yy += 14) { fl.lineStyle(1.2, 0x5a4024, .55); fl.moveTo(x - hw, yy); fl.lineTo(x + hw, yy); }
-    for (let yy = y - hh; yy < y + hh; yy += 14) { fl.lineStyle(1, 0x5a4024, .4); fl.moveTo(x - hw + 20 + rng() * (w - 40), yy); fl.lineTo(x - hw + 20 + rng() * (w - 40), Math.min(y + hh, yy + 14)); }
+    for (let yy = y - hh; yy < y + hh; yy += 14) { fl.lineStyle(1, 0x5a4024, .4); const xx = x - hw + 20 + rng() * (w - 40); fl.moveTo(xx, yy); fl.lineTo(xx, Math.min(y + hh, yy + 14)); }
     ground.addChild(fl);
-    const wl = new PIXI.Graphics(), bar = (x0, y0, x1, y1) => {   // one log wall piece: a dark base with lighter logs along it
-      wl.beginFill(0x4a2f16); wl.drawRect(Math.min(x0, x1) - (y0 === y1 ? 0 : T / 2), Math.min(y0, y1) - (x0 === x1 ? 0 : T / 2), Math.abs(x1 - x0) + (y0 === y1 ? 0 : T), Math.abs(y1 - y0) + (x0 === x1 ? 0 : T)); wl.endFill();
-      if (y0 === y1) { for (let xx = Math.min(x0, x1); xx < Math.max(x0, x1) - 1; xx += 26) { const lw = Math.min(24, Math.max(x0, x1) - xx); wl.beginFill(0x9a6a36); wl.drawRoundedRect(xx + 1, y0 - T / 2 + 2, lw - 2, T - 4, 5); wl.endFill(); wl.beginFill(0xb98349, .7); wl.drawRoundedRect(xx + 3, y0 - T / 2 + 4, lw - 6, 5, 2); wl.endFill(); } }
-      else { for (let yy = Math.min(y0, y1); yy < Math.max(y0, y1) - 1; yy += 26) { const lh = Math.min(24, Math.max(y0, y1) - yy); wl.beginFill(0x9a6a36); wl.drawRoundedRect(x0 - T / 2 + 2, yy + 1, T - 4, lh - 2, 5); wl.endFill(); wl.beginFill(0xb98349, .7); wl.drawRoundedRect(x0 - T / 2 + 4, yy + 3, 5, lh - 6, 2); wl.endFill(); } }
+    // ---- walls: log bars; the outer ones leave a gap at each door, the inner ones a doorway ----
+    const wl = new PIXI.Graphics(), bar = (x0, y0, x1, y1, TT) => {
+      const hz = y0 === y1; wl.beginFill(0x4a2f16); wl.drawRect(Math.min(x0, x1) - (hz ? 0 : TT / 2), Math.min(y0, y1) - (hz ? TT / 2 : 0), Math.abs(x1 - x0) + (hz ? 0 : TT), Math.abs(y1 - y0) + (hz ? TT : 0)); wl.endFill();
+      if (hz) { for (let xx = Math.min(x0, x1); xx < Math.max(x0, x1) - 1; xx += 26) { const lw = Math.min(24, Math.max(x0, x1) - xx); wl.beginFill(0x9a6a36); wl.drawRoundedRect(xx + 1, y0 - TT / 2 + 2, lw - 2, TT - 4, 5); wl.endFill(); wl.beginFill(0xb98349, .7); wl.drawRoundedRect(xx + 3, y0 - TT / 2 + 4, lw - 6, Math.max(2, TT / 4), 2); wl.endFill(); } }
+      else { for (let yy = Math.min(y0, y1); yy < Math.max(y0, y1) - 1; yy += 26) { const lh = Math.min(24, Math.max(y0, y1) - yy); wl.beginFill(0x9a6a36); wl.drawRoundedRect(x0 - TT / 2 + 2, yy + 1, TT - 4, lh - 2, 5); wl.endFill(); wl.beginFill(0xb98349, .7); wl.drawRoundedRect(x0 - TT / 2 + 4, yy + 3, Math.max(2, TT / 4), lh - 6, 2); wl.endFill(); } }
     };
-    const side4 = (n, len, ax, ay, horiz) => { const segs = n === side ? [[-len / 2, door - DW / 2], [door + DW / 2, len / 2]] : [[-len / 2, len / 2]]; for (const [a, b] of segs) if (b - a > 4) horiz ? bar(ax + a, ay, ax + b, ay) : bar(ax, ay + a, ax, ay + b); };
+    const span = (lo, hi, gaps, fn) => { let from = lo; for (const [g, gw] of gaps.slice().sort((a, b) => a[0] - b[0])) { if (g - gw / 2 - from > 4) fn(from, g - gw / 2); from = g + gw / 2; } if (hi - from > 4) fn(from, hi); };
+    const side4 = (n, len, ax, ay, horiz) => span(-len / 2, len / 2, doors.filter(d => d[0] === n).map(d => [d[1], DW]), (a, b) => horiz ? bar(ax + a, ay, ax + b, ay, T) : bar(ax, ay + a, ax, ay + b, T));
     side4(0, w, x, y - hh, true); side4(2, w, x, y + hh, true); side4(3, h, x - hw, y, false); side4(1, h, x + hw, y, false);
+    for (const [o, pos, a0, a1, gap] of divs) span(a0, a1, [[gap, GAPW]], (a, b) => o === 1 ? bar(x + pos, y + a, x + pos, y + b, T - 8) : bar(x + a, y + pos, x + b, y + pos, T - 8));
     ground.addChild(wl);
-    const mat = new PIXI.Graphics(); const dxo = side === 1 ? hw : side === 3 ? -hw : door, dyo = side === 2 ? hh : side === 0 ? -hh : door; mat.beginFill(0x5b3a1e, .85); mat.drawRoundedRect(x + dxo - (side % 2 ? 16 : 30), y + dyo - (side % 2 ? 30 : 16), side % 2 ? 32 : 60, side % 2 ? 60 : 32, 6); mat.endFill(); ground.addChild(mat);   // doormat
-    const roof = new PIXI.Container(), rg = new PIXI.Graphics(), OV = 18;   // the roof overhangs the walls a little
-    rg.beginFill(0x000000, .22); rg.drawRect(x - hw - OV + 8, y - hh - OV + 12, w + OV * 2, h + OV * 2); rg.endFill();
-    rg.beginFill(0x7a3b22); rg.drawRect(x - hw - OV, y - hh - OV, w + OV * 2, h + OV * 2); rg.endFill();
-    const long = w >= h;
-    for (let k = 0, n = Math.ceil((long ? h : w) / 22) + 2; k < n; k++) { const p = (long ? y - hh - OV : x - hw - OV) + k * 22, col = k % 2 ? 0x8a4527 : 0x6e331c; rg.beginFill(col); if (long) rg.drawRect(x - hw - OV, p, w + OV * 2, Math.min(22, y + hh + OV - p)); else rg.drawRect(p, y - hh - OV, Math.min(22, x + hw + OV - p), h + OV * 2); rg.endFill(); }
-    rg.lineStyle(2, 0x2e140a, .7); for (let k = 0, n = Math.ceil((long ? h : w) / 22) + 2; k < n; k++) { const p = (long ? y - hh - OV : x - hw - OV) + k * 22; if (long) { rg.moveTo(x - hw - OV, p); rg.lineTo(x + hw + OV, p); } else { rg.moveTo(p, y - hh - OV); rg.lineTo(p, y + hh + OV); } }
-    rg.lineStyle(5, 0xc98a52, .9); if (long) { rg.moveTo(x - hw - OV, y); rg.lineTo(x + hw + OV, y); } else { rg.moveTo(x, y - hh - OV); rg.lineTo(x, y + hh + OV); }   // the ridge
-    rg.lineStyle(3, 0x2e140a, .85); rg.drawRect(x - hw - OV, y - hh - OV, w + OV * 2, h + OV * 2);
+    // ---- windows in the outer walls (clear of doors and of where inner walls meet them) ----
+    const wd = new PIXI.Graphics(), lightG = new PIXI.Graphics();
+    for (const [n, len] of [[0, w], [2, w], [3, h], [1, h]]) {
+      const horiz = n % 2 === 0, junc = divs.filter(d => (horiz ? d[0] === 1 : d[0] === 0)).map(d => d[1]), dts = doors.filter(d => d[0] === n).map(d => d[1]);
+      for (let t = -len / 2 + 120; t < len / 2 - 90; t += 170 + rng() * 60) {
+        if (dts.some(q => Math.abs(q - t) < DW / 2 + 52) || junc.some(q => Math.abs(q - t) < 56)) continue;
+        const cx = horiz ? x + t : (n === 3 ? x - hw : x + hw), cy = horiz ? (n === 0 ? y - hh : y + hh) : y + t, ix = n === 3 ? 1 : n === 1 ? -1 : 0, iy = n === 0 ? 1 : n === 2 ? -1 : 0;   // (ix, iy): into the cabin
+        const lw = horiz ? 46 : 18, lh = horiz ? 18 : 46;
+        lightG.beginFill(0xffe9a0, .10); lightG.drawRect(horiz ? cx - 23 : (ix > 0 ? cx : cx - 40), horiz ? (iy > 0 ? cy : cy - 40) : cy - 23, horiz ? 46 : 40, horiz ? 40 : 46); lightG.endFill();   // daylight spilling onto the floor
+        wd.beginFill(0x2b1a0b); wd.drawRect(cx - lw / 2 - 3, cy - lh / 2 - 3, lw + 6, lh + 6); wd.endFill();
+        wd.beginFill(0xa9d8ee, .9); wd.drawRect(cx - lw / 2, cy - lh / 2, lw, lh); wd.endFill(); wd.beginFill(0xffffff, .35); wd.drawRect(cx - lw / 2 + 2, cy - lh / 2 + 2, horiz ? lw * .45 : 5, horiz ? 4 : lh * .45); wd.endFill();
+        wd.lineStyle(1.6, 0x2b1a0b, .9); if (horiz) { wd.moveTo(cx, cy - lh / 2); wd.lineTo(cx, cy + lh / 2); wd.moveTo(cx - lw / 2, cy); wd.lineTo(cx + lw / 2, cy); } else { wd.moveTo(cx - lw / 2, cy); wd.lineTo(cx + lw / 2, cy); wd.moveTo(cx, cy - lh / 2); wd.lineTo(cx, cy + lh / 2); } wd.lineStyle(0);
+        wd.beginFill(0x6e4420); if (horiz) { wd.drawRect(cx - lw / 2 - 11, cy - lh / 2 - 3, 8, lh + 6); wd.drawRect(cx + lw / 2 + 3, cy - lh / 2 - 3, 8, lh + 6); } else { wd.drawRect(cx - lw / 2 - 3, cy - lh / 2 - 11, lw + 6, 8); wd.drawRect(cx - lw / 2 - 3, cy + lh / 2 + 3, lw + 6, 8); } wd.endFill();   // shutters
+      }
+    }
+    ground.addChild(lightG); ground.addChild(wd);
+    // ---- decoration: rugs first, then furniture ----
+    const dc = new PIXI.Graphics(), pal = [0x8c2f39, 0x2f5d8c, 0x3d7a4a, 0x8a6a2f, 0x5b3a78];
+    const shadow = (cx, cy, fw, fh) => { dc.beginFill(0x000000, .22); dc.drawRoundedRect(cx - fw / 2 + 4, cy - fh / 2 + 5, fw, fh, 4); dc.endFill(); };
+    const order = decor.slice().sort((a, b) => (a[0] === 'rug' ? 0 : 1) - (b[0] === 'rug' ? 0 : 1));
+    for (const [kind, rx, ry, fw, fh, seed, face] of order) {
+      const cx = x + rx, cy = y + ry, r2 = mulberry(seed + 5);
+      if (kind === 'rug') { const col = pal[seed % pal.length] || pal[0]; dc.beginFill(col, .92); dc.drawRoundedRect(cx - fw / 2, cy - fh / 2, fw, fh, 10); dc.endFill(); dc.lineStyle(3, 0xe8d9b0, .8); dc.drawRoundedRect(cx - fw / 2 + 7, cy - fh / 2 + 7, fw - 14, fh - 14, 7); dc.lineStyle(1.5, 0xe8d9b0, .55); dc.drawRoundedRect(cx - fw / 2 + 16, cy - fh / 2 + 16, fw - 32, fh - 32, 5); dc.lineStyle(0); }
+      else if (kind === 'table') { shadow(cx, cy, fw, fh); dc.beginFill(0x6e4420); dc.drawRoundedRect(cx - fw / 2, cy - fh / 2, fw, fh, 5); dc.endFill(); dc.beginFill(0x9b6a38); dc.drawRoundedRect(cx - fw / 2 + 3, cy - fh / 2 + 3, fw - 6, fh - 6, 4); dc.endFill(); dc.lineStyle(1.2, 0x5a3a1c, .6); for (let k = 1; k < 4; k++) { dc.moveTo(cx - fw / 2 + 5, cy - fh / 2 + k * fh / 4); dc.lineTo(cx + fw / 2 - 5, cy - fh / 2 + k * fh / 4); } dc.lineStyle(0);
+        dc.beginFill(0xf1ebe0); dc.drawCircle(cx - fw * .22, cy, 7); dc.endFill(); dc.beginFill(0xd9cfbf); dc.drawCircle(cx - fw * .22, cy, 4); dc.endFill(); dc.beginFill(0xf6efd8); dc.drawRect(cx + fw * .18, cy - 6, 5, 9); dc.endFill(); dc.beginFill(0xffc24a); dc.drawCircle(cx + fw * .18 + 2.5, cy - 9, 2.6); dc.endFill(); }   // a plate and a candle
+      else if (kind === 'chair') { const f = face, bx = f === 1 ? -1 : f === 3 ? 1 : 0, by = f === 2 ? -1 : f === 0 ? 1 : 0; dc.beginFill(0x000000, .2); dc.drawRoundedRect(cx - 12, cy - 11, 26, 26, 4); dc.endFill(); dc.beginFill(0x7a4a22); dc.drawRoundedRect(cx - 13, cy - 13, 26, 26, 4); dc.endFill(); dc.beginFill(0xa56b34); dc.drawRoundedRect(cx - 9, cy - 9, 18, 18, 3); dc.endFill(); dc.beginFill(0x4a2f16); if (bx) dc.drawRoundedRect(cx + bx * 12 - 3, cy - 13, 6, 26, 2); else dc.drawRoundedRect(cx - 13, cy + by * 12 - 3, 26, 6, 2); dc.endFill(); }
+      else if (kind === 'bed') { const down = face === 2; shadow(cx, cy, fw, fh); dc.beginFill(0x4a2f16); dc.drawRoundedRect(cx - fw / 2, cy - fh / 2, fw, fh, 6); dc.endFill(); dc.beginFill(0xe9e4d8); dc.drawRoundedRect(cx - fw / 2 + 5, cy - fh / 2 + 5, fw - 10, fh - 10, 5); dc.endFill();
+        const hy = down ? cy + fh / 2 - 24 : cy - fh / 2 + 8; dc.beginFill(0xfff8e8); dc.drawRoundedRect(cx - fw / 2 + 9, hy, fw - 18, 16, 5); dc.endFill(); dc.lineStyle(1, 0xcfc6b0, .9); dc.drawRoundedRect(cx - fw / 2 + 9, hy, fw - 18, 16, 5); dc.lineStyle(0);
+        const col = pal[(seed >> 3) % pal.length], by0 = down ? cy - fh / 2 + 6 : cy - fh / 2 + 28, bh = fh - 34; dc.beginFill(col); dc.drawRoundedRect(cx - fw / 2 + 6, by0, fw - 12, bh, 4); dc.endFill(); dc.lineStyle(1.5, 0xffffff, .35); for (let k = 1; k < 4; k++) { dc.moveTo(cx - fw / 2 + 8, by0 + k * bh / 4); dc.lineTo(cx + fw / 2 - 8, by0 + k * bh / 4); } dc.lineStyle(0); }
+      else if (kind === 'counter') { shadow(cx, cy, fw, fh); dc.beginFill(0x5a3a1c); dc.drawRoundedRect(cx - fw / 2, cy - fh / 2, fw, fh, 3); dc.endFill(); dc.beginFill(0xc2a67c); dc.drawRoundedRect(cx - fw / 2 + 2, cy - fh / 2 + 2, fw - 4, fh - 8, 3); dc.endFill(); dc.beginFill(0x9fb7c4); dc.drawRoundedRect(cx - fw / 2 + 14, cy - 10, 34, 18, 4); dc.endFill(); dc.beginFill(0x4a4f57); dc.drawCircle(cx + fw / 2 - 30, cy - 2, 9); dc.endFill(); dc.beginFill(0x2a2d33); dc.drawCircle(cx + fw / 2 - 30, cy - 2, 5); dc.endFill(); dc.beginFill(0xd8d3c4); dc.drawRoundedRect(cx + 4, cy - 8, 22, 12, 2); dc.endFill(); }   // a sink, a stove ring, a cutting board
+      else if (kind === 'fire') { shadow(cx, cy, fw, fh); dc.beginFill(0x57534f); dc.drawRoundedRect(cx - fw / 2, cy - fh / 2, fw, fh, 3); dc.endFill(); dc.lineStyle(1.2, 0x2e2b29, .9); for (let k = 0; k < 6; k++) { dc.moveTo(cx - fw / 2 + k * fw / 6, cy - fh / 2); dc.lineTo(cx - fw / 2 + k * fw / 6, cy + fh / 2); } dc.lineStyle(0);
+        const hearth = new PIXI.Graphics(), ix = face === 3 ? -1 : face === 1 ? 1 : 0, iy = face === 0 ? 1 : face === 2 ? -1 : 0; hearth.beginFill(0x120a08); hearth.drawRoundedRect(cx - 24, cy - 8, 48, 16, 3); hearth.endFill(); hearth.beginFill(0xff7a1a, .9); hearth.drawEllipse(cx, cy, 16, 5); hearth.endFill(); hearth.beginFill(0xffd27a, .9); hearth.drawEllipse(cx, cy, 8, 3); hearth.endFill(); ground.addChild(hearth);
+        const glow = new PIXI.Graphics(); glow.beginFill(0xff9a3c, .14); glow.drawEllipse(cx, cy + (face === 0 ? 40 : face === 2 ? -40 : 0), 110, 70); glow.endFill(); glow.beginFill(0xffb060, .10); glow.drawEllipse(cx, cy + (face === 0 ? 40 : face === 2 ? -40 : 0), 60, 38); glow.endFill(); ground.addChild(glow); CAB_FIRES.push({ g: glow, ph: rng() * 6 }); }
+      else if (kind === 'plant') { dc.beginFill(0x000000, .22); dc.drawCircle(cx + 3, cy + 4, 12); dc.endFill(); dc.beginFill(0x7a4a22); dc.drawCircle(cx, cy, 11); dc.endFill(); dc.beginFill(0x3a2412); dc.drawCircle(cx, cy, 8); dc.endFill(); for (let k = 0; k < 7; k++) { const a = k / 7 * TAU + r2(), l = 14 + r2() * 6; dc.beginFill(k % 2 ? 0x3f8a3a : 0x56a846); dc.drawEllipse(cx + Math.cos(a) * l * .55, cy + Math.sin(a) * l * .55, l * .55, 5); dc.endFill(); } }
+    }
+    ground.addChild(dc);
+    // ---- the doors: frame, warm light, deck-planked porch with railing and steps, lantern (the door itself is a gate you open with ACT / E) ----
+    const por = new PIXI.Graphics(), dr = new PIXI.Graphics(), PD = 72, PW = DW / 2 + 38;
+    for (const [side, pos] of doors) {
+      const nx = side === 1 ? 1 : side === 3 ? -1 : 0, ny = side === 2 ? 1 : side === 0 ? -1 : 0, tx0 = -ny, ty0 = nx, dcx = x + (side === 1 ? hw : side === 3 ? -hw : pos), dcy = y + (side === 2 ? hh : side === 0 ? -hh : pos);
+      const P = (u, v) => [dcx + nx * u + tx0 * v, dcy + ny * u + ty0 * v], quad = (g, u0, v0, u1, v1) => { const a = P(u0, v0), b = P(u1, v0), c = P(u1, v1), d = P(u0, v1); g.drawPolygon([a[0], a[1], b[0], b[1], c[0], c[1], d[0], d[1]]); };
+      por.beginFill(0x000000, .22); quad(por, 8, -PW + 8, PD + 8, PW + 8); por.endFill(); por.beginFill(0x9a7440); quad(por, 6, -PW, PD, PW); por.endFill();
+      for (let v = -PW + 11; v < PW; v += 11) { por.lineStyle(1.3, 0x5a4024, .7); const a = P(6, v), b = P(PD, v); por.moveTo(a[0], a[1]); por.lineTo(b[0], b[1]); }
+      por.lineStyle(2.5, 0x3a2812, .9); { const a = P(PD, -PW), b = P(PD, PW); por.moveTo(a[0], a[1]); por.lineTo(b[0], b[1]); } for (const sg of [-1, 1]) { const a = P(6, sg * PW), b = P(PD, sg * PW); por.moveTo(a[0], a[1]); por.lineTo(b[0], b[1]); }
+      por.lineStyle(0); por.beginFill(0x7a4a22); quad(por, PD - 2, -30, PD + 16, 30); por.endFill(); por.beginFill(0x8f5c2e); quad(por, PD + 12, -26, PD + 28, 26); por.endFill();
+      por.lineStyle(1.5, 0x2e1c0c, .8); { const a = P(PD - 2, -30), b = P(PD - 2, 30), c = P(PD + 12, -26), d = P(PD + 12, 26); por.moveTo(a[0], a[1]); por.lineTo(b[0], b[1]); por.moveTo(c[0], c[1]); por.lineTo(d[0], d[1]); } por.lineStyle(0);
+      for (const [u, v] of [[PD, -PW], [PD, PW], [8, -PW], [8, PW]]) { const q = P(u, v); por.beginFill(0x000000, .3); por.drawCircle(q[0] + 2, q[1] + 3, 7); por.endFill(); por.beginFill(0x4a2f16); por.drawCircle(q[0], q[1], 6); por.endFill(); por.beginFill(0x9a6a36); por.drawCircle(q[0] - 1, q[1] - 1, 3.2); por.endFill(); }
+      dr.beginFill(0xe2b469, .9); quad(dr, -12, -DW / 2, 12, DW / 2); dr.endFill(); dr.beginFill(0x2b1a0b); quad(dr, -14, -DW / 2 - 9, 14, -DW / 2); quad(dr, -14, DW / 2, 14, DW / 2 + 9); dr.endFill();
+      { const lp = P(14, -DW / 2 - 16); dr.beginFill(0xffd86b, .28); dr.drawCircle(lp[0], lp[1], 26); dr.endFill(); dr.beginFill(0xffe08a, .45); dr.drawCircle(lp[0], lp[1], 14); dr.endFill(); dr.beginFill(0x3a2412); dr.drawRoundedRect(lp[0] - 4, lp[1] - 6, 8, 12, 2); dr.endFill(); dr.beginFill(0xffd04a); dr.drawCircle(lp[0], lp[1], 3); dr.endFill(); }
+    }
+    ground.addChild(por); ground.addChild(dr);
+    // ---- the roof: stops short on the door sides so doors and porches always show; a stone chimney on the ridge ----
+    const roof = new PIXI.Container(), rg = new PIXI.Graphics(), OV = 18, TR = OV + 20;
+    const rx0 = x - hw - OV + (sides.has(3) ? TR : 0), rx1 = x + hw + OV - (sides.has(1) ? TR : 0), ry0 = y - hh - OV + (sides.has(0) ? TR : 0), ry1 = y + hh + OV - (sides.has(2) ? TR : 0), rw = rx1 - rx0, rh = ry1 - ry0;
+    rg.beginFill(0x000000, .22); rg.drawRect(rx0 + 8, ry0 + 12, rw, rh); rg.endFill(); rg.beginFill(0x7a3b22); rg.drawRect(rx0, ry0, rw, rh); rg.endFill();
+    const long = rw >= rh, rows = Math.ceil((long ? rh : rw) / 22) + 1;
+    for (let k = 0; k < rows; k++) { const p = (long ? ry0 : rx0) + k * 22; rg.beginFill(k % 2 ? 0x8a4527 : 0x6e331c); if (long) rg.drawRect(rx0, p, rw, Math.min(22, ry1 - p)); else rg.drawRect(p, ry0, Math.min(22, rx1 - p), rh); rg.endFill(); }
+    rg.lineStyle(2, 0x2e140a, .7); for (let k = 0; k < rows; k++) { const p = (long ? ry0 : rx0) + k * 22; if (long) { rg.moveTo(rx0, p); rg.lineTo(rx1, p); } else { rg.moveTo(p, ry0); rg.lineTo(p, ry1); } }
+    rg.lineStyle(5, 0xc98a52, .9); if (long) { rg.moveTo(rx0, (ry0 + ry1) / 2); rg.lineTo(rx1, (ry0 + ry1) / 2); } else { rg.moveTo((rx0 + rx1) / 2, ry0); rg.lineTo((rx0 + rx1) / 2, ry1); }
+    rg.lineStyle(3, 0x2e140a, .85); rg.drawRect(rx0, ry0, rw, rh);
+    const chx = long ? rx0 + rw * (.25 + (id % 3) * .2) : (rx0 + rx1) / 2, chy = long ? (ry0 + ry1) / 2 : ry0 + rh * (.25 + (id % 3) * .2);
+    rg.lineStyle(0); rg.beginFill(0x000000, .3); rg.drawRect(chx - 12, chy - 10, 30, 30); rg.endFill(); rg.beginFill(0x6f6a68); rg.drawRect(chx - 15, chy - 15, 30, 30); rg.endFill(); rg.beginFill(0x8c8684); rg.drawRect(chx - 15, chy - 15, 30, 8); rg.endFill(); rg.beginFill(0x2a2424); rg.drawRect(chx - 9, chy - 9, 18, 18); rg.endFill();
+    rg.lineStyle(1.5, 0x3a3434, .8); rg.moveTo(chx - 15, chy - 1); rg.lineTo(chx + 15, chy - 1); rg.moveTo(chx, chy - 15); rg.lineTo(chx, chy - 1);
     roof.addChild(rg); roof.zIndex = 1e6; roof.alpha = 1;
-    const cab = { id, x, y, w, h, roof, a: 1 }; CABINS.push(cab); cullList.push({ c: roof, x, y, m: Math.max(w, h) / 2 + 40 });
+    const cab = { id, x, y, w, h, roof, a: 1, chx, chy }; CABINS.push(cab); cullList.push({ c: roof, x, y, m: Math.max(w, h) / 2 + 40 });
   }
 }
 function xInit(m) {
@@ -229,7 +289,8 @@ function xSnap(m) {
 function xStep(dt, me) {
   const now = performance.now(), cr = Math.max(W, H) / Z / 2 + 160;
   if (VENDOR) { const k = Math.min(1, dt * 9); VENDOR.x += (VENDOR.tx - VENDOR.x) * k; VENDOR.y += (VENDOR.ty - VENDOR.y) * k; VENDOR.c.position.set(VENDOR.x, VENDOR.y); VENDOR.c.zIndex = VENDOR.y + 2; VENDOR.ex.visible = VENDOR.st === 2 || VENDOR.st === 6; VENDOR.ex.y = -52 + Math.sin(T * 5) * 3; VENDOR.body.y = Math.sin(T * 9) * (VENDOR.st === 1 || VENDOR.st === 3 || VENDOR.st === 5 ? 1.5 : .3); }
-  for (const c of CABINS) { const inside = me && Math.abs(me.x - c.x) < c.w / 2 + 4 && Math.abs(me.y - c.y) < c.h / 2 + 4; c.a += ((inside ? .08 : 1) - c.a) * Math.min(1, dt * 6); c.roof.alpha = c.a; }   // the roof goes see-through while you are inside
+  for (const f of CAB_FIRES) f.g.alpha = .75 + Math.sin(T * 7 + f.ph) * .12 + Math.sin(T * 13 + f.ph * 2) * .08;
+  for (const c of CABINS) { const inside = me && Math.abs(me.x - c.x) < c.w / 2 + 4 && Math.abs(me.y - c.y) < c.h / 2 + 4; c.a += ((inside ? .08 : 1) - c.a) * Math.min(1, dt * 6); c.roof.alpha = c.a; if (c.a > .6 && Math.abs(c.chx - camX) < cr && Math.abs(c.chy - camY) < cr && Math.random() < dt * 2.4) emit(pfx, T_GLOW, c.chx + rnd(-4, 4), c.chy - 8, rnd(2, 12), rnd(-36, -22), 2.6, .08, .5, 0xd2d2d2, .3, false, 0); }   // the roof goes see-through while you are inside; the chimney smokes while it is on
   for (const o of cullList) { const cm = cr + (o.m || 0), nr = Math.abs(o.x - camX) < cm && Math.abs(o.y - camY) < cm; if (nr) { if (!o.c.parent) ents.addChild(o.c); } else if (o.c.parent && (Math.abs(o.x - camX) > cm * 1.3 || Math.abs(o.y - camY) > cm * 1.3)) ents.removeChild(o.c); }   // decorations, chests, traders: in the scene only near the camera
   for (const id in bulletE) { const e = bulletE[id], el = Math.min(.1, (now - e.t0) / 1000), a = e.d[3] / 100, v = BSPEED[e.d[4]] || 800; e.s.position.set(e.d[1] + Math.cos(a) * v * el, e.d[2] + Math.sin(a) * v * el); e.s.rotation = a; e.s.zIndex = e.s.y + 40; }
   for (const id in zoneE) { const e = zoneE[id]; e.s.position.set(e.d[1], e.d[2]); e.s.scale.set(e.d[3] * 2 / 256 * (1 + Math.sin(T * 3) * .02)); e.s.alpha = .35 + Math.sin(T * 5) * .08; }

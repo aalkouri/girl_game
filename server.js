@@ -273,41 +273,95 @@ function genLoot(islands, code) {
   return out;
 }
 // ---------- cabins in the forest: random sizes, solid walls with one door, a treasure chest and cabinets inside ----------
-const CAB_WALL = 11, CAB_DOOR = 84, CAB_KINDS = ['cabinet', 'barrel', 'crate', 'shelf'];
-function cabinSegments(c) {   // the wall bars of a cabin (the side with the door is split in two)
+const CAB_WALL = 11, CAB_DOOR_W = 104, CAB_GAP = 84, CAB_KINDS = ['cabinet', 'barrel', 'crate', 'shelf'];   // door = a gate (104 wide), inner doorways are open gaps
+// geometry of a cabin (all relative to its centre): exterior walls with a gap for each door, inner dividers with a doorway each, and solid furniture
+function cabinSegments(c) {
   const out = [], hw = c.w / 2, hh = c.h / 2;
-  const side = (n, len, cx, cy, horiz) => {
-    const bars = n === c.side ? [[-len / 2, c.door - CAB_DOOR / 2], [c.door + CAB_DOOR / 2, len / 2]] : [[-len / 2, len / 2]];
-    for (const [a, b] of bars) { if (b - a < 6) continue; const m = (a + b) / 2; out.push({ x: Math.round(horiz ? cx + m : cx), y: Math.round(horiz ? cy : cy + m), len: (b - a) / 2, rot: horiz ? 0 : 2 }); }
+  const bars = (lo, hi, gaps, fn) => {   // split [lo, hi] around gaps (each [centre, width]) and emit the pieces
+    let from = lo; for (const [g, gw] of gaps.slice().sort((a, b) => a[0] - b[0])) { if (g - gw / 2 - from > 6) fn(from, g - gw / 2); from = g + gw / 2; } if (hi - from > 6) fn(from, hi);
   };
+  const side = (n, len, cx, cy, horiz) => { bars(-len / 2, len / 2, c.doors.filter(d => d.side === n).map(d => [d.pos, CAB_DOOR_W]), (a, b) => { const m = (a + b) / 2; out.push({ x: Math.round(horiz ? cx + m : cx), y: Math.round(horiz ? cy : cy + m), len: (b - a) / 2, rot: horiz ? 0 : 2, r: CAB_WALL }); }); };
   side(0, c.w, c.x, c.y - hh, true); side(2, c.w, c.x, c.y + hh, true); side(3, c.h, c.x - hw, c.y, false); side(1, c.h, c.x + hw, c.y, false);
+  for (const [o, pos, a0, a1, gap] of c.divs) bars(a0, a1, [[gap, CAB_GAP]], (a, b) => { const m = (a + b) / 2; out.push({ x: Math.round(o === 1 ? c.x + pos : c.x + m), y: Math.round(o === 1 ? c.y + m : c.y + pos), len: (b - a) / 2, rot: o === 1 ? 2 : 0, r: CAB_WALL - 2 }); });
+  for (const [kind, rx, ry, fw, fh] of c.decor) if (kind === 'table' || kind === 'bed' || kind === 'counter' || kind === 'fire') {   // big furniture is solid: a capsule along its long side
+    const along = fw >= fh, r = Math.min(fw, fh) / 2 - 1, len = Math.max(0, Math.abs(fw - fh) / 2); out.push({ x: Math.round(c.x + rx), y: Math.round(c.y + ry), len, rot: along ? 0 : 2, r });
+  }
   return out;
 }
 function genCabins(islands, code, loot) {
-  const rnd = seeded(code + '@cabins'), cabins = [], out = []; let lid = loot.reduce((m, l) => Math.max(m, l.id), 0);
+  const rnd = seeded(code + '@cabins2'), cabins = [], out = []; let lid = loot.reduce((m, l) => Math.max(m, l.id), 0);
   const rectDist = (c, x, y) => Math.hypot(Math.max(Math.abs(x - c.x) - c.w / 2, 0), Math.max(Math.abs(y - c.y) - c.h / 2, 0));
-  const pts = c => { const p = []; for (const fx of [-.5, 0, .5]) for (const fy of [-.5, 0, .5]) p.push([c.x + fx * c.w, c.y + fy * c.h]); p.push([c.x - c.w / 2 - 70, c.y], [c.x + c.w / 2 + 70, c.y], [c.x, c.y - c.h / 2 - 70], [c.x, c.y + c.h / 2 + 70]); return p; };   // (the cabin and a bit of ground around it)
+  const pts = c => { const p = []; for (const fx of [-.5, 0, .5]) for (const fy of [-.5, 0, .5]) p.push([c.x + fx * c.w, c.y + fy * c.h]); p.push([c.x - c.w / 2 - 115, c.y], [c.x + c.w / 2 + 115, c.y], [c.x, c.y - c.h / 2 - 115], [c.x, c.y + c.h / 2 + 115]); return p; };   // (the cabin and the ground around it, porches included)
   const okSpot = (i, c) => {
     const is = islands[i];
     for (const [x, y] of pts(c)) { if (i === 0 ? (RC.inSnow(x, y) || Math.hypot(x, y) > R - 300 || Math.hypot(x, y) < CAMP_CLEAR + 260) : !(RC.inIsland(is, x, y, 160) && RC.biomeAt(is.x, is.y, is.r, is.b, x, y) === 'f')) return false; }
-    if (cabins.some(o => o.isl === i && Math.abs(o.x - c.x) < (o.w + c.w) / 2 + 160 && Math.abs(o.y - c.y) < (o.h + c.h) / 2 + 160)) return false;
+    if (cabins.some(o => o.isl === i && Math.abs(o.x - c.x) < (o.w + c.w) / 2 + 200 && Math.abs(o.y - c.y) < (o.h + c.h) / 2 + 200)) return false;
     if (loot.some(l => l.isl === i && [[l.x, l.y], [l.cx, l.cy], [l.tx, l.ty]].some(([x, y]) => rectDist(c, x, y) < 220))) return false;
     return true;
   };
   for (let i = 0; i < islands.length; i++) {
-    const is = islands[i], n = i === 0 ? 5 : is.r > 2600 ? 1 : is.r > 1200 ? (rnd() < 0.5 ? 1 : 0) : 0, k = i === 0 ? 1 : Math.max(.55, Math.min(1, is.r / 2200));
-    for (let m = 0; m < n; m++) for (let t = 0; t < 80; t++) {
+    const is = islands[i], n = i === 0 ? 5 : is.r > 2600 ? 1 : is.r > 1200 ? (rnd() < 0.5 ? 1 : 0) : 0, k = i === 0 ? 1 : Math.max(.6, Math.min(1, is.r / 2200));
+    for (let m = 0; m < n; m++) for (let t = 0; t < 120; t++) {
       const a = rnd() * 6.283, d = i === 0 ? CAMP_CLEAR + 260 + rnd() * (R - 560 - CAMP_CLEAR - 260) : Math.sqrt(rnd()) * (RC.edgeR(is, a) - 300);
-      const w = Math.round((190 + rnd() * 280) * k), h = Math.round((160 + rnd() * 210) * k), side = Math.floor(rnd() * 4), len = side % 2 === 0 ? w : h;
-      const c = { id: cabins.length + 1, isl: i, x: Math.round((i === 0 ? 0 : is.x) + Math.cos(a) * d), y: Math.round((i === 0 ? 0 : is.y) + Math.sin(a) * d), w, h, side, door: Math.round((rnd() - .5) * Math.max(0, len - CAB_DOOR - 100)) };
+      const w = Math.round((400 + rnd() * 520) * k), h = Math.round((320 + rnd() * 380) * k), hw = w / 2, hh = h / 2;
+      const c = { id: cabins.length + 1, isl: i, x: Math.round((i === 0 ? 0 : is.x) + Math.cos(a) * d), y: Math.round((i === 0 ? 0 : is.y) + Math.sin(a) * d), w, h, doors: [], divs: [], rooms: [], decor: [] };
       if (!okSpot(i, c)) continue;
+      // rooms: a divider across the long side (when big enough), then each half may be split across the other way
+      let rooms = [[-hw, -hh, hw, hh]]; const longW = w >= h;
+      if ((longW ? w : h) >= 460) {
+        const pos = Math.round((rnd() - .5) * 0.3 * (longW ? w : h)), a0 = longW ? -hh : -hw, gap = Math.round(a0 + 90 + rnd() * (-2 * a0 - 180));
+        c.divs.push([longW ? 1 : 0, pos, a0, -a0, gap]); rooms = longW ? [[-hw, -hh, pos, hh], [pos, -hh, hw, hh]] : [[-hw, -hh, hw, pos], [-hw, pos, hw, hh]];
+        const next = [];
+        for (const rm of rooms) {
+          const rw = rm[2] - rm[0], rh = rm[3] - rm[1];
+          if (longW ? rh >= 440 : rw >= 440) { if (rnd() < 0.8) {   // a second divider across this half
+            if (longW) { const py = Math.round(rm[1] + rh * (.4 + rnd() * .2)), gp = Math.round(rm[0] + 90 + rnd() * (rw - 180)); c.divs.push([0, py, rm[0], rm[2], gp]); next.push([rm[0], rm[1], rm[2], py], [rm[0], py, rm[2], rm[3]]); }
+            else { const px = Math.round(rm[0] + rw * (.4 + rnd() * .2)), gp = Math.round(rm[1] + 90 + rnd() * (rh - 180)); c.divs.push([1, px, rm[1], rm[3], gp]); next.push([rm[0], rm[1], px, rm[3]], [px, rm[1], rm[2], rm[3]]); }
+            continue; } }
+          next.push(rm);
+        }
+        rooms = next;
+      }
+      c.rooms = rooms.map(r => r.map(Math.round));
+      // doors: 1 on a small cabin, 2 on a mid one, 3 on a big one - on different sides, away from where dividers meet the outer wall
+      const area = w * h, nd = area < 240000 ? 1 : area < 400000 ? 2 : 3, sides = [0, 1, 2, 3].sort(() => rnd() - .5);
+      for (let q = 0; q < sides.length && c.doors.length < nd; q++) {
+        const sd = sides[q], len = sd % 2 === 0 ? w : h;
+        for (let tr = 0; tr < 30; tr++) {
+          const pos = Math.round((rnd() - .5) * (len - CAB_DOOR_W - 120));
+          if (c.divs.some(([o, p, a0, a1]) => (sd % 2 === 0 ? o === 1 : o === 0) && Math.abs(p - pos) < CAB_DOOR_W / 2 + 70 && (sd % 2 === 0 || true))) continue;
+          c.doors.push({ side: sd, pos }); break;
+        }
+      }
+      if (!c.doors.length) c.doors.push({ side: sides[0], pos: 0 });
       cabins.push(c);
-      // inside: always a treasure chest (silver, sometimes golden in big ones) and a few cabinets, barrels, crates and shelves
-      const spots = [], dx = side === 1 ? c.w / 2 : side === 3 ? -c.w / 2 : c.door, dy = side === 2 ? c.h / 2 : side === 0 ? -c.h / 2 : c.door;
-      const spot = (force) => { for (let q = 0; q < 60; q++) { const x = c.x + (rnd() - .5) * (c.w - 90), y = c.y + (rnd() - .5) * (c.h - 90); if (Math.hypot(x - (c.x + dx), y - (c.y + dy)) < 80 || spots.some(p => Math.hypot(p[0] - x, p[1] - y) < 64)) continue; spots.push([x, y]); return [Math.round(x), Math.round(y)]; } if (force) { spots.push([c.x, c.y]); return [c.x, c.y]; } return null; };   // (the chest is always placed, in the middle if nothing else fits)
-      const area = c.w * c.h, mk = (tier, kind) => { const p = spot(kind === 'chest'); if (p) out.push({ id: ++lid, isl: i, x: c.x, y: c.y, b: 'f', seed: Math.floor(rnd() * 1e6), tier, cx: p[0], cy: p[1], trader: 0, tx: p[0], ty: p[1], cab: c.id, kind }); };
-      mk(area > 90000 && rnd() < 0.3 ? 3 : 2, 'chest');
-      for (let q = 0, nc = Math.max(2, Math.min(7, 2 + Math.floor(area / 38000))); q < nc; q++) mk(1, CAB_KINDS[Math.floor(rnd() * CAB_KINDS.length)]);
+      // inside: decoration and furniture. Each room gets a theme; nothing blocks a door or a doorway.
+      const doorPts = c.doors.map(dd => { const sd = dd.side; return [sd === 1 ? hw : sd === 3 ? -hw : dd.pos, sd === 2 ? hh : sd === 0 ? -hh : dd.pos]; }), gapPts = c.divs.map(([o, p, a0, a1, gp]) => o === 1 ? [p, gp] : [gp, p]);
+      const placed = [];   // [rx, ry, fw, fh] of everything put down
+      const clearOf = (rx, ry, fw, fh, pad = 16) => !placed.some(q => Math.abs(q[0] - rx) < (q[2] + fw) / 2 + pad && Math.abs(q[1] - ry) < (q[3] + fh) / 2 + pad) && !doorPts.some(q => Math.hypot(q[0] - rx, q[1] - ry) < 100 + Math.max(fw, fh) / 2) && !gapPts.some(q => Math.hypot(q[0] - rx, q[1] - ry) < 80 + Math.max(fw, fh) / 2);
+      const put = (rm, kind, fw, fh, wallSide, seed) => {   // wallSide: 0-3 = against that wall of the room, -1 = anywhere inside
+        const ins = 34; for (let tr = 0; tr < 60; tr++) {
+          let rx, ry; const x0 = rm[0] + ins + fw / 2, x1 = rm[2] - ins - fw / 2, y0 = rm[1] + ins + fh / 2, y1 = rm[3] - ins - fh / 2; if (x1 <= x0 || y1 <= y0) return null;
+          rx = x0 + rnd() * (x1 - x0); ry = y0 + rnd() * (y1 - y0);
+          if (wallSide === 0) ry = y0; else if (wallSide === 2) ry = y1; else if (wallSide === 3) rx = x0; else if (wallSide === 1) rx = x1;
+          if (!clearOf(rx, ry, fw, fh)) continue; rx = Math.round(rx); ry = Math.round(ry); placed.push([rx, ry, fw, fh]); c.decor.push([kind, rx, ry, fw, fh, seed || Math.floor(rnd() * 1e6), wallSide]); return [rx, ry];
+        } return null;
+      };
+      const byArea = rooms.map((rm, ri) => ri).sort((p, q) => (rooms[q][2] - rooms[q][0]) * (rooms[q][3] - rooms[q][1]) - (rooms[p][2] - rooms[p][0]) * (rooms[p][3] - rooms[p][1]));
+      byArea.forEach((ri, rank) => {
+        const rm = rooms[ri], rw = rm[2] - rm[0], rh = rm[3] - rm[1], theme = rank === 0 ? 'living' : ['bedroom', 'kitchen', 'study'][(rank - 1 + Math.floor(rnd() * 3)) % 3];
+        if (rw > 150 && rh > 150) put(rm, 'rug', Math.min(190, rw - 120), Math.min(120, rh - 120), -1);
+        if (theme === 'living') { put(rm, 'fire', 96, 36, Math.floor(rnd() * 4)); const t = put(rm, 'table', 120, 72, -1); if (t) { for (const [dx, dy, f] of [[0, -58, 2], [0, 58, 0], [-84, 0, 1], [84, 0, 3]]) if (rnd() < 0.7) { const cx = t[0] + dx, cy = t[1] + dy; if (clearOf(cx, cy, 30, 30, 4) && cx > rm[0] + 40 && cx < rm[2] - 40 && cy > rm[1] + 40 && cy < rm[3] - 40) { placed.push([cx, cy, 30, 30]); c.decor.push(['chair', Math.round(cx), Math.round(cy), 30, 30, 0, f]); } } } put(rm, 'plant', 26, 26, Math.floor(rnd() * 4)); }
+        else if (theme === 'bedroom') { put(rm, 'bed', 74, 118, [0, 2][Math.floor(rnd() * 2)]); if (rw > 330) put(rm, 'bed', 74, 118, [0, 2][Math.floor(rnd() * 2)]); put(rm, 'plant', 26, 26, Math.floor(rnd() * 4)); }
+        else if (theme === 'kitchen') { put(rm, 'counter', 150, 38, [0, 2][Math.floor(rnd() * 2)]); const t = put(rm, 'table', 90, 60, -1); if (t) for (const [dx, dy, f] of [[0, -50, 2], [0, 50, 0]]) { const cx = t[0] + dx, cy = t[1] + dy; if (clearOf(cx, cy, 30, 30, 4) && cy > rm[1] + 40 && cy < rm[3] - 40) { placed.push([cx, cy, 30, 30]); c.decor.push(['chair', Math.round(cx), Math.round(cy), 30, 30, 0, f]); } } put(rm, 'plant', 26, 26, Math.floor(rnd() * 4)); }
+        else { const t = put(rm, 'table', 104, 56, Math.floor(rnd() * 4)); if (t) { const cy = t[1] + (t[1] > (rm[1] + rm[3]) / 2 ? -46 : 46); if (clearOf(t[0], cy, 30, 30, 4)) { placed.push([t[0], cy, 30, 30]); c.decor.push(['chair', Math.round(t[0]), Math.round(cy), 30, 30, 0, cy > t[1] ? 2 : 0]); } } put(rm, 'plant', 26, 26, Math.floor(rnd() * 4)); put(rm, 'plant', 26, 26, Math.floor(rnd() * 4)); }
+      });
+      // the treasure chest (a second one in a very big cabin) and the cabinets, barrels, crates and shelves to open, spread over the rooms
+      const spot = (rm, force) => { for (let q = 0; q < 70; q++) { const x = rm[0] + 50 + rnd() * (rm[2] - rm[0] - 100), y = rm[1] + 50 + rnd() * (rm[3] - rm[1] - 100); if (!clearOf(x, y, 34, 34, 10)) continue; placed.push([x, y, 34, 34]); return [Math.round(c.x + x), Math.round(c.y + y)]; } if (force) { const p = [Math.round(c.x + (rm[0] + rm[2]) / 2), Math.round(c.y + (rm[1] + rm[3]) / 2)]; return p; } return null; };
+      const mk = (rm, tier, kind) => { const p = spot(rm, kind === 'chest'); if (p) out.push({ id: ++lid, isl: i, x: c.x, y: c.y, b: 'f', seed: Math.floor(rnd() * 1e6), tier, cx: p[0], cy: p[1], trader: 0, tx: p[0], ty: p[1], cab: c.id, kind }); };
+      mk(rooms[byArea.length > 1 ? byArea[1 + Math.floor(rnd() * (byArea.length - 1))] : byArea[0]], area > 380000 && rnd() < 0.3 ? 3 : 2, 'chest');   // (not in the biggest room, which is the one by the entrance, when there is another)
+      if (area > 420000) mk(rooms[byArea[Math.floor(rnd() * byArea.length)]], 2, 'chest');
+      for (let q = 0, nc = Math.max(3, Math.min(14, 2 + Math.floor(area / 45000))); q < nc; q++) mk(rooms[q % rooms.length], 1, CAB_KINDS[Math.floor(rnd() * CAB_KINDS.length)]);
       break;
     }
   }
@@ -467,15 +521,18 @@ class Room {
       v.fa = Math.atan2(v.hl.y - v.y, v.hl.x - v.x); if (v.t > 6) return this.vendorGone();
     }
     v.l.tx = v.x; v.l.ty = v.y; v.l.x = v.x; v.l.y = v.y; v.l.trader = v.st === 2 ? v.type : 0;
-    if (v.st >= 3 && v.st <= 6 && v.st !== 6 && !P.some(p => !p.down && (Math.hypot(p.x - v.x, p.y - v.y) < VEND.sight || Math.hypot(p.x - v.bx, p.y - v.by) < VEND.sight))) return this.vendorGone();   // out of sight of everybody: he and his boat disappear
+    if (v.st >= 3 && v.st <= 4 && !P.some(p => !p.down && (Math.hypot(p.x - v.x, p.y - v.y) < VEND.sight || Math.hypot(p.x - v.bx, p.y - v.by) < VEND.sight))) return this.vendorGone();   // out of sight of everybody: he and his boat disappear
   }
   // ===== end of the traveling vendor =====
   clearCabinRes() {   // no trees, rocks or bushes inside a cabin (or right up against its walls)
-    for (const c of this.cabins || []) for (const q of this.res) if ((q.isl | 0) === c.isl && Math.abs(q.x - c.x) < c.w / 2 + 40 && Math.abs(q.y - c.y) < c.h / 2 + 40) { q.hp = 0; q.mhp = 0; q.rt = 1e9; }
+    for (const c of this.cabins || []) for (const q of this.res) if ((q.isl | 0) === c.isl && Math.abs(q.x - c.x) < c.w / 2 + 110 && Math.abs(q.y - c.y) < c.h / 2 + 110) { q.hp = 0; q.mhp = 0; q.rt = 1e9; }
   }
-  addCabinWalls() {   // the cabin walls are solid structures (indestructible, never sent to clients or saved: they are rebuilt from the room code)
-    this.struct = this.struct.filter(s => s.k !== 'cwall');
-    for (const c of this.cabins || []) for (const sg of cabinSegments(c)) this.struct.push({ id: this.nid++, k: 'cwall', x: sg.x, y: sg.y, len: sg.len, rot: sg.rot, r: CAB_WALL, hp: 0, mhp: 0 });
+  addCabinWalls() {   // cabin walls and big furniture are solid; the doors are gates you open with ACT / E. None of it is sent as a wall, saved, or destructible: it is rebuilt from the room code
+    this.struct = this.struct.filter(s => s.k !== 'cwall' && !s.cab);
+    for (const c of this.cabins || []) {
+      for (const sg of cabinSegments(c)) this.struct.push({ id: this.nid++, k: 'cwall', x: sg.x, y: sg.y, len: sg.len, rot: sg.rot, r: sg.r, hp: 0, mhp: 0 });
+      for (const d of c.doors) { const sd = d.side, hw = c.w / 2, hh = c.h / 2; this.struct.push({ id: this.nid++, k: 'gate', cab: 1, m: 'c', x: Math.round(sd === 1 ? c.x + hw : sd === 3 ? c.x - hw : c.x + d.pos), y: Math.round(sd === 2 ? c.y + hh : sd === 0 ? c.y - hh : c.y + d.pos), r: RC.RADIUS.gate, rot: sd % 2 === 0 ? 0 : 2, hp: 0, mhp: 0, open: 0 }); }
+    }
   }
   endRun() {   // everyone is down: pay out by days survived, send everyone back to the title screen, and start the room fresh
     const days = Math.max(0, this.night - 1), pay = runPayout(days);
@@ -588,7 +645,7 @@ class Room {
   // grid, they are enclosed, and the walls the fill touched are what enemies will attack. Cached for half a second.
   enclosure(p) {
     const now = Date.now(); if (p._enc && now - p._enc.t < 500) return p._enc.walls;
-    const CELL = 20, H = 30, walls = this.struct.filter(st => (st.k === 'wall' || (st.k === 'gate' && !st.open)) && Math.abs(st.x - p.x) < H * CELL + 80 && Math.abs(st.y - p.y) < H * CELL + 80);
+    const CELL = 20, H = 30, walls = this.struct.filter(st => !st.cab && (st.k === 'wall' || (st.k === 'gate' && !st.open)) && Math.abs(st.x - p.x) < H * CELL + 80 && Math.abs(st.y - p.y) < H * CELL + 80);
     let out = null;
     if (walls.length >= 3) {
       const N = 2 * H + 1, blk = new Int16Array(N * N).fill(-1), ox = p.x - H * CELL, oy = p.y - H * CELL;
@@ -645,7 +702,7 @@ class Room {
   nearWall(list, x, y) {   // the closest wall of an enclosure to (x, y): { st, qx, qy, qr }
     let best = null, bd = 1e9; for (const st of list) { const [qx, qy, qr] = solidPt(st, x, y), d = Math.hypot(qx - x, qy - y); if (d < bd) { bd = d; best = { st, qx, qy, qr }; } } return best;
   }
-  hitWall(st, dmg) { st.hp -= dmg; if (st.hp <= 0) st.dead = 1; }
+  hitWall(st, dmg) { if (st.cab || !(st.hp > 0)) return; st.hp -= dmg; if (st.hp <= 0) st.dead = 1; }
   // fishing pools: shimmering spots near the shore of any island; walk up and press ACT to fish (the minigame runs on the client, the server checks it)
   stepPools(dt) {   // fish are in the sea: pools just off every island's shore (fish from the beach) and pools out in the open water near players (fish from a boat)
     if (!this.pools) { this.pools = []; this.poolT = 2; }
@@ -1092,7 +1149,7 @@ class Room {
   // Species: wolf (alphas too), bear, mammoth, boar, golem, imp, and the night aliens (as one species). Same species never fight. Villagers neither attack nor are attacked.
   // Scorpions are never attacked. Other passive critters are fair prey and flee from anything hostile. Anything near a player carries on with the player instead.
   fightSpecies(c, kind) {
-    if (kind === 'a') return c.vil || c.k >= 3 ? null : 'alien';   // villagers (camp and raiders) stay out of it
+    if (kind === 'a') return null;   // aliens, villagers and cultists stay out of it entirely: they neither attack the animals nor get attacked by them
     if (c.vul) return null;   // vultures are left alone (and leave others alone)
     return c.sp || (c.big === 1 ? 'bear' : c.big === 2 ? 'mammoth' : 'wolf');
   }
@@ -1303,7 +1360,7 @@ class Room {
   }
   snapshot() {   // everything needed to rebuild this room after a server restart; connected players are saved as 'away' so they get their character back when they reconnect
     const away = [...this.away]; for (const p of this.players.values()) if (p.email) away.push([p.email, this.awayEntry(p)]);
-    return { code: this.code, c: this.c, night: this.night, fire: this.fire, aliens: this.aliens, res: this.res, islands: this.islands, isv: ISL_VER, mv: this.mv, camps: this.camps, lootOpen: this.loot.filter(l => l.open).map(l => l.id), boats: this.boats.map(b => ({ id: b.id, type: b.type || 'boat', x: b.x, y: b.y, ang: b.ang, life: b.life == null ? undefined : Math.round(b.life) })), scrapFound: this.scrapFound, drops: this.drops, pend: this.pend, struct: this.struct.filter(s => s.k !== 'cwall'), chargerNight: this.chargerNight, raidNight: this.raidNight, islNight: this.islNight, nid: this.nid, wolves: this.wolves || [], rabbits: this.rabbits || [], pools: this.pools || [], away };
+    return { code: this.code, c: this.c, night: this.night, fire: this.fire, aliens: this.aliens, res: this.res, islands: this.islands, isv: ISL_VER, mv: this.mv, camps: this.camps, lootOpen: this.loot.filter(l => l.open).map(l => l.id), boats: this.boats.map(b => ({ id: b.id, type: b.type || 'boat', x: b.x, y: b.y, ang: b.ang, life: b.life == null ? undefined : Math.round(b.life) })), scrapFound: this.scrapFound, drops: this.drops, pend: this.pend, struct: this.struct.filter(s => s.k !== 'cwall' && !s.cab), chargerNight: this.chargerNight, raidNight: this.raidNight, islNight: this.islNight, nid: this.nid, wolves: this.wolves || [], rabbits: this.rabbits || [], pools: this.pools || [], away };
   }
   saveBlob() {   // everything about this game, compactly: island resources are re-made from the room code, so only home's resources and the changed island ones are stored
     const o = this.snapshot(); delete o.islands;
@@ -1729,7 +1786,7 @@ wss.on('connection', ws => {
       if (room.players.size >= MAXP) { send(ws, { t: 'err', m: 'Room is full' }); return; }
       const ghost = email && [...room.players.values()].find(p => p.ghost && p.email === email);   // you dropped out in danger and are back within the grace period
       if (ghost) { me = ghost; me.ghost = 0; me.ws = ws; me.name = name; } else me = room.add(ws, name, cls, pf, email);
-      send(ws, { t: 'init', id: me.id, room: rc, R, cls, gear: me.gear, prof: view(pf), res: room.res.map(r => [r.k, Math.round(r.x), Math.round(r.y)]), isl: room.islands.map(i => [i.x, i.y, i.r, i.b, i.s || 0]), loot: room.loot.filter(l => !l.visit).map(l => [l.id, l.x, l.y, l.b, l.seed, l.tier, l.cx, l.cy, l.trader, l.tx, l.ty, l.cab || 0, l.kind || '']), cab: (room.cabins || []).map(c => [c.id, c.isl, c.x, c.y, c.w, c.h, c.side, c.door]), vg: (room.villages || []).map(v => [v.id, v.x, v.y, v.seed, v.cult ? 1 : 0]), lv: (room.lava || []).map(l => [l.x, l.y, l.r]) });
+      send(ws, { t: 'init', id: me.id, room: rc, R, cls, gear: me.gear, prof: view(pf), res: room.res.map(r => [r.k, Math.round(r.x), Math.round(r.y)]), isl: room.islands.map(i => [i.x, i.y, i.r, i.b, i.s || 0]), loot: room.loot.filter(l => !l.visit).map(l => [l.id, l.x, l.y, l.b, l.seed, l.tier, l.cx, l.cy, l.trader, l.tx, l.ty, l.cab || 0, l.kind || '']), cab: (room.cabins || []).map(c => [c.id, c.isl, c.x, c.y, c.w, c.h, c.doors.map(d => [d.side, d.pos]), c.divs, c.decor]), vg: (room.villages || []).map(v => [v.id, v.x, v.y, v.seed, v.cult ? 1 : 0]), lv: (room.lava || []).map(l => [l.x, l.y, l.r]) });
     } else if (m.t === 'craft' && me) {
       const now = Date.now(); if (now - (me.lastCraft || 0) < 200) { send(ws, { t: 'crafted', id: String(m.id || ''), ok: false, msg: 'Slow down a little.', gear: me.gear }); return; } me.lastCraft = now;
       let res; try { res = room.craft(me, String(m.id || ''), m.rot); } catch (e) { console.error('craft error:', e && e.stack || e); res = { ok: false, msg: 'Could not craft that.' }; }
