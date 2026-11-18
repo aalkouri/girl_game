@@ -93,8 +93,13 @@ function drawMap() {
   // markers
   const revealed = (x, y) => { const k = mkey(Math.round(x / MCELL), Math.round(y / MCELL)); return Math.hypot(x, y) < RR + 160 || mapCells.has(k); };
   g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = '16px system-ui,sans-serif';
-  g.fillText('🔥', X(0), Y(0));
-  for (const c of S.cf || []) g.fillText('🔥', X(c[1]), Y(c[2]));
+  const fireBar = (x, y, fuel, max) => {   // how much fuel a fire has left, as a bar right under its icon (an empty fire = an empty red bar)
+    const f = Math.max(0, Math.min(1, max > 0 ? fuel / max : 0)), w = 34, h = 6, bx = x - w / 2, by = y + 13;
+    g.fillStyle = '#000c'; g.fillRect(bx - 1.5, by - 1.5, w + 3, h + 3); g.fillStyle = '#3a1b0d'; g.fillRect(bx, by, w, h);
+    g.fillStyle = f > .5 ? '#ffb74d' : f > .2 ? '#ff8f00' : '#e53935'; g.fillRect(bx, by, w * f, h);
+  };
+  g.fillText('🔥', X(0), Y(0)); if (S.f) fireBar(X(0), Y(0), S.f[0], S.f[1]);
+  for (const c of S.cf || []) { g.fillText('🔥', X(c[1]), Y(c[2])); fireBar(X(c[1]), Y(c[2]), c[3], c[4]); }
   for (const l of (typeof LOOT !== 'undefined' ? LOOT : [])) if (l.trader && revealed(l.tx, l.ty)) {   // a discovered trader stays on the map, each kind with its own icon
     const T = RC.TRADERS[l.trader]; g.beginPath(); g.arc(X(l.tx), Y(l.ty), 22, 0, TAU); g.fillStyle = '#14304af0'; g.fill(); g.lineWidth = 3; g.strokeStyle = '#ffd000'; g.stroke(); g.font = '28px system-ui,sans-serif'; g.fillStyle = '#fff'; g.fillText(T.e, X(l.tx), Y(l.ty) + 2); g.font = '16px system-ui,sans-serif';
   }
