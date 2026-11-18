@@ -434,6 +434,39 @@ class Room {
     }
     p._enc = { t: now, walls: out }; return out;
   }
+  // Walking around walls: a distance map from the player over the same grid the enclosure check uses (blocked cells = near a wall / closed gate).
+  // An enemy whose straight line to the player is blocked steps toward the neighbouring cell that is closer (by walking distance), so it goes around instead of pushing at the wall.
+  pathField(p) {
+    const now = Date.now(); if (p._pf && now - p._pf.t < 400) return p._pf;
+    const CELL = 20, H = 30, N = 2 * H + 1, walls = this.struct.filter(st => (st.k === 'wall' || (st.k === 'gate' && !st.open)) && Math.abs(st.x - p.x) < H * CELL + 80 && Math.abs(st.y - p.y) < H * CELL + 80);
+    if (!walls.length) return (p._pf = { t: now, none: 1 });
+    const blk = new Int16Array(N * N).fill(-1), ox = p.x - H * CELL, oy = p.y - H * CELL;
+    walls.forEach((st, wi) => { const len = st.k === 'gate' ? GATE_HALF : 0, a = (st.rot || 0) * Math.PI / 4, ux = Math.cos(a), uy = Math.sin(a), rr = (st.k === 'gate' ? 12 : st.r) + 12;
+      const x0 = Math.floor((st.x - len - rr - ox) / CELL), x1 = Math.ceil((st.x + len + rr - ox) / CELL), y0 = Math.floor((st.y - len - rr - oy) / CELL), y1 = Math.ceil((st.y + len + rr - oy) / CELL);
+      for (let i = Math.max(0, x0); i <= Math.min(N - 1, x1); i++) for (let j = Math.max(0, y0); j <= Math.min(N - 1, y1); j++) { const cx = ox + (i + .5) * CELL, cy = oy + (j + .5) * CELL, t = Math.max(-len, Math.min(len, (cx - st.x) * ux + (cy - st.y) * uy)); if (Math.hypot(cx - st.x - ux * t, cy - st.y - uy * t) < rr) blk[i * N + j] = wi; } });
+    const dist = new Int16Array(N * N).fill(-1), q = [H * N + H]; dist[H * N + H] = 0;
+    for (let qi = 0; qi < q.length; qi++) {
+      const c = q[qi], i = (c / N) | 0, j = c % N;
+      for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) {
+        if (!di && !dj) continue; const ni = i + di, nj = j + dj; if (ni < 0 || nj < 0 || ni >= N || nj >= N) continue;
+        const n = ni * N + nj; if (dist[n] >= 0 || blk[n] >= 0) continue;
+        if (di && dj && (blk[(i + di) * N + j] >= 0 || blk[i * N + nj] >= 0)) continue;   // no squeezing diagonally between two wall corners
+        dist[n] = dist[c] + 1; q.push(n);
+      }
+    }
+    return (p._pf = { t: now, CELL, N, ox, oy, blk, dist });
+  }
+  pathStep(p, x, y) {   // null = nothing in the way; otherwise { blocked: true, dir: [dx, dy] | null } (dir = the way round the wall)
+    const f = this.pathField(p); if (f.none) return null;
+    const { CELL, N, ox, oy, blk, dist } = f, i = Math.floor((x - ox) / CELL), j = Math.floor((y - oy) / CELL); if (i < 0 || j < 0 || i >= N || j >= N) return null;
+    let blocked = false; const L = Math.hypot(p.x - x, p.y - y);
+    for (let sd = 12; sd < L; sd += 12) { const ci = Math.floor((x + (p.x - x) * sd / L - ox) / CELL), cj = Math.floor((y + (p.y - y) * sd / L - oy) / CELL); if (ci >= 0 && cj >= 0 && ci < N && cj < N && blk[ci * N + cj] >= 0) { blocked = true; break; } }
+    if (!blocked) return null;
+    let best = null, bd = dist[i * N + j] >= 0 ? dist[i * N + j] : 1e9;
+    for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) { if (!di && !dj) continue; const ni = i + di, nj = j + dj; if (ni < 0 || nj < 0 || ni >= N || nj >= N) continue; const dv = dist[ni * N + nj]; if (dv >= 0 && dv < bd) { bd = dv; best = [ni, nj]; } }
+    if (!best) return { blocked: true, dir: null };
+    const cx = ox + (best[0] + .5) * CELL, cy = oy + (best[1] + .5) * CELL, d = Math.hypot(cx - x, cy - y) || 1; return { blocked: true, dir: [(cx - x) / d, (cy - y) / d] };
+  }
   nearWall(list, x, y) {   // the closest wall of an enclosure to (x, y): { st, qx, qy, qr }
     let best = null, bd = 1e9; for (const st of list) { const [qx, qy, qr] = solidPt(st, x, y), d = Math.hypot(qx - x, qy - y); if (d < bd) { bd = d; best = { st, qx, qy, qr }; } } return best;
   }
@@ -953,6 +986,7 @@ class Room {
         if (tg && !nearFire(tg.x, tg.y)) {
           w.st = 1; w.tg = tg.id; let tp = tg, wl = null; const E = this.enclosure(tg); if (E) { wl = this.nearWall(E, w.x, w.y); if (wl) tp = { x: wl.qx, y: wl.qy }; }   // walled in: go for the nearest wall
           const d = Math.hypot(tp.x - w.x, tp.y - w.y) || 1; dx = (tp.x - w.x) / d; dy = (tp.y - w.y) / d;
+          if (!wl) { const ps = this.pathStep(tg, w.x, w.y); if (ps && ps.dir) { dx = ps.dir[0]; dy = ps.dir[1]; } }   // a wall is in the way: go around it
           if (d - (wl ? wl.qr : 0) > (w.reach || WOLF.reach) * (w.alpha ? 1.25 : 1)) spd = w.run || WOLF.run;
           else if (w.cd <= 0) { w.cd = w.bcd || WOLF.cd; w.bite = 0.25; if (wl) this.hitWall(wl.st, w.dmg || WOLF.dmg); else this.hurt(tg, w.dmg || WOLF.dmg); }
         } else if (w.st === 1) { w.st = 2; w.rt = 0; continue; }   // lost them (or they reached the fire): head home
@@ -1261,19 +1295,21 @@ class Room {
           }
         }
       }
-      if (a.spit && tgt && !tgt.wall && d < 440) {   // spitter: every few seconds it lobs a slow glob toward you (walls stop it)
+      let pathBlocked = false;
+      if (tgt && !tgt.wall && tgt.cls) { const ps = this.pathStep(tgt, a.x, a.y); if (ps) { pathBlocked = true; if (ps.dir) { mx = ps.dir[0]; my = ps.dir[1]; } } }   // a wall is in the way: walk around it (ranged enemies do not shoot until they can see you)
+      if (a.spit && tgt && !tgt.wall && !pathBlocked && d < 440) {   // spitter: every few seconds it lobs a slow glob toward you (walls stop it)
         a.spitCd = (a.spitCd === undefined ? 3 : a.spitCd) - dt;
         if (a.spitCd <= 0) { a.spitCd = 4 + Math.random() * 3; const ang = Math.atan2(ty - a.y, tx - a.x); this.arrows.push({ id: this.nid++, x: a.x, y: a.y, vx: Math.cos(ang) * 150, vy: Math.sin(ang) * 150, dmg: 12 + Math.min(12, (this.night - 16) * 0.5), ttl: 4.5, slow: 1 }); }
       }
       let stay = false;
       if (a.k === 4 && tgt) {   // archer villager: stops at range, aims for 1.5 s (the client shows a red aim line), then looses a fast arrow
         if (a.shotCd > 0) a.shotCd -= dt;
-        if (d <= a.range && a.shotCd <= 0) {
+        if (d <= a.range && a.shotCd <= 0 && !pathBlocked) {
           a.aim = (a.aim || 0) + dt; stay = true;
           if (a.aim >= 1.5) { const ang = Math.atan2(ty - a.y, tx - a.x); this.arrows.push({ id: this.nid++, x: a.x, y: a.y, vx: Math.cos(ang) * ARROW_SPEED, vy: Math.sin(ang) * ARROW_SPEED, dmg: a.dmg, ttl: 1.3 }); a.aim = 0; a.shotCd = 2.6; }
         } else a.aim = 0;
       } else if (a.k === 4) a.aim = 0;
-      if (!stay && d > (a.vil && !tgt ? 90 : (a.stop || 20))) { a.x += mx * sp * (a.vil && !tgt ? 0.6 : 1) * dt; a.y += my * sp * (a.vil && !tgt ? 0.6 : 1) * dt; }
+      if (!stay && (pathBlocked || d > (a.vil && !tgt ? 90 : (a.stop || 20)))) { a.x += mx * sp * (a.vil && !tgt ? 0.6 : 1) * dt; a.y += my * sp * (a.vil && !tgt ? 0.6 : 1) * dt; }
       for (const st of this.struct) {   // every structure is solid and indestructible (except traps)
         if (st.k === 'trap' || st.k === 'spike' || (st.k === 'gate' && st.open)) continue;
         const [qx, qy, qr] = solidPt(st, a.x, a.y), sd = Math.hypot(a.x - qx, a.y - qy), mn = qr + (a.rad || 12);
