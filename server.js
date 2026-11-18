@@ -30,7 +30,7 @@ if (process.env.MAIL_FROM) config.mailFrom = process.env.MAIL_FROM;
 const auth = require('./auth.js')({ dir: DIR, config });
 setInterval(() => { save(); auth.save(); }, 3000);
 process.on('uncaughtException', e => console.error('uncaught:', e && e.stack || e));   // a bug in one message handler must not take the whole server (and everyone's game) down
-for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => { save(); auth.save(); saveRooms(); process.exit(0); });
+for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => { save(); auth.save(); saveRooms(true); process.exit(0); });
 // accounts are keyed by lower-case email. Old anonymous profiles (random 16-32 char ids) can be claimed once at sign-in.
 const LEGACY = /^[A-Za-z0-9]{16,32}$/;
 // test accounts with unlimited materials and diamonds: emails listed in the server's private config.json ("infiniteEmails")
@@ -972,7 +972,8 @@ class Room {
   saveBlob() {   // everything about this game, compactly: island resources are re-made from the room code, so only home's resources and the changed island ones are stored
     const o = this.snapshot(); delete o.islands;
     const homeRes = [], dev = []; let ri = 0;
-    const fresh = []; this.islands.forEach((is, i) => { if (i > 0) fresh.push(...islandRes(is, i, this.code)); });
+    if (!this._fresh) { this._fresh = []; this.islands.forEach((is, i) => { if (i > 0) this._fresh.push(...islandRes(is, i, this.code)); }); }   // (the untouched island resources never change, so they are made once)
+    const fresh = this._fresh;
     for (const r of this.res) {
       if (!(r.isl > 0)) homeRes.push([r.k, Math.round(r.x), Math.round(r.y), Math.round(r.hp * 10) / 10]);
       else { const f = fresh[ri++]; if (!f || r.hp !== r.mhp || r.k !== f.k) dev.push([ri - 1, r.k, Math.round(r.hp * 10) / 10]); }
@@ -1318,12 +1319,16 @@ class Room {
 const rooms = new Map();
 // ---------- rooms survive a server restart: saved to rooms.json every 3 s and on shutdown, reloaded at startup ----------
 const ROOMS_FILE = DIR && path.join(DIR, 'rooms.json'); let lastRoomsJson = '';
-function saveRooms() {
+function saveRooms(sync) {   // the compact form (about a third of the size); written in the background except at shutdown
   if (!ROOMS_FILE) return;
-  try { const j = JSON.stringify([...rooms.values()].map(r => r.snapshot())); if (j === lastRoomsJson) return; lastRoomsJson = j; fs.writeFileSync(ROOMS_FILE + '.tmp', j); fs.renameSync(ROOMS_FILE + '.tmp', ROOMS_FILE); } catch (e) { console.error('rooms save failed:', e.message); }
+  try {
+    const j = JSON.stringify([...rooms.values()].map(r => r.saveBlob())); if (j === lastRoomsJson) return; lastRoomsJson = j;
+    if (sync) { fs.writeFileSync(ROOMS_FILE + '.tmp', j); fs.renameSync(ROOMS_FILE + '.tmp', ROOMS_FILE); }
+    else fs.writeFile(ROOMS_FILE + '.tmp', j, e => { if (e) return console.error('rooms save failed:', e.message); fs.rename(ROOMS_FILE + '.tmp', ROOMS_FILE, () => { }); });
+  } catch (e) { console.error('rooms save failed:', e.message); }
 }
-try { for (const o of JSON.parse(fs.readFileSync(ROOMS_FILE, 'utf8'))) rooms.set(o.code, Room.restore(o)); console.log('restored', rooms.size, 'room(s)'); } catch (e) { }
-setInterval(saveRooms, 10000);   // (the save is ~2 MB and blocks the game loop for ~30 ms, so not every 3 s; shutdown saves again)
+try { for (const o of JSON.parse(fs.readFileSync(ROOMS_FILE, 'utf8'))) rooms.set(o.code, o.v === 2 ? Room.fromSave(o) : Room.restore(o)); console.log('restored', rooms.size, 'room(s)'); } catch (e) { }
+setInterval(saveRooms, 5000);   // compact (~1 MB), written in the background; shutdown saves again synchronously
 const code = () => { let c; do { c = Array.from({ length: 4 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.random() * 24 | 0]).join(''); } while (rooms.has(c)); return c; };
 
 const wss = new WebSocketServer({ server: srv, maxPayload: 1024 });
