@@ -75,9 +75,18 @@ function xLava(m) {
 }
 let VILL = [];
 function xVillages(m) {
-  VILL = (m.vg || []).map(v => ({ id: v[0], x: v[1], y: v[2], seed: v[3], flames: [] }));
+  VILL = (m.vg || []).map(v => ({ id: v[0], x: v[1], y: v[2], seed: v[3], cult: !!v[4], flames: [] }));
   for (const v of VILL) {
     const rng = mulberry(v.seed), c = new PIXI.Container(); c.position.set(v.x, v.y); c.zIndex = v.y;
+    if (v.cult) {   // a ritual site in the volcano: scorched ground, a ring of glowing runes, four obsidian obelisks and a fire altar
+      const pad = new PIXI.Graphics(); pad.beginFill(0x120708, .55); pad.drawEllipse(v.x, v.y + 8, 200, 130); pad.endFill(); pad.lineStyle(3, 0xc0301a, .65); pad.drawEllipse(v.x, v.y + 8, 150, 98); pad.lineStyle(2, 0xff7a1a, .45); pad.drawEllipse(v.x, v.y + 8, 112, 73);
+      for (let i = 0; i < 12; i++) { const a = i / 12 * TAU + rng() * .1; pad.lineStyle(2.5, 0xff6a1a, .6); pad.moveTo(v.x + Math.cos(a) * 118, v.y + 8 + Math.sin(a) * 77); pad.lineTo(v.x + Math.cos(a + .1) * 142, v.y + 8 + Math.sin(a + .1) * 93); }
+      ground.addChild(pad);
+      for (let i = 0; i < 4; i++) { const a = i * TAU / 4 + Math.PI / 4, ox = Math.cos(a) * 128, oy = Math.sin(a) * 84, o = new PIXI.Graphics(); o.beginFill(0x000000, .3); o.drawEllipse(0, 6, 16, 6); o.endFill(); o.beginFill(0x1c1216); o.drawPolygon([-12, 4, -8, -46, 0, -64, 8, -46, 12, 4]); o.endFill(); o.beginFill(0x3a2630); o.drawPolygon([0, -64, 8, -46, 12, 4, 0, 4]); o.endFill(); o.lineStyle(2, 0xff5a1f, .85); o.moveTo(-4, -40); o.lineTo(0, -22); o.lineTo(-3, -6); o.position.set(v.x + ox, v.y + oy); o.zIndex = v.y + oy; cullList.push({ c: o, x: v.x + ox, y: v.y + oy }); }
+      const ring = new PIXI.Sprite(T_VFIRE); ring.anchor.set(.5, .6); c.addChild(ring);
+      for (let i = 0; i < 2; i++) { const f = new PIXI.Sprite(T_FLAME); f.anchor.set(.5, .9); f.scale.set(.5 - i * .12); f.y = 2; f.tint = i ? 0xff4a1a : 0xc24bff; c.addChild(f); v.flames.push(f); }   // a purple and red fire
+      v.c = c; cullList.push({ c, x: v.x, y: v.y }); continue;
+    }
     const pad = new PIXI.Graphics(); pad.beginFill(0x8a6a34, .25); pad.drawEllipse(v.x, v.y + 8, 190, 120); pad.endFill(); ground.addChild(pad);
     const n = 3, a0 = rng() * TAU;
     for (let i = 0; i < n; i++) {   // tipis in a ring around the fire (each is its own sprite so it sorts by depth)
@@ -320,6 +329,7 @@ function xMsg(m) {
   else if (m.t === 'fx') {
     if (m.k === 'boom') { const n = Math.min(40, 8 + Math.round(m.r / 12)); for (let i = 0; i < n; i++) { const a = rnd(0, TAU), d = Math.sqrt(Math.random()) * m.r; burst(m.x + Math.cos(a) * d, m.y + Math.sin(a) * d, 3, 0xffa24a, 110, true, .16); } shake = Math.max(shake, .25); }
     else if (m.k === 'heal' && me) floatText(me.x, me.y - 20, '✨ Revived!', 0xb9f6ca);
+    else if (m.k === 'block') { burst(m.x, m.y, 8, 0xffe9a0, 170, true, .1); burst(m.x, m.y, 4, 0xffffff, 110, true, .08); if (me) SFX.clang(Math.hypot(m.x - me.x, m.y - me.y), m.x - me.x); }   // a shot blocked by a zealot's shield
   }
   else if (m.t === 'abilUsed') { if (m.b) { for (const k in BUFF) BUFF[k] = m.b[k] || 0; buffAt = performance.now(); } SFX.levelup(); if (me) floatText(me.x, me.y - 26, m.n + '!', 0xd1b3ff); }
   else if (m.t === 'saved') {

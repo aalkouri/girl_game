@@ -114,6 +114,8 @@ const FRONTS = {
   bow: g => { g.strokeStyle = '#8d6e63'; g.lineWidth = 3; g.beginPath(); g.arc(24, 0, 17, -1.2, 1.2); g.stroke(); stroke(g, '#eeeeee', 1, 24 + 17 * Math.cos(-1.2), 17 * Math.sin(-1.2), 24 + 17 * Math.cos(1.2), 17 * Math.sin(1.2)); },
   sword: g => { stroke(g, '#e0e0e0', 3, 12, 16, 36, 8); stroke(g, '#ffd54f', 3, 13, 11, 15, 20); },
   wrench: g => { stroke(g, '#9e9e9e', 4, 10, 18, 28, 8); g.fillStyle = '#bdbdbd'; circ(g, 31, 7, 6); g.fillStyle = '#37474f'; circ(g, 33, 6, 2.5); },
+  cultstaff: g => { stroke(g, '#2b1b16', 3.5, 6, 20, 36, -12); stroke(g, '#5a3a2c', 1.2, 8, 19, 34, -11); g.fillStyle = '#ff5a1f'; circ(g, 38, -13, 6.5); g.fillStyle = '#ffd27a'; circ(g, 38, -13, 3.2); poly(g, '#ff8a3c', [34, -17, 38, -26, 42, -17]); },   // a cultist's staff, tipped with a burning orb
+  cultshield: g => { stroke(g, '#2e2a2c', 4, 12, 15, 32, 8); g.fillStyle = '#4a4147'; circ(g, 33, 8, 5.5); g.fillStyle = '#2b1f24'; circ(g, 23, 0, 17); g.strokeStyle = '#8c8087'; g.lineWidth = 3; g.stroke(); g.fillStyle = '#7a1f2b'; circ(g, 23, 0, 11); g.fillStyle = '#c9bfc4'; circ(g, 23, 0, 4.5); g.strokeStyle = '#150c10'; g.lineWidth = 2; g.stroke(); },   // a zealot: a big round shield held up in front and a spiked mace
   staff: g => { stroke(g, '#6d4c41', 3, 6, 22, 32, -8); g.fillStyle = '#4db6ac'; circ(g, 33, -9, 5); g.fillStyle = '#e0f7fa'; circ(g, 32, -10, 2); },
   greataxe: g => { stroke(g, '#5d4037', 4, 6, 22, 30, 4); poly(g, '#b0bec5', [24, -8, 40, 0, 38, 14, 26, 10]); poly(g, '#e57373', [26, -4, 36, 1, 35, 9, 28, 7]); },
   lantern: g => { stroke(g, '#6d4c41', 2, 12, 16, 22, 13); g.fillStyle = '#ffee58'; g.fillRect(22, 8, 9, 11); g.strokeStyle = '#5d4037'; g.lineWidth = 2; g.strokeRect(22, 8, 9, 11); },
@@ -141,6 +143,9 @@ function mkPlayerCanvas(L) {
     g.fillStyle = '#f0c8a0'; circ(g, 2, 0, 11); g.stroke();
     g.fillStyle = L[2]; g.beginPath(); g.arc(2, 0, 11, Math.PI * .5, Math.PI * 1.5); g.fill();
     g.fillStyle = 'rgba(255,255,255,.25)'; circ(g, 5, -4, 3);
+    if (L[5] === 'hood') {   // a hooded cultist: a dark cowl over the head, a black opening and two glowing eyes
+      g.fillStyle = L[2]; circ(g, 1, 0, 13); g.stroke(); poly(g, L[2], [-11, -6, -20, 0, -11, 6]); g.fillStyle = '#0d0506'; ell(g, 8, 0, 6, 8); g.fillStyle = '#ff7a1a'; circ(g, 10.5, -3, 1.5); circ(g, 10.5, 3, 1.5);
+    }
   });
 }
 const T_PL = {}, PCAN = {};
@@ -697,8 +702,10 @@ const AK = {
   2: { sc: 1.5, eo: 31, es: 18, hpW: 96, hpY: -78, shX: 3.4, shY: 1.4, eye: .72, tint: 0xff7043, eyeCol: 0xff2a2a },
   3: { sc: .85, eo: 0, es: 0, hpW: 34, hpY: -32, shX: .8, shY: .5, eye: 0, tint: 0xffffff, eyeCol: 0, human: true },   // raiding villager (melee)
   4: { sc: .85, eo: 0, es: 0, hpW: 34, hpY: -32, shX: .8, shY: .5, eye: 0, tint: 0xffffff, eyeCol: 0, human: true },   // raiding villager (archer)
+  5: { sc: .9, eo: 0, es: 0, hpW: 34, hpY: -34, shX: .85, shY: .5, eye: 0, tint: 0xffffff, eyeCol: 0, human: true },   // cult mage
+  6: { sc: 1.05, eo: 0, es: 0, hpW: 46, hpY: -40, shX: 1, shY: .6, eye: 0, tint: 0xffffff, eyeCol: 0, human: true },   // cult zealot
 };
-const T_VIL = { 3: PIXI.Texture.from(mkPlayerCanvas(['#b0432f', '#7a2a1c', '#3e2723', 'sword'])), 4: PIXI.Texture.from(mkPlayerCanvas(['#5d8f3a', '#33691e', '#3e2723', 'bow'])) };
+const T_VIL = { 3: PIXI.Texture.from(mkPlayerCanvas(['#b0432f', '#7a2a1c', '#3e2723', 'sword'])), 4: PIXI.Texture.from(mkPlayerCanvas(['#5d8f3a', '#33691e', '#3e2723', 'bow'])), 5: PIXI.Texture.from(mkPlayerCanvas(['#5a1424', '#2e0b14', '#1d0d12', 'cultstaff', null, 'hood'])), 6: PIXI.Texture.from(mkPlayerCanvas(['#3d3237', '#1f171a', '#261519', 'cultshield', null, 'hood'])) };
 const T_ARROW = tex(40, 8, g => { g.fillStyle = '#c9a66b'; g.fillRect(2, 3, 28, 2); g.fillStyle = '#e0e0e0'; poly(g, '#e0e0e0', [38, 4, 29, 0, 29, 8]); g.fillStyle = '#d32f2f'; g.fillRect(0, 1, 6, 2); g.fillRect(0, 5, 6, 2); });
 function mkAlien(a) {
   const ak = a[9] ? Object.assign({}, AK[0], { sc: .6, tint: 0x8dff7a, eyeCol: 0xffe600, eye: .3, hpW: 30 }) : (AK[a[5]] || AK[0]), c = new PIXI.Container(), sh = new PIXI.Sprite(T_SHADOW); sh.anchor.set(.5); sh.scale.set(ak.shX, ak.shY); sh.y = a[5] === 2 ? 14 : 6;
@@ -826,19 +833,23 @@ function syncArrows(m) {
   const seen = {}, now = performance.now();
   for (const w of m.ar || []) {
     seen[w[0]] = 1; let e = arrowE[w[0]];
-    if (!e) { const slow = !!w[4]; let s;
-      if (slow) {   // the spitter's slow shot: a solid acid-green blob with a dark rim and a bright core, so it reads clearly against any ground
+    if (!e) { const slow = w[4] === 1, fb = w[4] === 2; let s;
+      if (fb) {   // a cult mage's fireball: a hot white-yellow core, an orange flame body and a red glow that flickers
+        s = new PIXI.Container(); const gl = new PIXI.Sprite(T_GLOW); gl.anchor.set(.5); gl.scale.set(.85); gl.tint = 0xff5a1f; gl.blendMode = BM.ADD; gl.alpha = .75;
+        const g = new PIXI.Graphics(); g.beginFill(0xff4a12, .95).drawCircle(0, 0, 12).endFill(); g.beginFill(0xff9a2e).drawCircle(0, 0, 8.5).endFill(); g.beginFill(0xffe9a0).drawCircle(-1, -1, 4.5).endFill();
+        s.addChild(gl, g);
+      } else if (slow) {   // the spitter's slow shot: a solid acid-green blob with a dark rim and a bright core, so it reads clearly against any ground
         s = new PIXI.Container(); const gl = new PIXI.Sprite(T_GLOW); gl.anchor.set(.5); gl.scale.set(.5); gl.tint = 0x9dff4a; gl.blendMode = BM.ADD; gl.alpha = .55;
         const g = new PIXI.Graphics(); g.lineStyle(3, 0x0d3b0d, 1).beginFill(0x6fdc1e).drawCircle(0, 0, 10).endFill(); g.lineStyle(0).beginFill(0xd4ff7a, .95).drawCircle(-3, -3, 4).endFill(); g.beginFill(0x2e7d12, .8).drawCircle(4, 4, 3).endFill();
         s.addChild(gl, g);
-      } else { s = new PIXI.Sprite(T_ARROW); s.anchor.set(.9, .5); s.scale.set(.9); } ents.addChild(s); e = arrowE[w[0]] = { s, slow }; }
-    e.x = w[1]; e.y = w[2]; e.a = w[3] / 100; e.t0 = now; if (!e.slow) e.s.rotation = e.a;
+      } else { s = new PIXI.Sprite(T_ARROW); s.anchor.set(.9, .5); s.scale.set(.9); } ents.addChild(s); e = arrowE[w[0]] = { s, slow, fb }; }
+    e.x = w[1]; e.y = w[2]; e.a = w[3] / 100; e.t0 = now; if (!e.slow && !e.fb) e.s.rotation = e.a;
   }
   for (const id in arrowE) if (!seen[id]) { arrowE[id].s.destroy(); delete arrowE[id]; }
 }
 function stepArrows() {
   const now = performance.now();
-  for (const id in arrowE) { const e = arrowE[id], el = Math.min(.12, (now - e.t0) / 1000); { const v = e.slow ? 150 : 520; e.s.position.set(e.x + Math.cos(e.a) * v * el, e.y + Math.sin(e.a) * v * el); if (e.slow) { const pu = 1 + Math.sin(performance.now() / 90) * .12; e.s.scale.set(pu); } } e.s.zIndex = e.s.y; }   // keep flying between snapshots
+  for (const id in arrowE) { const e = arrowE[id], el = Math.min(.12, (now - e.t0) / 1000); { const v = e.fb ? 230 : e.slow ? 150 : 520; e.s.position.set(e.x + Math.cos(e.a) * v * el, e.y + Math.sin(e.a) * v * el); if (e.slow) { const pu = 1 + Math.sin(performance.now() / 90) * .12; e.s.scale.set(pu); } if (e.fb) { e.s.scale.set(1 + Math.sin(performance.now() / 45 + e.x) * .14); if (Math.random() < .7) emit(pfx, T_GLOW, e.s.x - Math.cos(e.a) * 10, e.s.y - Math.sin(e.a) * 10, rnd(-18, 18) - Math.cos(e.a) * 30, rnd(-18, 18) - Math.sin(e.a) * 30, .5, .16, .02, Math.random() < .5 ? 0xff7a1a : 0xffc04a, .8, true, 0); } } e.s.zIndex = e.s.y; }   // keep flying between snapshots
   aimG.clear();
   for (const k in ents2) { const e = ents2[k]; if (e.kind !== 'a' || !e.d || !(e.d[8] > 0)) continue; const f = e.d[8] / 100, a = e.d[6] != null ? e.d[6] / 100 : e.ang; aimG.lineStyle(1.5 + f * 2.5, 0xff5252, .25 + f * .55); aimG.moveTo(e.x, e.y); aimG.lineTo(e.x + Math.cos(a) * 300, e.y + Math.sin(a) * 300); }
 }
@@ -1653,7 +1664,7 @@ function chosen() {
   $('cName').textContent = c.n + ' · Lv ' + GC.lvlOf(PF.xp[c.id]);
 }
 // ---------- game-over screen: what you killed, how the gems add up, and they fly into your gem pool ----------
-const KILLN = { alien: ['👾', 'Aliens'], brute: ['👹', 'Brutes'], villager: ['🏹', 'Villagers'], spitter: ['🤢', 'Spitters'], wolf: ['🐺', 'Wolves'], alpha: ['🐺', 'Alpha wolves'], bear: ['🐻', 'Bears'], mammoth: ['🦣', 'Mammoths'], boar: ['🐗', 'Boars'], golem: ['🪨', 'Magma golems'], imp: ['👺', 'Fire imps'], vulture: ['🦅', 'Vultures'], rabbit: ['🐇', 'Rabbits'], scorpion: ['🦂', 'Scorpions'], penguin: ['🐧', 'Penguins'], sal: ['🦎', 'Lava salamanders'] };
+const KILLN = { alien: ['👾', 'Aliens'], brute: ['👹', 'Brutes'], villager: ['🏹', 'Villagers'], mage: ['🔥', 'Cult mages'], zealot: ['🛡️', 'Zealots'], spitter: ['🤢', 'Spitters'], wolf: ['🐺', 'Wolves'], alpha: ['🐺', 'Alpha wolves'], bear: ['🐻', 'Bears'], mammoth: ['🦣', 'Mammoths'], boar: ['🐗', 'Boars'], golem: ['🪨', 'Magma golems'], imp: ['👺', 'Fire imps'], vulture: ['🦅', 'Vultures'], rabbit: ['🐇', 'Rabbits'], scorpion: ['🦂', 'Scorpions'], penguin: ['🐧', 'Penguins'], sal: ['🦎', 'Lava salamanders'] };
 async function showGameOver(m) {
   const sleepMs = ms => new Promise(r => setTimeout(r, skip ? Math.min(ms, 30) : ms)); let skip = false;
   const countTo = (el, to, ms, fmt, sound) => new Promise(res => { const t0 = performance.now(); let last = -1; const step = now => { const u = skip ? 1 : Math.min(1, (now - t0) / ms), v = Math.round(to * (u * (2 - u))); if (v !== last) { last = v; el.textContent = fmt(v); if (sound && v > 0 && v <= to) SFX.coin(); } if (u < 1) requestAnimationFrame(step); else res(); }; requestAnimationFrame(step); });

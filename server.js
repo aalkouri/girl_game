@@ -61,7 +61,7 @@ function award(pl, amount, why) {
 }
 
 // ---------- levels: XP is earned per class (nights survived + kills); level 99 is the cap ----------
-const KILL_XP = { rabbit: 1, scorpion: 1, penguin: 1, sal: 1, alien: 3, wolf: 4, imp: 5, villager: 5, boar: 6, spitter: 6, vulture: 8, brute: 10, charger: 12, alpha: 14, golem: 25, bear: 40, mammoth: 80 };
+const KILL_XP = { rabbit: 1, scorpion: 1, penguin: 1, sal: 1, alien: 3, wolf: 4, imp: 5, villager: 5, mage: 12, zealot: 22, boar: 6, spitter: 6, vulture: 8, brute: 10, charger: 12, alpha: 14, golem: 25, bear: 40, mammoth: 80 };
 const lvOf = p => GC.lvlOf(p.prof && p.prof.xp ? p.prof.xp[p.cls] : 0);
 function gainXp(p, amt) {
   if (!p.prof || !(amt > 0)) return;
@@ -149,6 +149,7 @@ const R = 3600;                      // home island radius (doubled again from 1
 const ALIEN_R = 950;                 // aliens come ashore this far from the fire
 const DAY = 90, DUSK = 30, NIGHT = 60, CYC = DAY + DUSK + NIGHT;
 const HOME_R = 150, HOME_RATE = 1.0;   // a spitter's glob starts to curve toward you within HOME_R px, turning at most HOME_RATE rad/s, and only once
+const CULT = { fire: 24, melee: 46 };   // a mage's fireball and a zealot's blow (before +4% per night and armor)
 const VIL_DMG = { arrow: 22, melee: 18 };   // raiding / camp villagers: an archer's arrow and a villager's blow (was 6 and 7), before the +4% per night and before armor
 // [infight] experiment: different species fight each other (set to false to switch it off; see the INFIGHT block in Room to remove it)
 const INFIGHT = true, FIGHT_SEE = 280, FIGHT_PLAYER = 380;
@@ -327,7 +328,7 @@ function genLava(islands, code, loot) {
   return out;
 }
 // villages: one tipi camp in the desert of each desert (or mixed) island - decoration plus a home for groups of 3-6 villagers
-function genVillages(islands, code, loot) {
+function genVillages(islands, code, loot, lava) {
   const rnd = seeded(code + '@villages'), out = [];
   for (let i = 1; i < islands.length; i++) {
     const is = islands[i]; if (is.b !== 'd' && is.b !== 'm') continue;
@@ -337,6 +338,18 @@ function genVillages(islands, code, loot) {
       if (RC.biomeAt(is.x, is.y, is.r, is.b, x, y) !== 'd' || !RC.inIsland(is, x, y, 500) || out.some(v => v.isl === i && Math.hypot(v.x - x, v.y - y) < 1300)) continue;
       if (loot.some(l => Math.hypot(l.x - x, l.y - y) < 500 || Math.hypot(l.cx - x, l.cy - y) < 400 || Math.hypot(l.tx - x, l.ty - y) < 400)) continue;
       out.push({ id: out.length + 1, isl: i, x: Math.round(x), y: Math.round(y), seed: Math.floor(rnd() * 1e6) }); made++;
+    }
+  }
+  // the volcano biome: a ritual camp (a fire altar ringed by obelisks) with a band of hooded cultists, two on each lava island
+  const cr = seeded(code + '@cults');
+  for (let i = 1; i < islands.length; i++) {
+    const is = islands[i]; if (is.b !== 'l') continue; let made = 0;
+    for (let t = 0; t < 300 && made < 2; t++) {
+      const a = cr() * 6.283, d = 400 + Math.sqrt(cr()) * Math.max(100, RC.edgeR(is, a) - 1000), x = is.x + Math.cos(a) * d, y = is.y + Math.sin(a) * d;
+      if (RC.biomeAt(is.x, is.y, is.r, is.b, x, y) !== 'l' || !RC.inIsland(is, x, y, 500) || out.some(v => v.isl === i && Math.hypot(v.x - x, v.y - y) < 1300)) continue;
+      if (loot.some(l => Math.hypot(l.x - x, l.y - y) < 500 || Math.hypot(l.cx - x, l.cy - y) < 400 || Math.hypot(l.tx - x, l.ty - y) < 400)) continue;
+      if ((lava || []).some(q => q.isl === i && Math.hypot(q.x - x, q.y - y) < q.r + 280)) continue;
+      out.push({ id: out.length + 1, isl: i, x: Math.round(x), y: Math.round(y), seed: Math.floor(cr() * 1e6), cult: 1 }); made++;
     }
   }
   return out;
@@ -376,7 +389,7 @@ class Room {
     } };
     add('t', 540, CAMP_CLEAR); add('r', 336); add('b', BUSHES);   // 4x the area of the old island, same density
     this.islands = mv >= 2 ? genIslands(code, this.worldR) : genIslandsLegacy(code); this.islands.forEach((is, i) => { if (i > 0) this.res.push(...islandRes(is, i, code)); });
-    this.loot = genLoot(this.islands, code); this.villages = genVillages(this.islands, code, this.loot); this.lava = genLava(this.islands, code, this.loot);
+    this.loot = genLoot(this.islands, code); this.lava = genLava(this.islands, code, this.loot); this.villages = genVillages(this.islands, code, this.loot, this.lava);
     { const cb = genCabins(this.islands, code, this.loot); this.cabins = cb.cabins; this.loot.push(...cb.loot); this.clearCabinRes(); }
     this.reset();
   }
@@ -778,7 +791,7 @@ class Room {
   }
   killKey(a) {   // what kind of creature was that (for the game-over kill list)
     if (a.rab) return a.crit || 'rabbit'; if (a.vul) return 'vulture'; if (a.sp) return a.sp; if (a.big === 1) return 'bear'; if (a.big === 2) return 'mammoth'; if (a.wolf) return a.alpha ? 'alpha' : 'wolf';
-    if (a.spit) return 'spitter'; if (a.k === 1) return 'brute'; if (a.k >= 3) return 'villager'; return 'alien';
+    if (a.spit) return 'spitter'; if (a.k === 1) return 'brute'; if (a.k === 5) return 'mage'; if (a.k === 6) return 'zealot'; if (a.k >= 3) return 'villager'; return 'alien';
   }
   tally(p, a) { p.runK = p.runK || {}; const k = this.killKey(a); p.runK[k] = (p.runK[k] || 0) + 1; gainXp(p, a.k === 2 && !a.wolf && !a.rab ? KILL_XP.charger : KILL_XP[k] || 2); }
   killCredit(p, a) { if (a.hp <= 0 && !a.cred) { a.cred = 1; this.tally(p, a); if (p.prof) { p.prof.k++; dirty = true; if (p.prof.k % 10 === 0) award(p, 1, 'kills'); } } }
@@ -823,7 +836,9 @@ class Room {
   stepBattle(P, dt) {   // bullets, turrets and zones (totems, beacons)
     for (let i = this.bullets.length - 1; i >= 0; i--) {
       const b = this.bullets[i]; b.x += b.vx * dt; b.y += b.vy * dt; b.ttl -= dt; let dead = b.ttl <= 0; const owner = this.players.get(b.owner);
-      if (!dead) for (const a of this.aliens) if (a.hp > 0 && a.k !== 2 && Math.hypot(a.x - b.x, a.y - b.y) < (a.rad || 22)) { a.hp -= b.dmg; if (owner) this.killCredit(owner, a); dead = true; break; }
+      if (!dead) for (const a of this.aliens) if (a.hp > 0 && a.k !== 2 && Math.hypot(a.x - b.x, a.y - b.y) < (a.rad || 22)) {
+        if (a.k === 6) { let da = Math.atan2(-b.vy, -b.vx) - (a.fa || 0); da = Math.atan2(Math.sin(da), Math.cos(da)); if (Math.abs(da) < 1.9) { dead = true; for (const q of this.players.values()) if (Math.hypot(q.x - a.x, q.y - a.y) < 900) send(q.ws, { t: 'fx', k: 'block', x: Math.round(a.x + Math.cos(a.fa || 0) * 20), y: Math.round(a.y + Math.sin(a.fa || 0) * 20) }); break; } }   // the zealot's shield stops everything shot at it from the front
+        a.hp -= b.dmg; if (owner) this.killCredit(owner, a); dead = true; break; }
       if (!dead) for (const w of this.wolves || []) if (w.hp > 0 && !w.air && Math.hypot(w.x - b.x, w.y - b.y) < 24) { w.hp -= b.dmg; w.st = 1; w.tg = b.owner; if (owner) this.killCredit(owner, w); dead = true; break; }
       if (!dead) for (const q of this.rabbits || []) if (q.hp > 0 && Math.hypot(q.x - b.x, q.y - b.y) < 16) { if (owner) this.tally(owner, q); this.killRabbit(q); dead = true; break; }   // scorpions and the other small creatures can be shot too
       if (dead) this.bullets.splice(i, 1);
@@ -1187,6 +1202,14 @@ class Room {
         if (v.spawned && !v.rt) v.rt = 120; if (v.rt > 0) { v.rt -= WOLF.respawn; if (v.rt > 0) continue; }
         if (P.some(p => !p.down && Math.hypot(p.x - v.x, p.y - v.y) < 1300) || !P.some(p => Math.hypot(p.x - v.x, p.y - v.y) < VIL_ACT)) continue;   // never pop in where anyone can see; and only when someone is within a few screens
         const n = 3 + Math.floor(Math.random() * 4); v.spawned = 1; v.rt = 0;
+        if (v.cult) {   // a band of cultists: a shield-bearing zealot every third one, the rest are staff-wielding mages
+          const cs = 1 + 0.04 * Math.max(0, this.night - 1);
+          for (let k = 0; k < n; k++) {
+            const zealot = k % 3 === 0, a = Math.random() * 6.283, d = 60 + Math.random() * 90, hp = Math.round((zealot ? 220 : 60) * cs);
+            this.spawnA({ id: this.nid++, isl: v.isl, x: v.x + Math.cos(a) * d, y: v.y + Math.sin(a) * d, hp, mhp: hp, sp: zealot ? 62 : 70, dmg: (zealot ? CULT.melee : CULT.fire) * cs, k: zealot ? 6 : 5, cd: 0, atkCd: zealot ? 2.0 : 1.5, reach: zealot ? 38 : 0, stop: zealot ? 24 : 300, range: 380, rad: zealot ? 15 : 12, aim: 0, shotCd: Math.random() * 2, vil: v.id, hx: v.x, hy: v.y });
+          }
+          continue;
+        }
         for (let k = 0; k < n; k++) {
           const archer = k % 3 === 2, a = Math.random() * 6.283, d = 60 + Math.random() * 90, hp = Math.round((archer ? 30 : 45) * s);
           this.spawnA({ id: this.nid++, isl: v.isl, x: v.x + Math.cos(a) * d, y: v.y + Math.sin(a) * d, hp, mhp: hp, sp: archer ? 70 : 80, dmg: (archer ? VIL_DMG.arrow : VIL_DMG.melee) * s, k: archer ? 4 : 3, cd: 0, atkCd: 1.5, reach: archer ? 0 : 30, stop: archer ? 250 : 22, range: 290, aim: 0, shotCd: 0, vil: v.id, hx: v.x, hy: v.y });
@@ -1320,7 +1343,7 @@ class Room {
         const dx = b.x - best.x, dy = b.y - best.y, L = Math.hypot(dx, dy) || 1; const er2 = RC.edgeRat(best, b.x, b.y) + 90; b.x = best.x + dx / L * er2; b.y = best.y + dy / L * er2;
       }
     }
-    r.loot = genLoot(r.islands, o.code); r.villages = genVillages(r.islands, o.code, r.loot); r.lava = genLava(r.islands, o.code, r.loot); { const cb = genCabins(r.islands, o.code, r.loot); r.cabins = cb.cabins; r.loot.push(...cb.loot); }   // loot areas are derived from the islands; only which chests were opened and the campfires are saved
+    r.loot = genLoot(r.islands, o.code); r.lava = genLava(r.islands, o.code, r.loot); r.villages = genVillages(r.islands, o.code, r.loot, r.lava); { const cb = genCabins(r.islands, o.code, r.loot); r.cabins = cb.cabins; r.loot.push(...cb.loot); }   // loot areas are derived from the islands; only which chests were opened and the campfires are saved
     if (o.islands && o.isv === ISL_VER) { r.camps = o.camps || []; const op = new Set(o.lootOpen || []); for (const l of r.loot) if (op.has(l.id)) l.open = 1; }
     { let nb = 0; r.res = r.res.filter(x => x.k !== 'b' || x.isl > 0 || ++nb <= BUSHES); }
     r.clearCabinRes(); r.addCabinWalls();   // rooms saved before the bush cut lose their extra bushes (done before anyone joins, so client indexes stay aligned)
@@ -1583,13 +1606,13 @@ class Room {
         if (a.spitCd <= 0) { a.spitCd = 4 + Math.random() * 3; const ang = Math.atan2(ty - a.y, tx - a.x); this.arrows.push({ id: this.nid++, x: a.x, y: a.y, vx: Math.cos(ang) * 150, vy: Math.sin(ang) * 150, dmg: 12 + Math.min(12, (this.night - 16) * 0.5), ttl: 4.5, slow: 1 }); }
       }
       let stay = false;
-      if (a.k === 4 && tgt) {   // archer villager: stops at range, aims for 1.5 s (the client shows a red aim line), then looses a fast arrow
+      if ((a.k === 4 || a.k === 5) && tgt) {   // archer villager / cult mage: stops at range, aims (the client shows a red aim line), then looses an arrow / a slow fireball
         if (a.shotCd > 0) a.shotCd -= dt;
         if (d <= a.range && a.shotCd <= 0 && !pathBlocked) {
           a.aim = (a.aim || 0) + dt; stay = true;
-          if (a.aim >= 1.5) { const ang = Math.atan2(ty - a.y, tx - a.x); this.arrows.push({ id: this.nid++, x: a.x, y: a.y, vx: Math.cos(ang) * ARROW_SPEED, vy: Math.sin(ang) * ARROW_SPEED, dmg: a.dmg, ttl: 1.3 }); a.aim = 0; a.shotCd = 2.6; }
+          if (a.aim >= (a.k === 5 ? 1.0 : 1.5)) { const ang = Math.atan2(ty - a.y, tx - a.x); if (a.k === 5) this.arrows.push({ id: this.nid++, x: a.x, y: a.y, vx: Math.cos(ang) * 230, vy: Math.sin(ang) * 230, dmg: a.dmg, ttl: 2.6, fb: 1 }); else this.arrows.push({ id: this.nid++, x: a.x, y: a.y, vx: Math.cos(ang) * ARROW_SPEED, vy: Math.sin(ang) * ARROW_SPEED, dmg: a.dmg, ttl: 1.3 }); a.aim = 0; a.shotCd = a.k === 5 ? 2.4 : 2.6; }
         } else a.aim = 0;
-      } else if (a.k === 4) a.aim = 0;
+      } else if (a.k === 4 || a.k === 5) a.aim = 0;
       if (!stay && (pathBlocked || d > (a.vil && !tgt ? 90 : (a.stop || 20)))) { a.x += mx * sp * (a.vil && !tgt ? 0.6 : 1) * dt; a.y += my * sp * (a.vil && !tgt ? 0.6 : 1) * dt; }
       for (const st of this.struct) {   // every structure is solid and indestructible (except traps)
         if (st.k === 'trap' || st.k === 'spike' || (st.k === 'gate' && st.open)) continue;
@@ -1650,7 +1673,7 @@ class Room {
       bl: this.bullets.map(b => [b.id, Math.round(b.x), Math.round(b.y), Math.round(Math.atan2(b.vy, b.vx) * 100), b.kind]),
       zn: this.zones.map(z => [z.id, Math.round(z.x), Math.round(z.y), z.r, z.k, Math.ceil(z.ttl)]),
       tr: this.turrets.map(t => [t.id, Math.round(t.x), Math.round(t.y)]),
-      ar: this.arrows.map(w => [w.id, Math.round(w.x), Math.round(w.y), Math.round(Math.atan2(w.vy, w.vx) * 100), w.slow ? 1 : 0]),
+      ar: this.arrows.map(w => [w.id, Math.round(w.x), Math.round(w.y), Math.round(Math.atan2(w.vy, w.vx) * 100), w.fb ? 2 : w.slow ? 1 : 0]),
       rd: rd.length ? rd : undefined,
       dr: this.drops.map(d => [d.id, d.k, Math.round(d.x), Math.round(d.y), d.food]),
       st: this.struct.filter(t => t.k !== 'cwall').map(t => [t.id, t.k, Math.round(t.x), Math.round(t.y), Math.round(t.hp), t.mhp, t.items ? [t.items.wood, t.items.stone, t.items.food, t.items.scrap] : t.smelt ? [t.smelt.q, Math.round(t.smelt.prog / RC.SMELT.time * 100) / 100] : 0, t.rot || 0, t.open ? 1 : 0, t.m || '']),
@@ -1706,7 +1729,7 @@ wss.on('connection', ws => {
       if (room.players.size >= MAXP) { send(ws, { t: 'err', m: 'Room is full' }); return; }
       const ghost = email && [...room.players.values()].find(p => p.ghost && p.email === email);   // you dropped out in danger and are back within the grace period
       if (ghost) { me = ghost; me.ghost = 0; me.ws = ws; me.name = name; } else me = room.add(ws, name, cls, pf, email);
-      send(ws, { t: 'init', id: me.id, room: rc, R, cls, gear: me.gear, prof: view(pf), res: room.res.map(r => [r.k, Math.round(r.x), Math.round(r.y)]), isl: room.islands.map(i => [i.x, i.y, i.r, i.b, i.s || 0]), loot: room.loot.filter(l => !l.visit).map(l => [l.id, l.x, l.y, l.b, l.seed, l.tier, l.cx, l.cy, l.trader, l.tx, l.ty, l.cab || 0, l.kind || '']), cab: (room.cabins || []).map(c => [c.id, c.isl, c.x, c.y, c.w, c.h, c.side, c.door]), vg: (room.villages || []).map(v => [v.id, v.x, v.y, v.seed]), lv: (room.lava || []).map(l => [l.x, l.y, l.r]) });
+      send(ws, { t: 'init', id: me.id, room: rc, R, cls, gear: me.gear, prof: view(pf), res: room.res.map(r => [r.k, Math.round(r.x), Math.round(r.y)]), isl: room.islands.map(i => [i.x, i.y, i.r, i.b, i.s || 0]), loot: room.loot.filter(l => !l.visit).map(l => [l.id, l.x, l.y, l.b, l.seed, l.tier, l.cx, l.cy, l.trader, l.tx, l.ty, l.cab || 0, l.kind || '']), cab: (room.cabins || []).map(c => [c.id, c.isl, c.x, c.y, c.w, c.h, c.side, c.door]), vg: (room.villages || []).map(v => [v.id, v.x, v.y, v.seed, v.cult ? 1 : 0]), lv: (room.lava || []).map(l => [l.x, l.y, l.r]) });
     } else if (m.t === 'craft' && me) {
       const now = Date.now(); if (now - (me.lastCraft || 0) < 200) { send(ws, { t: 'crafted', id: String(m.id || ''), ok: false, msg: 'Slow down a little.', gear: me.gear }); return; } me.lastCraft = now;
       let res; try { res = room.craft(me, String(m.id || ''), m.rot); } catch (e) { console.error('craft error:', e && e.stack || e); res = { ok: false, msg: 'Could not craft that.' }; }

@@ -103,7 +103,6 @@ function drawMap() {
   for (const l of (typeof LOOT !== 'undefined' ? LOOT : [])) if (l.trader && !l.vend && revealed(l.tx, l.ty)) {   // a discovered trader stays on the map, each kind with its own icon
     const T = RC.TRADERS[l.trader]; g.beginPath(); g.arc(X(l.tx), Y(l.ty), 22, 0, TAU); g.fillStyle = '#14304af0'; g.fill(); g.lineWidth = 3; g.strokeStyle = '#ffd000'; g.stroke(); g.font = '28px system-ui,sans-serif'; g.fillStyle = '#fff'; g.fillText(T.e, X(l.tx), Y(l.ty) + 2); g.font = '16px system-ui,sans-serif';
   }
-  for (const b of S.bt || []) if (b[0] > 0) g.fillText('⛵', X(b[1]), Y(b[2]));   // (the visiting vendor's boat, id < 0, is not on the map)
   mapSc = { size, s, cx: mapV.cx, cy: mapV.cy };   // the players are drawn on the overlay canvas (drawMarkers), so they can pulse
 }
 addEventListener('keydown', e => { if (e.key.toLowerCase() === 'm' && !/INPUT|TEXTAREA/.test((e.target || {}).tagName || '') && $('btns') && $('btns').style.display !== 'none') toggleMap(); else if (e.key === 'Escape' && mapOpen) toggleMap(false); });
@@ -116,6 +115,11 @@ function drawMarkers() {
   if (ov.width !== cv.width) { ov.width = ov.height = cv.width; }
   const g = ov.getContext('2d'), { size, s, cx, cy } = mapSc, X = x => size / 2 + (x - cx) * s, Y = y => size / 2 + (y - cy) * s, t = performance.now() / 1000;
   g.clearRect(0, 0, size, size); g.textAlign = 'center'; g.textBaseline = 'middle';
+  for (const b of S.bt || []) {   // every boat in the water gets a marker: a round badge with a sail (the one you are riding is gold; the visiting vendor's boat, id < 0, is left off)
+    if (b[0] <= 0) continue; const x = X(b[1]), y = Y(b[2]), mine = (S.p.find(p => p[0] === myId) || [])[20] === b[0];
+    g.beginPath(); g.arc(x, y, 14, 0, TAU); g.fillStyle = '#0f3550f2'; g.fill(); g.lineWidth = 3; g.strokeStyle = mine ? '#ffd000' : '#4fc3f7'; g.stroke();
+    g.font = '18px system-ui,sans-serif'; g.fillStyle = '#fff'; g.fillText('⛵', x, y + 1);
+  }
   for (const p of S.p) {
     const me = p[0] === myId, e = ents2['p' + p[0]], x = X(e ? e.x : p[3]), y = Y(e ? e.y : p[4]);
     if (me) {   // yours: two expanding rings and a beating dot, so you can always find yourself
