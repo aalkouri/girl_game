@@ -1091,7 +1091,7 @@ class Room {
     for (const q of drops) { const a = Math.random() * 6.283, d = 8 + Math.random() * 18; q.x = b.x + Math.cos(a) * d; q.y = b.y + Math.sin(a) * d; q.t = 0.15; this.pend.push(q); }
   }
   ph() { return this.c < DAY ? 0 : this.c < DAY + DUSK ? 1 : 2; }
-  awayEntry(p) { return { t: Date.now(), s: { wood: p.wood, stone: p.stone, food: p.food, scrap: p.scrap, meat: p.meat, gold: p.gold, pelt: p.pelt, apelt: p.apelt, fish1: p.fish1, fish2: p.fish2, fish3: p.fish3, abilOn: p.abilOn, gear: p.gear, buff: p.buff, slots: p.slots, cls: p.cls, down: p.down, hp: p.hp, x: p.x, y: p.y } }; }
+  awayEntry(p) { return { t: Date.now(), s: { wood: p.wood, stone: p.stone, food: p.food, scrap: p.scrap, meat: p.meat, gold: p.gold, pelt: p.pelt, apelt: p.apelt, fish1: p.fish1, fish2: p.fish2, fish3: p.fish3, abilOn: p.abilOn, gear: p.gear, buff: p.buff, slots: p.slots, cls: p.cls, down: p.down, hp: p.hp, x: p.x, y: p.y, bt: p.boat || 0 } }; }
   dangerFor(p) {   // is it dangerous to be where this player is (night / dusk, an enemy close by, a shark near their boat)?
     if (this.ph() >= 1) return true;
     for (const w of this.wolves || []) if (w.hp > 0 && !w.vul && Math.hypot(w.x - p.x, w.y - p.y) < 700) return true;
@@ -1159,14 +1159,19 @@ class Room {
     const a = email && this.away.get(email); this.away.delete(email);
     if (a && Date.now() - a.t <= ROOM_IDLE_SEC * 1000) {   // welcome back: same stuff, same spot (a downed player just respawns)
       const o = a.s; p.wood = o.wood; p.stone = o.stone; p.food = o.food; p.scrap = o.scrap; p.meat = o.meat || 0; p.gold = o.gold || 0; p.pelt = o.pelt || 0; p.apelt = o.apelt || 0; p.fish1 = o.fish1 || 0; p.fish2 = o.fish2 || 0; p.fish3 = o.fish3 || 0; p.abilOn = o.abilOn ? 1 : 0; p.gear = o.gear; p.buff = o.buff; p.slots = (o.slots || []).filter(id => RC.ITEM_BY[id]).slice(0, 7);
-      if (o.cls === cls && !o.down) { p.hp = Math.min(p.mhp, o.hp); p.x = o.x; p.y = o.y; if (this.landAt(p.x, p.y) < 0) { const q = this.landPoint(p.x, p.y); p.x = q[0]; p.y = q[1]; } }   // (someone who left while sailing comes back on the nearest shore)
+      if (o.cls === cls && !o.down) {
+        p.hp = Math.min(p.mhp, o.hp); p.x = o.x; p.y = o.y;
+        const bt = o.bt && this.boats.find(x => x.id === o.bt && !x.gone);   // left while sailing: you come back aboard the same boat, still on the water
+        if (bt && bt.riders.length < RC.BOATS[bt.type || 'boat'].riders) this.enterBoat(p, bt);
+        else if (this.landAt(p.x, p.y) < 0) { const q = this.landPoint(p.x, p.y); p.x = q[0]; p.y = q[1]; }   // (the boat is gone or full: the nearest shore)
+      }
     }
     this.players.set(p.id, p); return p;
   }
   tick(dt) {
     for (const gp of [...this.players.values()]) if (gp.ghost) {   // players who dropped out in danger: they stand there helpless until the grace period ends
       gp.inp = { dx: 0, dy: 0, act: 0, hit: 0, rn: 0, am: 0, aim: 0 }; gp.ghost -= dt;
-      if (gp.ghost <= 0) { this.releaseBoat(gp); this.stash(gp); this.players.delete(gp.id); }
+      if (gp.ghost <= 0) { this.stash(gp); this.releaseBoat(gp); this.players.delete(gp.id); }
     }
     const P = [...this.players.values()];
     if (!P.length) { this.emptyFor += dt; return; } this.emptyFor = 0;
@@ -1569,7 +1574,7 @@ wss.on('connection', ws => {
   ws.on('close', () => {
     if (!(room && me) || me.ws !== ws) return;
     if (!me.ended && room.dangerFor(me)) { me.ghost = GHOST_SEC; me.ws = { readyState: 3, send() { } }; return; }   // leaving in danger: the character stays in the world (and can be hurt) for GHOST_SEC seconds
-    room.releaseBoat(me); if (!me.ended) room.stash(me); room.players.delete(me.id);
+    if (!me.ended) room.stash(me); room.releaseBoat(me); room.players.delete(me.id);   // (stash first: it remembers which boat you were on)
   });
   ws.on('error', () => { });
 });
