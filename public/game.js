@@ -1150,7 +1150,7 @@ function buildCraft() {
   for (const r of RC.LIST) {
     if (r.id === 'bench' ? bench : !bench) continue;   // bench recipe hides once one exists; other recipes appear once it does
     if (r.max && (S.st || []).filter(t => t[1] === r.kind && (() => { const C = curCamp(ents2['p' + myId]); return C && Math.hypot(t[2] - C.x, t[3] - C.y) < C.r; })()).length >= r.max) continue;   // one chest / pot / smelter per camp: the recipe disappears once it is built (and comes back if you dismantle it)
-    if (r.scrap && !(S && S.sf)) continue;   // scrap recipes (the boat) appear once anyone has found scrap
+    if (r.scrap && !(S && S.sf) && !(((S && S.p.find(q => q[0] === myId)) || [])[15] >= 1)) continue;   // scrap recipes (the boat) appear once anyone has found scrap
     if (r.kind === 'gear' && GEAR[r.gear]) continue;   // tools you already made disappear from your menu (per player)
     const ok = iv.wood >= r.cost.wood && iv.stone >= r.cost.stone && iv.scrap >= (r.cost.scrap || 0);
     const co = [r.cost.wood ? '<span class="' + (iv.wood >= r.cost.wood ? '' : 'no') + '">🪵 ' + iv.wood + '/' + r.cost.wood + '</span>' : '', r.cost.stone ? '<span class="' + (iv.stone >= r.cost.stone ? '' : 'no') + '">🪨 ' + iv.stone + '/' + r.cost.stone + '</span>' : '', r.cost.scrap ? '<span class="' + (iv.scrap >= r.cost.scrap ? '' : 'no') + '">🔩 ' + iv.scrap + '/' + r.cost.scrap + '</span>' : ''].filter(Boolean).join(' &nbsp; ');

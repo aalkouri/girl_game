@@ -21,7 +21,22 @@ const chestTex = (tier, open) => tex(60, 50, g => {
   if (open) { g.fillStyle = '#1c130a'; g.fillRect(10, 18, 40, 6); g.fillStyle = lid; g.save(); g.translate(8, 18); g.rotate(-.9); g.fillRect(0, -14, 44, 14); g.restore(); g.fillStyle = '#ffe9a0'; circ(g, 30, 20, 3); }
   else { g.fillStyle = lid; g.beginPath(); g.moveTo(8, 22); g.quadraticCurveTo(30, 0, 52, 22); g.closePath(); g.fill(); g.fillStyle = band; g.fillRect(27, 10, 6, 12); g.fillStyle = '#ffe27a'; circ(g, 30, 24, 3.4); }
 });
-const T_LCHEST = [null, [chestTex(1, 0), chestTex(1, 1)], [chestTex(2, 0), chestTex(2, 1)], [chestTex(3, 0), chestTex(3, 1)]];
+const T_LCHEST_BASE = [null, [chestTex(1, 0), chestTex(1, 1)], [chestTex(2, 0), chestTex(2, 1)], [chestTex(3, 0), chestTex(3, 1)]];
+const T_LCHEST = T_LCHEST_BASE;
+// cabin furniture (closed, opened): cabinet, barrel, crate, shelf - same look as the chests (seen from a little above)
+const T_CAB = {
+  cabinet: [0, 1].map(o => tex(56, 70, g => { g.fillStyle = 'rgba(0,0,0,.2)'; ell(g, 28, 64, 22, 5); g.fillStyle = '#6e4623'; g.fillRect(8, 8, 40, 54); g.fillStyle = '#8a5a2b'; g.fillRect(10, 10, 36, 50); g.strokeStyle = 'rgba(0,0,0,.5)'; g.lineWidth = 1.5; g.strokeRect(8, 8, 40, 54);
+    if (o) { g.fillStyle = '#1c130a'; g.fillRect(12, 12, 32, 46); g.fillStyle = '#a8733a'; g.fillRect(2, 12, 10, 46); g.fillRect(44, 12, 10, 46); g.fillStyle = '#ffe9a0'; circ(g, 28, 40, 3); }
+    else { g.fillStyle = '#a8733a'; g.fillRect(12, 12, 15, 46); g.fillRect(29, 12, 15, 46); g.strokeRect(12, 12, 15, 46); g.strokeRect(29, 12, 15, 46); g.fillStyle = '#ffe27a'; circ(g, 24, 36, 2.2); circ(g, 32, 36, 2.2); g.fillStyle = '#5a3a1c'; g.fillRect(6, 4, 44, 6); } })),
+  barrel: [0, 1].map(o => tex(50, 60, g => { g.fillStyle = 'rgba(0,0,0,.2)'; ell(g, 25, 54, 21, 5); g.fillStyle = '#7a4a22'; g.beginPath(); g.moveTo(8, 18); g.quadraticCurveTo(2, 36, 8, 52); g.lineTo(42, 52); g.quadraticCurveTo(48, 36, 42, 18); g.closePath(); g.fill();
+    g.strokeStyle = '#3b3f45'; g.lineWidth = 3; for (const y of [24, 36, 47]) { g.beginPath(); g.moveTo(6, y); g.quadraticCurveTo(25, y + 5, 44, y); g.stroke(); }
+    g.fillStyle = o ? '#1c130a' : '#a56b34'; ell(g, 25, 18, 17, 7); g.strokeStyle = 'rgba(0,0,0,.5)'; g.lineWidth = 1.5; g.beginPath(); g.ellipse(25, 18, 17, 7, 0, 0, TAU); g.stroke(); if (o) { g.fillStyle = '#ffe9a0'; circ(g, 25, 18, 3); } else { g.fillStyle = '#c28a4a'; ell(g, 25, 17, 12, 4); } })),
+  crate: [0, 1].map(o => tex(56, 54, g => { g.fillStyle = 'rgba(0,0,0,.2)'; ell(g, 28, 48, 23, 5); g.fillStyle = '#9a6a35'; g.fillRect(8, 16, 40, 30); g.strokeStyle = '#4a2f14'; g.lineWidth = 2.5; g.strokeRect(8, 16, 40, 30); g.beginPath(); g.moveTo(8, 16); g.lineTo(48, 46); g.moveTo(48, 16); g.lineTo(8, 46); g.stroke();
+    g.fillStyle = o ? '#1c130a' : '#b8803f'; g.fillRect(6, 10, 44, 9); g.strokeRect(6, 10, 44, 9); if (o) { g.fillStyle = '#ffe9a0'; circ(g, 28, 14, 3); g.fillStyle = '#b8803f'; g.save(); g.translate(40, 12); g.rotate(.5); g.fillRect(0, -8, 22, 7); g.restore(); } })),
+  shelf: [0, 1].map(o => tex(64, 62, g => { g.fillStyle = 'rgba(0,0,0,.2)'; ell(g, 32, 56, 26, 5); g.fillStyle = '#5a3a1c'; g.fillRect(6, 8, 52, 46); g.fillStyle = '#2b1a0c'; g.fillRect(9, 11, 46, 18); g.fillRect(9, 32, 46, 19); g.fillStyle = '#7a4a22'; g.fillRect(6, 29, 52, 4); g.fillRect(6, 52, 52, 3);
+    const cols = ['#c0392b', '#2e86c1', '#d4ac0d', '#27ae60', '#8e44ad']; for (let i = 0; i < 8; i++) { g.fillStyle = cols[i % 5]; g.fillRect(11 + i * 5.4, 15 + (i % 3), 4, 13 - (i % 3)); }
+    if (o) { g.fillStyle = '#1c130a'; g.fillRect(12, 36, 40, 12); g.fillStyle = '#ffe9a0'; circ(g, 32, 42, 3); } else { for (let i = 0; i < 5; i++) { g.fillStyle = cols[(i + 2) % 5]; g.fillRect(12 + i * 8, 38, 6, 11); } g.fillStyle = '#d9c7a0'; g.fillRect(44, 41, 8, 8); } })),
+};
 const T_BULLET = tex(26, 8, g => { const gr = g.createLinearGradient(0, 0, 26, 0); gr.addColorStop(0, 'rgba(255,200,80,0)'); gr.addColorStop(1, 'rgba(255,240,170,1)'); g.fillStyle = gr; g.fillRect(0, 2, 26, 4); g.fillStyle = '#fff'; circ(g, 23, 4, 3); });
 const T_TURRET = tex(44, 56, g => { g.fillStyle = 'rgba(0,0,0,.2)'; ell(g, 22, 50, 18, 5); g.fillStyle = '#5b6068'; g.fillRect(10, 30, 24, 18); g.fillStyle = '#7d848d'; g.fillRect(12, 32, 8, 14); g.fillStyle = '#ffb74d'; circ(g, 22, 24, 11); g.fillStyle = '#3b3f45'; g.fillRect(20, 6, 6, 22); g.fillStyle = '#d32f2f'; circ(g, 22, 24, 3.5); });
 const TRADER_LOOK = { 1: ['#9e9e9e', '#616161', '#3e2723', null, 'pack'], 2: ['#29b6f6', '#0277bd', '#6d4c41', null, 'basket'], 3: ['#8d6e63', '#4e342e', '#212121', 'wrench'], 4: ['#1e88e5', '#0d47a1', '#eeeeee', 'staff'], 5: ['#7e57c2', '#4527a0', '#e0e0e0', 'staff'] };
@@ -73,10 +88,45 @@ function xVillages(m) {
     v.c = c; cullList.push({ c, x: v.x, y: v.y });
   }
 }
+// ---------- cabins: log walls and a plank floor on the ground; the roof sits on top and fades out while you are inside ----------
+const CABINS = [];
+function xCabins(m) {
+  for (const c of CABINS) { try { c.roof.destroy({ children: true }); } catch (e) { } } CABINS.length = 0;
+  for (const [id, isl, x, y, w, h, side, door] of m.cab || []) {
+    const hw = w / 2, hh = h / 2, T = 22, DW = 84, rng = mulberry(id * 7919 + 13);
+    const fl = new PIXI.Graphics(); fl.beginFill(0x8a6a3f); fl.drawRect(x - hw, y - hh, w, h); fl.endFill();
+    for (let yy = y - hh + 14; yy < y + hh; yy += 14) { fl.lineStyle(1.2, 0x5a4024, .55); fl.moveTo(x - hw, yy); fl.lineTo(x + hw, yy); }
+    for (let yy = y - hh; yy < y + hh; yy += 14) { fl.lineStyle(1, 0x5a4024, .4); fl.moveTo(x - hw + 20 + rng() * (w - 40), yy); fl.lineTo(x - hw + 20 + rng() * (w - 40), Math.min(y + hh, yy + 14)); }
+    ground.addChild(fl);
+    const wl = new PIXI.Graphics(), bar = (x0, y0, x1, y1) => {   // one log wall piece: a dark base with lighter logs along it
+      wl.beginFill(0x4a2f16); wl.drawRect(Math.min(x0, x1) - (y0 === y1 ? 0 : T / 2), Math.min(y0, y1) - (x0 === x1 ? 0 : T / 2), Math.abs(x1 - x0) + (y0 === y1 ? 0 : T), Math.abs(y1 - y0) + (x0 === x1 ? 0 : T)); wl.endFill();
+      if (y0 === y1) { for (let xx = Math.min(x0, x1); xx < Math.max(x0, x1) - 1; xx += 26) { const lw = Math.min(24, Math.max(x0, x1) - xx); wl.beginFill(0x9a6a36); wl.drawRoundedRect(xx + 1, y0 - T / 2 + 2, lw - 2, T - 4, 5); wl.endFill(); wl.beginFill(0xb98349, .7); wl.drawRoundedRect(xx + 3, y0 - T / 2 + 4, lw - 6, 5, 2); wl.endFill(); } }
+      else { for (let yy = Math.min(y0, y1); yy < Math.max(y0, y1) - 1; yy += 26) { const lh = Math.min(24, Math.max(y0, y1) - yy); wl.beginFill(0x9a6a36); wl.drawRoundedRect(x0 - T / 2 + 2, yy + 1, T - 4, lh - 2, 5); wl.endFill(); wl.beginFill(0xb98349, .7); wl.drawRoundedRect(x0 - T / 2 + 4, yy + 3, 5, lh - 6, 2); wl.endFill(); } }
+    };
+    const side4 = (n, len, ax, ay, horiz) => { const segs = n === side ? [[-len / 2, door - DW / 2], [door + DW / 2, len / 2]] : [[-len / 2, len / 2]]; for (const [a, b] of segs) if (b - a > 4) horiz ? bar(ax + a, ay, ax + b, ay) : bar(ax, ay + a, ax, ay + b); };
+    side4(0, w, x, y - hh, true); side4(2, w, x, y + hh, true); side4(3, h, x - hw, y, false); side4(1, h, x + hw, y, false);
+    ground.addChild(wl);
+    const mat = new PIXI.Graphics(); const dxo = side === 1 ? hw : side === 3 ? -hw : door, dyo = side === 2 ? hh : side === 0 ? -hh : door; mat.beginFill(0x5b3a1e, .85); mat.drawRoundedRect(x + dxo - (side % 2 ? 16 : 30), y + dyo - (side % 2 ? 30 : 16), side % 2 ? 32 : 60, side % 2 ? 60 : 32, 6); mat.endFill(); ground.addChild(mat);   // doormat
+    const roof = new PIXI.Container(), rg = new PIXI.Graphics(), OV = 18;   // the roof overhangs the walls a little
+    rg.beginFill(0x000000, .22); rg.drawRect(x - hw - OV + 8, y - hh - OV + 12, w + OV * 2, h + OV * 2); rg.endFill();
+    rg.beginFill(0x7a3b22); rg.drawRect(x - hw - OV, y - hh - OV, w + OV * 2, h + OV * 2); rg.endFill();
+    const long = w >= h;
+    for (let k = 0, n = Math.ceil((long ? h : w) / 22) + 2; k < n; k++) { const p = (long ? y - hh - OV : x - hw - OV) + k * 22, col = k % 2 ? 0x8a4527 : 0x6e331c; rg.beginFill(col); if (long) rg.drawRect(x - hw - OV, p, w + OV * 2, Math.min(22, y + hh + OV - p)); else rg.drawRect(p, y - hh - OV, Math.min(22, x + hw + OV - p), h + OV * 2); rg.endFill(); }
+    rg.lineStyle(2, 0x2e140a, .7); for (let k = 0, n = Math.ceil((long ? h : w) / 22) + 2; k < n; k++) { const p = (long ? y - hh - OV : x - hw - OV) + k * 22; if (long) { rg.moveTo(x - hw - OV, p); rg.lineTo(x + hw + OV, p); } else { rg.moveTo(p, y - hh - OV); rg.lineTo(p, y + hh + OV); } }
+    rg.lineStyle(5, 0xc98a52, .9); if (long) { rg.moveTo(x - hw - OV, y); rg.lineTo(x + hw + OV, y); } else { rg.moveTo(x, y - hh - OV); rg.lineTo(x, y + hh + OV); }   // the ridge
+    rg.lineStyle(3, 0x2e140a, .85); rg.drawRect(x - hw - OV, y - hh - OV, w + OV * 2, h + OV * 2);
+    roof.addChild(rg); roof.zIndex = 1e6; roof.alpha = 1;
+    const cab = { id, x, y, w, h, roof, a: 1 }; CABINS.push(cab); cullList.push({ c: roof, x, y, m: Math.max(w, h) / 2 + 40 });
+  }
+}
 function xInit(m) {
-  window.mapInit && mapInit(m); xVillages(m); xLava(m);
-  LOOT = (m.loot || []).map(l => ({ id: l[0], x: l[1], y: l[2], b: l[3], seed: l[4], tier: l[5], cx: l[6], cy: l[7], trader: l[8], tx: l[9], ty: l[10] }));
+  window.mapInit && mapInit(m); xVillages(m); xLava(m); xCabins(m);
+  LOOT = (m.loot || []).map(l => ({ id: l[0], x: l[1], y: l[2], b: l[3], seed: l[4], tier: l[5], cx: l[6], cy: l[7], trader: l[8], tx: l[9], ty: l[10], cab: l[11] || 0, kind: l[12] || 'chest' }));
   for (const l of LOOT) {
+    if (l.cab) {   // furniture inside a cabin: no decoration ring, just the piece itself
+      const c = new PIXI.Container(), tx = l.kind === 'chest' ? T_LCHEST[l.tier] : T_CAB[l.kind], sp = new PIXI.Sprite(tx[0]); sp.anchor.set(.5, .85); c.addChild(sp); c.position.set(l.cx, l.cy); c.zIndex = l.cy; cullList.push({ c, x: l.cx, y: l.cy });
+      lootE[l.id] = { sp, c, tier: l.tier, kind: l.kind, tx, open: 0 }; continue;
+    }
     const rng = mulberry(l.seed), list = DECOR[l.b] || DECOR.f, n = 6 + Math.floor(rng() * 4);
     const pad = new PIXI.Graphics(); pad.beginFill(l.b === 's' ? 0xcfe0ee : l.b === 'd' ? 0xb98d44 : l.b === 'l' ? 0x4a2a2e : 0x2e5a2a, .18); pad.drawEllipse(l.x, l.y + 6, 92, 62); pad.endFill(); ground.addChild(pad);
     for (let i = 0; i < n; i++) {
@@ -95,7 +145,7 @@ function xInit(m) {
 function xSnap(m) {
   const op = new Set(m.lo || []);
   const firstLoot = !window._lootSeen; window._lootSeen = 1;
-  for (const id in lootE) { const e = lootE[id]; if (!e.open && op.has(+id)) { e.open = 1; e.openAt = firstLoot ? -1e9 : Date.now(); e.sp.texture = T_LCHEST[e.tier][1]; }
+  for (const id in lootE) { const e = lootE[id]; if (!e.open && op.has(+id)) { e.open = 1; e.openAt = firstLoot ? -1e9 : Date.now(); e.sp.texture = (e.tx || T_LCHEST[e.tier])[1]; }
     if (e.open && !e.gone) {   // an opened chest stays a few seconds, fades, then is gone (the ones opened before you joined are already gone)
       const age = (Date.now() - e.openAt) / 1000;
       if (age > 6.5) { e.gone = 1; const k = cullList.findIndex(o => o.c === e.c); if (k >= 0) cullList.splice(k, 1); e.c.destroy({ children: true }); }
@@ -126,7 +176,8 @@ function xSnap(m) {
 }
 function xStep(dt, me) {
   const now = performance.now(), cr = Math.max(W, H) / Z / 2 + 160;
-  for (const o of cullList) { const nr = Math.abs(o.x - camX) < cr && Math.abs(o.y - camY) < cr; if (nr) { if (!o.c.parent) ents.addChild(o.c); } else if (o.c.parent && (Math.abs(o.x - camX) > cr * 1.3 || Math.abs(o.y - camY) > cr * 1.3)) ents.removeChild(o.c); }   // decorations, chests, traders: in the scene only near the camera
+  for (const c of CABINS) { const inside = me && Math.abs(me.x - c.x) < c.w / 2 + 4 && Math.abs(me.y - c.y) < c.h / 2 + 4; c.a += ((inside ? .08 : 1) - c.a) * Math.min(1, dt * 6); c.roof.alpha = c.a; }   // the roof goes see-through while you are inside
+  for (const o of cullList) { const cm = cr + (o.m || 0), nr = Math.abs(o.x - camX) < cm && Math.abs(o.y - camY) < cm; if (nr) { if (!o.c.parent) ents.addChild(o.c); } else if (o.c.parent && (Math.abs(o.x - camX) > cm * 1.3 || Math.abs(o.y - camY) > cm * 1.3)) ents.removeChild(o.c); }   // decorations, chests, traders: in the scene only near the camera
   for (const id in bulletE) { const e = bulletE[id], el = Math.min(.1, (now - e.t0) / 1000), a = e.d[3] / 100, v = BSPEED[e.d[4]] || 800; e.s.position.set(e.d[1] + Math.cos(a) * v * el, e.d[2] + Math.sin(a) * v * el); e.s.rotation = a; e.s.zIndex = e.s.y + 40; }
   for (const id in zoneE) { const e = zoneE[id]; e.s.position.set(e.d[1], e.d[2]); e.s.scale.set(e.d[3] * 2 / 256 * (1 + Math.sin(T * 3) * .02)); e.s.alpha = .35 + Math.sin(T * 5) * .08; }
   for (const id in turretE) { const e = turretE[id]; e.s.position.set(e.d[1], e.d[2]); e.s.zIndex = e.d[2]; }
