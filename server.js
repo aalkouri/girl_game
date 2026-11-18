@@ -148,6 +148,7 @@ const srv = http.createServer((q, s) => {
 const R = 3600;                      // home island radius (doubled again from 1800)
 const ALIEN_R = 950;                 // aliens come ashore this far from the fire
 const DAY = 90, DUSK = 30, NIGHT = 60, CYC = DAY + DUSK + NIGHT;
+const ACT_R = 2600, VIL_ACT = 3000;   // an island's animals exist while a player is within ACT_R of its shore; villagers while one is within VIL_ACT of their camp
 const MAXP = 8;
 const ROOM_IDLE_SEC = +process.env.ROOM_IDLE_SEC || 20 * 60;   // an empty room is kept this long; any join resets the timer
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -770,15 +771,15 @@ class Room {
   }
   stepRabbits(P, dt) {
     if (!this.rabbits) this.rabbits = [];
-    if ((this.rabT = (this.rabT || 0) - dt) <= 0) {   // top the forests back up, one per island at a time
-      this.rabT = RAB.respawn; const fill = !this.rabFull; this.rabFull = 1;   // the first time, every forest is filled at once
-      for (let i = 0; i < this.islands.length; i++) for (const key in CRIT) {
+    if ((this.rabT = (this.rabT || 0) - dt) <= 0) {   // top the forests back up, one per island at a time - only islands with a player near; an island's animals all appear at once when someone arrives
+      this.rabT = RAB.respawn; const act = this.act || new Set(); this.popR = this.popR || new Set();
+      for (let i = 0; i < this.islands.length; i++) { if (!act.has(i)) continue; const fill = !this.popR.has(i); this.popR.add(i); for (const key in CRIT) {
         const C = CRIT[key], want = i === 0 ? C.n[0] : hasBiome(this.islands[i], C.b) ? C.n[1] : 0;
         for (let k = 0; k < (fill ? 14 : 1); k++) {
           if (this.rabbits.filter(b => b.isl === i && (b.crit || 'rabbit') === key).length >= want) break;
           const q = this.rabSpot(i, key); if (q) this.rabbits.push({ id: this.nid++, rab: 1, crit: key, x: q[0], y: q[1], hx: q[0], hy: q[1], isl: i, hp: 1, fa: Math.random() * 6.283, wt: 0, wa: 0, run: 0, sit: 1, side: 1 });
         }
-      }
+      } }
     }
     for (const b of this.rabbits) {
       const is = this.islands[b.isl], C = CRIT[b.crit || 'rabbit']; let near = null, nd = C.see;
@@ -841,12 +842,30 @@ class Room {
     }
     { const ex = w.x - is.x, ey = w.y - is.y, L = Math.hypot(ex, ey), er = RC.edgeRat(is, w.x, w.y) - 45; if (L > er) { w.x = is.x + ex * er / L; w.y = is.y + ey * er / L; } }
   }
+  refreshActive(P, dt) {   // which islands have a player close enough to need their animals; everything on the others is removed (and made again when someone comes back)
+    if ((this.actT = (this.actT || 0) - dt) > 0) return; this.actT = 1;
+    const act = new Set();
+    for (const p of P) this.islands.forEach((is, i) => { if (Math.hypot(p.x - is.x, p.y - is.y) - (i === 0 ? R : RC.edgeRat(is, p.x, p.y)) < ACT_R) act.add(i); });
+    this.act = act; const gone = new Set(); if (process.env.DEBUG_ACT) console.log('active islands', [...act].join(','), 'creatures', this.wolves.length, this.rabbits.length, 'villagers', this.aliens.filter(a => a.vil).length);
+    for (const i of [...(this.popW || []), ...(this.popM || []), ...(this.popR || [])]) if (!act.has(i)) gone.add(i);
+    if (gone.size) {
+      this.wolves = this.wolves.filter(w => !gone.has(w.isl | 0)); this.rabbits = (this.rabbits || []).filter(b => !gone.has(b.isl | 0));
+      for (const i of gone) { this.popW && this.popW.delete(i); this.popM && this.popM.delete(i); this.popR && this.popR.delete(i); }
+    }
+    for (const i of act) if (!(this.popR && this.popR.has(i)) || !(this.popW && this.popW.has(i)) || !(this.popM && this.popM.has(i))) { this.wolfT = Math.min(this.wolfT, 0); this.rabT = Math.min(this.rabT || 0, 0); break; }   // someone arrived somewhere new: fill it now, not on the next timer
+    for (const v of this.villages || []) {   // villagers only exist while someone is within a few screens of their camp
+      if (!v.spawned || P.some(q => Math.hypot(q.x - v.x, q.y - v.y) < VIL_ACT + 600)) continue;
+      const n0 = this.aliens.length; this.aliens = this.aliens.filter(a => a.vil !== v.id); if (this.aliens.length !== n0 || v.spawned) { v.spawned = 0; v.rt = 0; }
+    }
+  }
   stepWolves(P, dt) {
     if (!this.wolves) this.wolves = [];
+    this.refreshActive(P, dt);
     if ((this.wolfT -= dt) <= 0) {   // home's snow quarter and every snow island; all filled at once the first time, then one per island at a time
-      const first = !this.wolfFull; this.wolfFull = 1; this.wolfT = WOLF.respawn;
+      this.wolfT = WOLF.respawn; const act = this.act || new Set(); this.popW = this.popW || new Set();
       for (let i = 0; i < this.islands.length; i++) {
         const is = this.islands[i]; if (i > 0 && is.b !== 's' && is.b !== 'm') continue;
+        if (!act.has(i)) continue; const first = !this.popW.has(i); this.popW.add(i);
         const want = i === 0 ? WOLF.n : WOLF.outer; let have = this.wolves.filter(w => w.isl === i && !w.vul && !w.sp).length;
         for (let k = 0; k < (first ? want : 1) && have < want; k++) {
           let q = null;
@@ -867,7 +886,7 @@ class Room {
     }
     if (this.wolfT === WOLF.respawn) {   // vultures circle over the desert: up to 2 per desert island, topped up on the wolf timer, never spawning in sight
       for (let i = 1; i < this.islands.length; i++) {
-        const is = this.islands[i]; if (is.b !== 'd' && is.b !== 'm') continue;
+        const is = this.islands[i]; if ((is.b !== 'd' && is.b !== 'm') || !(this.act && this.act.has(i))) continue;
         let have = this.wolves.filter(w => w.vul && w.isl === i).length;
         for (let k = 0; k < 3 && have < 4; k++) for (let t = 0; t < 30; t++) {
           const a = Math.random() * 6.283, d = Math.sqrt(Math.random()) * (RC.edgeR(is, a) - 300), x = is.x + Math.cos(a) * d, y = is.y + Math.sin(a) * d;
@@ -877,9 +896,9 @@ class Room {
       }
     }
     if (this.wolfT === WOLF.respawn) {   // forest boars and the lava creatures (golems, imps) - hostile animals on the same timer, each kept to its own biome
-      const firstM = !this.mobFull; this.mobFull = 1;
+      this.popM = this.popM || new Set();
       for (let i = 0; i < this.islands.length; i++) {
-        const is = this.islands[i];
+        const is = this.islands[i]; if (!(this.act && this.act.has(i))) continue; const firstM = !this.popM.has(i); this.popM.add(i);
         for (const key in MOBS) {
           const M = MOBS[key], want = i === 0 ? M.n[0] : hasBiome(is, M.b) && (M.b !== 'l' || is.b === 'l') ? M.n[1] : 0; if (!want) continue;
           let have = this.wolves.filter(w => w.isl === i && w.sp === key).length;
@@ -903,7 +922,7 @@ class Room {
         const alive = this.aliens.filter(a => a.vil === v.id).length;
         if (alive > 0) { v.rt = 0; continue; }
         if (v.spawned && !v.rt) v.rt = 120; if (v.rt > 0) { v.rt -= WOLF.respawn; if (v.rt > 0) continue; }
-        if (P.some(p => !p.down && Math.hypot(p.x - v.x, p.y - v.y) < 1300)) continue;   // never pop in where anyone can see
+        if (P.some(p => !p.down && Math.hypot(p.x - v.x, p.y - v.y) < 1300) || !P.some(p => Math.hypot(p.x - v.x, p.y - v.y) < VIL_ACT)) continue;   // never pop in where anyone can see; and only when someone is within a few screens
         const n = 3 + Math.floor(Math.random() * 4); v.spawned = 1; v.rt = 0;
         for (let k = 0; k < n; k++) {
           const archer = k % 3 === 2, a = Math.random() * 6.283, d = 60 + Math.random() * 90, hp = Math.round((archer ? 30 : 45) * s);
@@ -983,8 +1002,7 @@ class Room {
     o.aliens = (o.aliens || []).map(a => ({ id: a.id, isl: a.isl, k: a.k, x: rd(a.x), y: rd(a.y), hp: rd(a.hp), mhp: a.mhp, sp: a.sp, dmg: a.dmg, cd: 0, atkCd: a.atkCd, reach: a.reach, stop: a.stop, range: a.range, rad: a.rad, aim: 0, shotCd: 0, vil: a.vil, hx: a.hx, hy: a.hy, spit: a.spit, spitCd: a.spit ? 3 : undefined }));
     // wolves, bears, mammoths, vultures, rabbits and fish pools: just where they are and how hurt they are (their moods reset when the game loads)
     const pick = (w, keys) => { const q = {}; for (const k of keys) if (w[k] !== undefined) q[k] = typeof w[k] === 'number' ? rd(w[k]) : w[k]; return q; };
-    o.wolves = (o.wolves || []).map(w => pick(w, ['id', 'wolf', 'sp', 'biome', 'isl', 'alpha', 'big', 'heavy', 'vul', 'air', 'vs', 'x', 'y', 'hx', 'hy', 'hp', 'mhp', 'run', 'dmg', 'reach', 'bcd', 'see', 'walk', 'fa', 'oa']));
-    o.rabbits = (o.rabbits || []).map(w => pick(w, ['id', 'rab', 'crit', 'isl', 'x', 'y', 'hx', 'hy', 'hp', 'fa']));
+    o.wolves = []; o.rabbits = []; o.aliens = o.aliens.filter(a => !(a.k >= 3 && a.vil));   // animals and villagers are not saved: they are made again around you when you come back to an island
     o.pools = (o.pools || []).map(w => pick(w, ['id', 'isl', 'x', 'y', 'kind', 'left', 'ttl']));
     return o;
   }
