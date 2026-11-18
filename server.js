@@ -1015,7 +1015,7 @@ class Room {
   }
   add(ws, name, cls, pf, email) {
     this.rForce = 1;   // the next snapshot carries the full resource state for the newcomer
-    const p = { id: this.nid++, ws, name, cls, prof: pf, gear: {}, buff: { speed: 0, regen: 0, dmg: 0 }, actPrev: 0, fa: 0, sw: 0, swk: 0, swa: 0, wood: parseInt(process.env.START_WOOD) || 0, stone: parseInt(process.env.START_STONE) || 0, food: parseInt(process.env.START_FOOD) || 0, scrap: parseInt(process.env.START_SCRAP) || 0, meat: parseInt(process.env.START_MEAT) || 0, gold: 0, pelt: 0, apelt: 0, fish1: 0, fish2: 0, fish3: 0, slots: [], abilCd: 0, sta: STA.max, staCd: 0, tired: 0, actcd: 0, hitcd: 0, eat: 0, inp: { dx: 0, dy: 0, act: 0, hit: 0 } };
+    const p = { needR: 1, id: this.nid++, ws, name, cls, prof: pf, gear: {}, buff: { speed: 0, regen: 0, dmg: 0 }, actPrev: 0, fa: 0, sw: 0, swk: 0, swa: 0, wood: parseInt(process.env.START_WOOD) || 0, stone: parseInt(process.env.START_STONE) || 0, food: parseInt(process.env.START_FOOD) || 0, scrap: parseInt(process.env.START_SCRAP) || 0, meat: parseInt(process.env.START_MEAT) || 0, gold: 0, pelt: 0, apelt: 0, fish1: 0, fish2: 0, fish3: 0, slots: [], abilCd: 0, sta: STA.max, staCd: 0, tired: 0, actcd: 0, hitcd: 0, eat: 0, inp: { dx: 0, dy: 0, act: 0, hit: 0 } };
     p.email = email; p.inf = INFINITE.has(email); this.respawn(p);
     if (process.env.START_ABIL) p.abilOn = 1;   // (test hook: the ability starts unlocked)
     const a = email && this.away.get(email); this.away.delete(email);
@@ -1280,8 +1280,9 @@ class Room {
     if (P.every(p => p.down)) this.over = 6;
   }
   snap() {
-    const f = this.fire, rs = this.res.map(r => Math.max(0, Math.ceil(r.hp - 1e-9))).join('');
-    this.rTick = ((this.rTick || 0) + 1) % 60; const rSend = rs !== this.lastR || this.rForce || this.rTick === 0; this.lastR = rs; this.rForce = 0;
+    const f = this.fire, hpNow = this.res.map(r => Math.max(0, Math.ceil(r.hp - 1e-9))), last = this.lastRhp, rd = [];   // resources are sent as changes only: [index, hp, index, hp, ...]; a newcomer gets the full string once
+    if (last && last.length === hpNow.length) for (let i = 0; i < hpNow.length; i++) if (hpNow[i] !== last[i]) rd.push(i, hpNow[i]);
+    this.lastRhp = hpNow; this.rForce = 0; let rsFull = null;
     const o = {
       t: 's', c: Math.round(this.c * 10) / 10, n: this.night, ph: this.ph(), o: this.over > 0 ? 1 : 0,
       f: [Math.round(f.fuel), RC.fuelMax(f.lvl), f.lvl, f.fuel > 0 ? RC.camp(f.lvl) : 0],
@@ -1298,7 +1299,7 @@ class Room {
       zn: this.zones.map(z => [z.id, Math.round(z.x), Math.round(z.y), z.r, z.k, Math.ceil(z.ttl)]),
       tr: this.turrets.map(t => [t.id, Math.round(t.x), Math.round(t.y)]),
       ar: this.arrows.map(w => [w.id, Math.round(w.x), Math.round(w.y), Math.round(Math.atan2(w.vy, w.vx) * 100), w.slow ? 1 : 0]),
-      r: rSend ? rs : undefined,
+      rd: rd.length ? rd : undefined,
       dr: this.drops.map(d => [d.id, d.k, Math.round(d.x), Math.round(d.y), d.food]),
       st: this.struct.map(t => [t.id, t.k, Math.round(t.x), Math.round(t.y), Math.round(t.hp), t.mhp, t.items ? [t.items.wood, t.items.stone, t.items.food, t.items.scrap] : t.smelt ? [t.smelt.q, Math.round(t.smelt.prog / RC.SMELT.time * 100) / 100] : 0, t.rot || 0, t.open ? 1 : 0]),
     };
@@ -1306,7 +1307,9 @@ class Room {
     const NEAR = 1900, out = new Map();
     for (const p of this.players.values()) {
       const px = p.x, py = p.y, near = e => Math.abs(e[1] - px) < NEAR && Math.abs(e[2] - py) < NEAR;
-      out.set(p.id, JSON.stringify(Object.assign({}, o, { a: o.a.filter(near), wf: o.wf.filter(near), rb: o.rb.filter(near), fp: o.fp.filter(near), sk: o.sk.filter(near) })));
+      if (p.needR && !rsFull) rsFull = hpNow.join('');
+      const full = p.needR ? rsFull : undefined; p.needR = 0;
+      out.set(p.id, JSON.stringify(Object.assign({}, o, { r: full, a: o.a.filter(near), wf: o.wf.filter(near), rb: o.rb.filter(near), fp: o.fp.filter(near), sk: o.sk.filter(near) })));
     }
     return out;
   }
@@ -1320,7 +1323,7 @@ function saveRooms() {
   try { const j = JSON.stringify([...rooms.values()].map(r => r.snapshot())); if (j === lastRoomsJson) return; lastRoomsJson = j; fs.writeFileSync(ROOMS_FILE + '.tmp', j); fs.renameSync(ROOMS_FILE + '.tmp', ROOMS_FILE); } catch (e) { console.error('rooms save failed:', e.message); }
 }
 try { for (const o of JSON.parse(fs.readFileSync(ROOMS_FILE, 'utf8'))) rooms.set(o.code, Room.restore(o)); console.log('restored', rooms.size, 'room(s)'); } catch (e) { }
-setInterval(saveRooms, 3000);
+setInterval(saveRooms, 10000);   // (the save is ~2 MB and blocks the game loop for ~30 ms, so not every 3 s; shutdown saves again)
 const code = () => { let c; do { c = Array.from({ length: 4 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ'[Math.random() * 24 | 0]).join(''); } while (rooms.has(c)); return c; };
 
 const wss = new WebSocketServer({ server: srv, maxPayload: 1024 });

@@ -1294,9 +1294,9 @@ function onSnap(m) {
     if (e.kind === 'a') { SFX.alienDie(_d(e.x, e.y), _dx(e.x)); burst(e.x, e.y, 14, 0xb45fe0, 160, true, .2); burst(e.x, e.y, 8, 0xc6ff2a, 90, true, .12); e.eyes.forEach(s => s.destroy()); }
     e.c.destroy({ children: true }); delete ents2[k];
   }
-  if (built && m.r) for (let i = 0; i < resNodes.length; i++) {   // (the server only sends this when something changed)
-    const r = resNodes[i], hp = +m.r[i];
-    if (!r.init) { r.init = true; r.hp = hp; if (hp <= 0) r.c.visible = false; continue; }
+  const resUp = (i, hp) => {   // one resource's new health (the full list arrives once when you join, after that only the ones that changed)
+    const r = resNodes[i]; if (!r) return;
+    if (!r.init) { r.init = true; r.hp = hp; if (hp <= 0) r.c.visible = false; return; }
     if (hp < r.hp) {
       let who = null, wd = 110; for (const p of m.p) { const dd = Math.hypot(p[3] - r.x, p[4] - r.y); if (dd < wd) { wd = dd; who = p; } }
       const fromX = who ? who[3] : r.x - 1;
@@ -1309,7 +1309,9 @@ function onSnap(m) {
     }
     if (hp > r.hp) { if (r.hp <= 0) { r.c.visible = true; r.pop = 0; r.s.rotation = 0; r.s.alpha = 1; } r.barT = 0; }
     r.hp = hp;
-  }
+  };
+  if (built && m.r) for (let i = 0; i < resNodes.length; i++) resUp(i, +m.r[i]);
+  if (built && m.rd) for (let j = 0; j < m.rd.length; j += 2) resUp(m.rd[j], m.rd[j + 1]);
   syncDrops(m, _d, _dx);
   syncStructs(m, !prevS); syncBoats(m); syncSharks(m); syncPools(m); syncArrows(m); window.xSnap && xSnap(m);
   if (chestId !== null) { if (!nearStruct(chestId)) closeChest(); else buildChest(); }
