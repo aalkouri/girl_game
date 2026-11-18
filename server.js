@@ -774,7 +774,7 @@ class Room {
     if ((this.rabT = (this.rabT || 0) - dt) <= 0) {   // top the forests back up, one per island at a time - only islands with a player near; an island's animals all appear at once when someone arrives
       this.rabT = RAB.respawn; const act = this.act || new Set(); this.popR = this.popR || new Set();
       for (let i = 0; i < this.islands.length; i++) { if (!act.has(i)) continue; const fill = !this.popR.has(i); this.popR.add(i); for (const key in CRIT) {
-        const C = CRIT[key], want = i === 0 ? C.n[0] : hasBiome(this.islands[i], C.b) ? C.n[1] : 0;
+        const C = CRIT[key], want = i === 0 ? C.n[0] : hasBiome(this.islands[i], C.b) ? this.scaleN(i, C.n[1]) : 0;
         for (let k = 0; k < (fill ? 14 : 1); k++) {
           if (this.rabbits.filter(b => b.isl === i && (b.crit || 'rabbit') === key).length >= want) break;
           const q = this.rabSpot(i, key); if (q) this.rabbits.push({ id: this.nid++, rab: 1, crit: key, x: q[0], y: q[1], hx: q[0], hy: q[1], isl: i, hp: 1, fa: Math.random() * 6.283, wt: 0, wa: 0, run: 0, sit: 1, side: 1 });
@@ -842,11 +842,14 @@ class Room {
     }
     { const ex = w.x - is.x, ey = w.y - is.y, L = Math.hypot(ex, ey), er = RC.edgeRat(is, w.x, w.y) - 45; if (L > er) { w.x = is.x + ex * er / L; w.y = is.y + ey * er / L; } }
   }
+  scaleN(i, n) {   // how many of a creature an island holds: the listed number is for an island as big as home; smaller islands get fewer (at least one), so a tiny islet is not crammed
+    if (i === 0) return n; const is = this.islands[i]; return Math.max(1, Math.round(n * Math.min(1, (is.r / R) * (is.r / R) * 1.3)));
+  }
   refreshActive(P, dt) {   // which islands have a player close enough to need their animals; everything on the others is removed (and made again when someone comes back)
     if ((this.actT = (this.actT || 0) - dt) > 0) return; this.actT = 1;
     const act = new Set();
     for (const p of P) this.islands.forEach((is, i) => { if (Math.hypot(p.x - is.x, p.y - is.y) - (i === 0 ? R : RC.edgeRat(is, p.x, p.y)) < ACT_R) act.add(i); });
-    this.act = act; const gone = new Set(); if (process.env.DEBUG_ACT) console.log('active islands', [...act].join(','), 'creatures', this.wolves.length, this.rabbits.length, 'villagers', this.aliens.filter(a => a.vil).length);
+    this.act = act; const gone = new Set(); if (process.env.DEBUG_ACT) console.log('active islands', [...act].join(','), 'creatures', this.wolves.length, this.rabbits.length, JSON.stringify(this.wolves.map(w => (w.isl) + ':' + (w.sp || (w.vul ? 'vul' : w.big ? 'big' : 'wolf')))), 'isl1 r', this.islands[1].r, 'villagers', this.aliens.filter(a => a.vil).length);
     for (const i of [...(this.popW || []), ...(this.popM || []), ...(this.popR || [])]) if (!act.has(i)) gone.add(i);
     if (gone.size) {
       this.wolves = this.wolves.filter(w => !gone.has(w.isl | 0)); this.rabbits = (this.rabbits || []).filter(b => !gone.has(b.isl | 0));
@@ -866,7 +869,7 @@ class Room {
       for (let i = 0; i < this.islands.length; i++) {
         const is = this.islands[i]; if (i > 0 && is.b !== 's' && is.b !== 'm') continue;
         if (!act.has(i)) continue; const first = !this.popW.has(i); this.popW.add(i);
-        const want = i === 0 ? WOLF.n : WOLF.outer; let have = this.wolves.filter(w => w.isl === i && !w.vul && !w.sp).length;
+        const want = i === 0 ? WOLF.n : this.scaleN(i, WOLF.outer); let have = this.wolves.filter(w => w.isl === i && !w.vul && !w.sp).length;
         for (let k = 0; k < (first ? want : 1) && have < want; k++) {
           let q = null;
           for (let t = 0; t < 40 && !q; t++) {
@@ -888,7 +891,8 @@ class Room {
       for (let i = 1; i < this.islands.length; i++) {
         const is = this.islands[i]; if ((is.b !== 'd' && is.b !== 'm') || !(this.act && this.act.has(i))) continue;
         let have = this.wolves.filter(w => w.vul && w.isl === i).length;
-        for (let k = 0; k < 3 && have < 4; k++) for (let t = 0; t < 30; t++) {
+        const vmax = this.scaleN(i, 4);   // (smaller islands have fewer vultures)
+        for (let k = 0; k < 3 && have < vmax; k++) for (let t = 0; t < 30; t++) {
           const a = Math.random() * 6.283, d = Math.sqrt(Math.random()) * (RC.edgeR(is, a) - 300), x = is.x + Math.cos(a) * d, y = is.y + Math.sin(a) * d;
           if (RC.biomeAt(is.x, is.y, is.r, is.b, x, y) !== 'd' || P.some(p => Math.hypot(p.x - x, p.y - y) < 900)) continue;
           this.wolves.push({ id: this.nid++, wolf: 1, vul: 1, air: 1, vs: 0, isl: i, x, y, hx: x, hy: y, hp: 40, mhp: 40, dmg: 8, fa: Math.random() * 6.283, st: 0, tg: 0, cd: 0, wt: 0, wa: 0, bite: 0, oa: Math.random() * 6.283, t: 0 }); have++; break;
@@ -900,7 +904,7 @@ class Room {
       for (let i = 0; i < this.islands.length; i++) {
         const is = this.islands[i]; if (!(this.act && this.act.has(i))) continue; const firstM = !this.popM.has(i); this.popM.add(i);
         for (const key in MOBS) {
-          const M = MOBS[key], want = i === 0 ? M.n[0] : hasBiome(is, M.b) && (M.b !== 'l' || is.b === 'l') ? M.n[1] : 0; if (!want) continue;
+          const M = MOBS[key], want = i === 0 ? M.n[0] : hasBiome(is, M.b) && (M.b !== 'l' || is.b === 'l') ? this.scaleN(i, M.n[1]) : 0; if (!want) continue;
           let have = this.wolves.filter(w => w.isl === i && w.sp === key).length;
           for (let k = 0; k < (firstM ? want : 1) && have < want; k++) {
             let q = null;
