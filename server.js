@@ -156,6 +156,7 @@ const INFIGHT = true, FIGHT_SEE = 280, FIGHT_PLAYER = 380;
 const VEND = { every: 3, boat: 150, walk: 70, sight: 1100, leaveAt: 90 + 30 - 10 };   // traveling vendor: every 3rd day; he leaves 10 s before night (night starts at 120 s)
 const GUN_MAG = { pistol: 6, rifle: 1 }, GUN_RELOAD = { pistol: 1.5, rifle: 3.2 };   // rounds per magazine, seconds to reload
 const GHOST_SEC = 30;   // a player who disconnects at night / near enemies stays in the world this long
+const SHARK_OUT = 1.5;   // a leaving shark lingers this long so its leap-and-dive can play
 const BLOCK_SEC = 5, WALL_SEC = 8;   // an enemy that cannot find a way to (or a clear shot at) you for BLOCK_SEC seconds attacks the nearest wall for up to WALL_SEC seconds, then tries to path to you again
 const ACT_R = 2600, VIL_ACT = 3000;   // an island's animals exist while a player is within ACT_R of its shore; villagers while one is within VIL_ACT of their camp
 const MAXP = 8;
@@ -749,7 +750,7 @@ class Room {
     return this._rg;
   }
   // sharks: out on the open sea a fin now and then picks a boat with people aboard and chases it; each bite takes 25% of the boat's full life
-  stepSharks(dt) {
+  stepSharks(dt) {   // (SHARK_OUT: seconds a leaving shark stays for its dive animation)
     if (!this.sharks) this.sharks = [];
     const shoreDist = (x, y) => Math.min(...this.islands.map(s => Math.hypot(x - s.x, y - s.y) - RC.edgeRat(s, x, y)));
     for (const b of this.boats) {   // now and then a ridden boat far from land draws a shark
@@ -759,8 +760,9 @@ class Room {
       for (const id of b.riders) { const q = this.players.get(id); if (q) send(q.ws, { t: 'toast', msg: '🦈 A shark fin! Keep moving - or get to shore.' }); }
     }
     for (const s of this.sharks) {
+      if (s.out !== undefined) { s.out -= dt; continue; }   // leaving: it leaps and splashes back down (the client animates it), then it is gone
       s.ttl -= dt; s.cd -= dt; s.bite -= dt; const b = this.boats.find(x => x.id === s.tg);
-      if (!b || !b.riders.length || shoreDist(b.x, b.y) < 450) { s.ttl = Math.min(s.ttl, 0); continue; }   // the boat is gone, empty, or near land: the shark loses interest
+      if (!b || !b.riders.length || shoreDist(b.x, b.y) < 450 || s.ttl <= 0) { s.out = SHARK_OUT; continue; }   // the boat is gone, empty, or near land (or it got bored): the shark dives away
       const dx = b.x - s.x, dy = b.y - s.y, d = Math.hypot(dx, dy) || 1; s.fa = Math.atan2(dy, dx);
       if (d > 70) { const nx = s.x + dx / d * 205 * dt, ny = s.y + dy / d * 205 * dt; if (this.isWater(nx, ny)) { s.x = nx; s.y = ny; } }
       else if (s.cd <= 0) {
@@ -768,7 +770,7 @@ class Room {
         for (const id of b.riders) { const q = this.players.get(id); if (q) send(q.ws, { t: 'bite' }); }
       }
     }
-    if (this.sharks.some(s => s.ttl <= 0)) this.sharks = this.sharks.filter(s => s.ttl > 0);
+    if (this.sharks.some(s => s.out <= 0)) this.sharks = this.sharks.filter(s => !(s.out <= 0));
   }
   gateNear(p) { let best = null, bd = 70; for (const st of this.struct) if (st.k === 'gate') { const [qx, qy] = solidPt(st, p.x, p.y), d = Math.hypot(p.x - qx, p.y - qy); if (d < bd) { bd = d; best = st; } } return best; }
   boatNear(p) { let best = null, bd = 125; for (const b of this.boats) { const d = Math.hypot(p.x - b.x, p.y - b.y); if (d < bd) { bd = d; best = b; } } return best; }
@@ -1734,7 +1736,7 @@ class Room {
       t: 's', c: Math.round(this.c * 10) / 10, n: this.night, ph: this.ph(), o: this.over > 0 ? 1 : 0,
       f: [Math.round(f.fuel), RC.fuelMax(f.lvl), f.lvl, f.fuel > 0 ? RC.camp(f.lvl) : 0],
       p: [...this.players.values()].map(p => [p.id, p.name, p.cls, Math.round(p.x), Math.round(p.y), Math.round(p.hp), p.mhp, p.wood, p.stone, p.food, p.down, Math.round(p.rev * 10) / 10, p.sw, p.swk, Math.round(p.swa * 100), p.scrap, Math.round(p.fa * 100), Math.round(p.sta), p.tired, p.slots, p.boat || 0, p.meat || 0, p.gold || 0, p.pelt || 0, slotCap(p, this), !p.abilOn ? 0 : p.abilCd > 0 ? Math.ceil(p.abilCd) + 1 : 1, p.apelt || 0, p.fish1 || 0, p.fish2 || 0, p.fish3 || 0, p.prof ? p.prof.bn || 0 : 0, lvOf(p), p.smax || STA.max, this.gunOf(p) === 'pistol' ? 1 : this.gunOf(p) === 'rifle' ? 2 : 0, (() => { const g = this.gunOf(p); return g === 'rifle' ? p.magR || 0 : g === 'pistol' ? p.magP || 0 : 0; })(), (() => { const g = this.gunOf(p); return g === 'rifle' ? p.ammoR || 0 : g === 'pistol' ? p.ammoP || 0 : 0; })(), p.reload ? Math.max(1, Math.round(p.reload.t / p.reload.dur * 100)) : 0]),
-      sk: (this.sharks || []).map(s => [s.id, Math.round(s.x), Math.round(s.y), Math.round(s.fa * 100), s.bite > 0 ? 1 : 0]),
+      sk: (this.sharks || []).map(s => [s.id, Math.round(s.x), Math.round(s.y), Math.round(s.fa * 100), s.bite > 0 ? 1 : 0, s.out !== undefined ? 1 : 0]),
       fp: (this.pools || []).map(q => [q.id, q.x, q.y, q.kind, q.left]),
       bt: this.boats.map(b => [b.id, Math.round(b.x), Math.round(b.y), Math.round(b.ang * 100), b.riders.length, b.drv, b.type || 'boat', Math.round(100 * (b.life == null ? 1 : b.life / RC.BOATS[b.type || 'boat'].life)), b.storm || 0]).concat(this.vendor ? [[-this.vendor.id, Math.round(this.vendor.bx), Math.round(this.vendor.by), Math.round(this.vendor.ba * 100), 0, 0, 'boat', 100, 0]] : []), vd: this.vendor ? [this.vendor.id, this.vendor.type, Math.round(this.vendor.x), Math.round(this.vendor.y), this.vendor.st, Math.round(this.vendor.fa * 100), this.vendor.l.id] : undefined, sf: this.scrapFound ? 1 : 0,
       a: this.aliens.map(a => [a.id, Math.round(a.x), Math.round(a.y), Math.round(a.hp), a.mhp, a.k, a.fa === undefined ? null : Math.round(a.fa * 100), Math.ceil(a.trapT > 0 ? a.trapT : 0), a.aim > 0 ? Math.round(Math.min(1, a.aim / 1.5) * 100) : 0, a.spit ? 1 : 0]),
