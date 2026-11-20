@@ -1046,6 +1046,7 @@ function syncStructs(m, first) {
     if ((t[7] || 0) !== e.rot) { e.rot = t[7] || 0; e.rotc.rotation = e.rot * Math.PI / 4; }
     if (t[1] === 'smelter') { const pq = e.smelt ? e.smelt[0] : t[6][0]; if (t[6][0] > pq) { const d = me ? Math.hypot(me.x - t[2], me.y - t[3]) : 0; SFX.smelterStart(d, me ? t[2] - me.x : 0); } e.smelt = t[6]; }
     else e.items = t[6];
+    { const br = t[1] === 'gate' && t[5] > 0 && t[4] <= 0; if (br && !e.broke && !first) { const d = me ? Math.hypot(me.x - t[2], me.y - t[3]) : 0; SFX.rockbreak(d, me ? t[2] - me.x : 0); burst(t[2], t[3] - 10, 16, 0xb98349, 160, false, .15); } e.broke = br; }   // a cabin door smashed in: it hangs open, dark and splintered, until morning
     e.hpv = t[4]; e.x = t[2]; e.y = t[3];
   }
   for (const id in structE) if (!seen[id]) {
@@ -1057,7 +1058,7 @@ function stepStructs(dt) {
   for (const id in structE) {
     const e = structE[id];
     if (e.t < 1) { e.t = Math.min(1, e.t + dt * 4); const u = e.t, b = 1 + 2.2 * Math.pow(u - 1, 3) + 1.2 * Math.pow(u - 1, 2); e.spr.scale.set(e.base * Math.max(.1, b)); }
-    e.flash = Math.max(0, e.flash - dt); e.spr.tint = e.flash > 0 ? 0xffaaaa : 0xffffff;
+    e.flash = Math.max(0, e.flash - dt); e.spr.tint = e.flash > 0 ? 0xffaaaa : e.broke ? 0x6b5a4a : 0xffffff; e.spr.alpha = e.broke ? .7 : 1;
     if (e.k === 'smelter') {
       const sm = e.smelt || [0, 0], working = sm[0] > 0;
       if (!e.prog) { e.prog = new PIXI.Graphics(); e.prog.y = -66; e.c.addChild(e.prog); e.qt = new PIXI.Text('', { fontFamily: 'system-ui,sans-serif', fontSize: 13, fontWeight: '800', fill: 0xffe082, stroke: 0x000000, strokeThickness: 3 }); e.qt.anchor.set(.5, 1); e.qt.y = -72; e.qt.resolution = 2; e.c.addChild(e.qt); e.pv = 0; e.glow = new PIXI.Sprite(T_GLOW); e.glow.anchor.set(.5); e.glow.blendMode = BM.ADD; e.glow.tint = 0xff8a1c; overL.addChild(e.glow); }

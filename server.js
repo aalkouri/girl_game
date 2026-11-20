@@ -531,7 +531,7 @@ class Room {
     this.struct = this.struct.filter(s => s.k !== 'cwall' && !s.cab);
     for (const c of this.cabins || []) {
       for (const sg of cabinSegments(c)) this.struct.push({ id: this.nid++, k: 'cwall', x: sg.x, y: sg.y, len: sg.len, rot: sg.rot, r: sg.r, hp: 0, mhp: 0 });
-      for (const d of c.doors) { const sd = d.side, hw = c.w / 2, hh = c.h / 2; this.struct.push({ id: this.nid++, k: 'gate', cab: 1, m: 'c', x: Math.round(sd === 1 ? c.x + hw : sd === 3 ? c.x - hw : c.x + d.pos), y: Math.round(sd === 2 ? c.y + hh : sd === 0 ? c.y - hh : c.y + d.pos), r: RC.RADIUS.gate, rot: sd % 2 === 0 ? 0 : 2, hp: 0, mhp: 0, open: 0 }); }
+      c.doorSt = []; for (const d of c.doors) { const sd = d.side, hw = c.w / 2, hh = c.h / 2, dst = { id: this.nid++, k: 'gate', cab: 1, m: 'c', side: sd, x: Math.round(sd === 1 ? c.x + hw : sd === 3 ? c.x - hw : c.x + d.pos), y: Math.round(sd === 2 ? c.y + hh : sd === 0 ? c.y - hh : c.y + d.pos), r: RC.RADIUS.gate, rot: sd % 2 === 0 ? 0 : 2, hp: STRUCT.gate.hp, mhp: STRUCT.gate.hp, open: 0 }; Object.defineProperty(dst, 'cabRef', { value: c, enumerable: false }); c.doorSt.push(dst); this.struct.push(dst); }   // cabin doors take hits like a wood gate (50 HP); a broken one hangs open until morning
     }
   }
   endRun() {   // everyone is down: pay out by days survived, send everyone back to the title screen, and start the room fresh
@@ -645,6 +645,7 @@ class Room {
   // grid, they are enclosed, and the walls the fill touched are what enemies will attack. Cached for half a second.
   enclosure(p) {
     const now = Date.now(); if (p._enc && now - p._enc.t < 500) return p._enc.walls;
+    { const c = this.cabinAt(p.x, p.y); if (c && c.doorSt && c.doorSt.every(d => !d.open)) { const out = c.doorSt.filter(d => d.hp > 0); out.cab = c; p._enc = { t: now, walls: out.length ? out : null }; return p._enc.walls; } }   // shut inside a cabin: the doors are what enemies break
     const CELL = 20, H = 30, walls = this.struct.filter(st => !st.cab && (st.k === 'wall' || (st.k === 'gate' && !st.open)) && Math.abs(st.x - p.x) < H * CELL + 80 && Math.abs(st.y - p.y) < H * CELL + 80);
     let out = null;
     if (walls.length >= 3) {
@@ -702,7 +703,20 @@ class Room {
   nearWall(list, x, y) {   // the closest wall of an enclosure to (x, y): { st, qx, qy, qr }
     let best = null, bd = 1e9; for (const st of list) { const [qx, qy, qr] = solidPt(st, x, y), d = Math.hypot(qx - x, qy - y); if (d < bd) { bd = d; best = { st, qx, qy, qr }; } } return best;
   }
-  hitWall(st, dmg) { if (st.cab || !(st.hp > 0)) return; st.hp -= dmg; if (st.hp <= 0) st.dead = 1; }
+  hitWall(st, dmg) { if (st.k === 'cwall' || !(st.hp > 0)) return; st.hp -= dmg; if (st.hp <= 0) { if (st.cab) { st.hp = 0; st.broken = 1; st.open = 1; } else st.dead = 1; } }   // a cabin door is not removed when it breaks: it hangs open (and can't be shut) until morning
+  inCabin(c, x, y, m = 0) { return Math.abs(x - c.x) < c.w / 2 + m && Math.abs(y - c.y) < c.h / 2 + m; }
+  cabinAt(x, y) { for (const c of this.cabins || []) if (this.inCabin(c, x, y)) return c; return null; }
+  // the way to a cabin door from outside: straight to it from the door's side, otherwise round the corners (so enemies don't push into the log walls)
+  cabinApproach(c, door, mx, my) {
+    const M = 30, MC = 70, x0 = c.x - c.w / 2, x1 = c.x + c.w / 2, y0 = c.y - c.h / 2, y1 = c.y + c.h / 2, ds = door.side;
+    const ex = [y0 - M - my, mx - x1 - M, my - y1 - M, x0 - M - mx];   // how far past each side (0 top, 1 right, 2 bottom, 3 left) the enemy stands
+    const corner = k => [[x0 - MC, y0 - MC], [x1 + MC, y0 - MC], [x1 + MC, y1 + MC], [x0 - MC, y1 + MC]][k & 3];   // side k runs from corner k to corner k+1
+    if (ex[ds] > 0) return null;   // already on the door's side: go straight for it
+    const adj = [(ds + 1) & 3, (ds + 3) & 3].filter(k => ex[k] > 0);
+    if (adj.length) { const k = adj.sort((a, b) => ex[b] - ex[a])[0]; return corner(k === ((ds + 1) & 3) ? k : ds); }   // round the shared corner
+    const op = (ds + 2) & 3; if (ex[op] > 0) { const a = corner(op), b = corner(op + 1); return Math.hypot(a[0] - mx, a[1] - my) < Math.hypot(b[0] - mx, b[1] - my) ? a : b; }
+    return null;   // inside the box (or right on the wall): nothing to route round
+  }
   // fishing pools: shimmering spots near the shore of any island; walk up and press ACT to fish (the minigame runs on the client, the server checks it)
   stepPools(dt) {   // fish are in the sea: pools just off every island's shore (fish from the beach) and pools out in the open water near players (fish from a boat)
     if (!this.pools) { this.pools = []; this.poolT = 2; }
@@ -1291,11 +1305,11 @@ class Room {
         if (tg && Math.hypot(tg.x - w.x, tg.y - w.y) > WOLF.give) tg = null;
         if (!tg) { let nd = w.see || WOLF.see; for (const p of P) if (!p.down && !p.boat && this.onIsland(p, wi)) { const d = Math.hypot(p.x - w.x, p.y - w.y); if (d < nd) { nd = d; tg = p; } } }
         if (tg && !nearFire(tg.x, tg.y)) {
-          w.st = 1; w.tg = tg.id; let tp = tg, wl = null; const E = this.enclosure(tg); if (E) { wl = this.nearWall(E, w.x, w.y); if (wl) tp = { x: wl.qx, y: wl.qy }; }   // walled in: go for the nearest wall
+          w.st = 1; w.tg = tg.id; let tp = tg, wl = null, far = false; const E = this.enclosure(tg); if (E && !(E.cab && this.inCabin(E.cab, w.x, w.y, 10))) { wl = this.nearWall(E, w.x, w.y); if (wl) { tp = { x: wl.qx, y: wl.qy }; if (wl.st.cabRef) { const wp = this.cabinApproach(wl.st.cabRef, wl.st, w.x, w.y); if (wp) { tp = { x: wp[0], y: wp[1] }; far = true; } } } }   // walled in: go for the nearest wall
           if (!wl && w.wallTg) { if (w.wallTg.dead || w.wallTg.hp <= 0 || (w.wallT -= dt) <= 0) { w.wallTg = null; w.blkT = 0; } else { const [qx, qy, qr] = solidPt(w.wallTg, w.x, w.y); wl = { st: w.wallTg, qx, qy, qr }; tp = { x: qx, y: qy }; } }   // stuck behind walls for a while: break this one, then path again
           const d = Math.hypot(tp.x - w.x, tp.y - w.y) || 1; dx = (tp.x - w.x) / d; dy = (tp.y - w.y) / d;
           if (!wl) { const ps = this.pathStep(tg, w.x, w.y); if (ps && ps.dir) { dx = ps.dir[0]; dy = ps.dir[1]; } if (ps) { if ((w.blkT = (w.blkT || 0) + dt) > BLOCK_SEC) { const bw = this.wallToBreak(w.x, w.y); if (bw) { w.wallTg = bw.st; w.wallT = WALL_SEC; } w.blkT = 0; } } else w.blkT = 0; }   // a wall is in the way: go around it
-          if (d - (wl ? wl.qr : 0) > (w.reach || WOLF.reach) * (w.alpha ? 1.25 : 1)) spd = w.run || WOLF.run;
+          if (far || d - (wl ? wl.qr : 0) > (w.reach || WOLF.reach) * (w.alpha ? 1.25 : 1)) spd = w.run || WOLF.run;
           else if (w.cd <= 0) { w.cd = w.bcd || WOLF.cd; w.bite = 0.25; if (wl) this.hitWall(wl.st, w.dmg || WOLF.dmg); else this.hurt(tg, w.dmg || WOLF.dmg); }
         } else if (w.st === 1) { w.st = 2; w.rt = 0; continue; }   // lost them (or they reached the fire): head home
         else {   // roaming around its spot
@@ -1438,6 +1452,7 @@ class Room {
     this.c += dt;
     if (this.c >= CYC) {
       this.c -= CYC; this.night++;
+      for (const st of this.struct) if (st.cab && st.k === 'gate' && st.hp < st.mhp) { st.hp = st.mhp; if (st.broken) { st.broken = 0; st.open = 0; } }   // morning: cabin doors are mended (broken ones shut again)
       for (const p of P) if (p.prof) { p.prof.n++; p.prof.bn = Math.max(p.prof.bn || 0, this.night - 1); dirty = true; gainXp(p, 40 + 8 * (this.night - 1)); }   // diamonds are paid when the run ends, not per night; XP for the night survived; bn = best nights survived in one run
     }
     const ph = this.ph(), f = this.fire, maxF = RC.fuelMax(f.lvl);
@@ -1514,7 +1529,7 @@ class Room {
         else if (actEdge && this.lootNear(p, 'chest')) this.openChest(p, this.lootNear(p, 'chest'));
         else if (actEdge && !p.gear.rod && this.poolNear(p)) { send(p.ws, { t: 'toast', msg: 'You need a fishing rod to fish - the Fisherman trader sells one.' }); p.actcd = 0.6; }
         else if (actEdge && (!p.fishing || Date.now() - p.fishing.t > 40000) && this.poolNear(p)) { const q = this.poolNear(p); p.fishing = { id: q.id, t: Date.now() }; p.actcd = 0.5; send(p.ws, { t: 'fishgame', id: q.id, kind: q.kind }); }
-        else if (actEdge && this.gateNear(p)) { const g = this.gateNear(p); g.open = g.open ? 0 : 1; p.actcd = 0.3; }
+        else if (actEdge && this.gateNear(p)) { const g = this.gateNear(p); if (g.broken) send(p.ws, { t: 'toast', msg: 'This door is smashed - it will be mended by morning.' }); else g.open = g.open ? 0 : 1; p.actcd = 0.3; }
         else if (actEdge && this.lootNear(p, 'trader')) { const l = this.lootNear(p, 'trader'); send(p.ws, { t: 'open', what: 'trader', id: l.id, ty: l.trader }); }
         else if (p.actcd <= 0) {
           const FF = this.fireNear(p, 80);
@@ -1628,11 +1643,11 @@ class Room {
       for (const p of P) if (!p.down && !p.boat && this.onIsland(p, ai)) {   // aliens only hunt players on their own island
         const dd = dist(a, p); if (a.vil && dd > (a.chase ? 800 : 420)) continue;   // camp villagers only notice you up close and give up a long chase
         const E = this.enclosure(p);
-        if (E) { if (dd < sbd) { sbd = dd; sealed = E; } continue; }
+        if (E && !(E.cab && this.inCabin(E.cab, a.x, a.y, 10))) { if (dd < sbd) { sbd = dd; sealed = E; } continue; }
         if (dd < bd) { bd = dd; tgt = p; }
         const sl = GC.BY[p.cls].slow; if (sl > slow && dd < 110) slow = sl;
       }
-      if (!tgt && sealed) { const w = this.nearWall(sealed, a.x, a.y); if (w) tgt = { x: w.qx, y: w.qy, wall: w.st, qr: w.qr }; }   // cannot reach anyone: attack the nearest wall of the enclosure
+      if (!tgt && sealed) { const w = this.nearWall(sealed, a.x, a.y); if (w) { tgt = { x: w.qx, y: w.qy, wall: w.st, qr: w.qr }; if (w.st.cabRef) { const wp = this.cabinApproach(w.st.cabRef, w.st, a.x, a.y); if (wp) { tgt.x = wp[0]; tgt.y = wp[1]; tgt.far = 1; } } } }   // shut in a cabin: round the walls to a door first   // cannot reach anyone: attack the nearest wall of the enclosure
       if (a.wallTg) {   // it gave up on a way round: breaking this wall first (up to WALL_SEC), then it paths to you again
         const ws = a.wallTg; if (ws.dead || ws.hp <= 0 || (a.wallT -= dt) <= 0 || !tgt) { a.wallTg = null; a.blkT = 0; }
         else { const [qx, qy, qr] = solidPt(ws, a.x, a.y); tgt = { x: qx, y: qy, wall: ws, qr }; }
@@ -1678,7 +1693,7 @@ class Room {
       }
       { const LF = a.k < 3 ? this.litAt(a.x, a.y, 0) : null; if (LF) { const r0 = RC.camp(LF.f.lvl), dx = a.x - LF.x, dy = a.y - LF.y, dd = Math.max(1, Math.hypot(dx, dy)); a.x = LF.x + dx * r0 / dd; a.y = LF.y + dy * r0 / dd; } }   // repelled by firelight (the main fire or any campfire)
       if (!home) { const ox = a.x - own.x, oy = a.y - own.y, od = Math.hypot(ox, oy), lim = RC.edgeRat(own, a.x, a.y) - 30; if (od > lim) { a.x = own.x + ox * lim / od; a.y = own.y + oy * lim / od; } }   // outer-island enemies stay ashore
-      if (tgt && tgt.wall) { if (a.k !== 4 && d - tgt.qr < (a.reach === undefined ? 28 : a.reach) + (a.rad || 12) && a.cd <= 0) { this.hitWall(tgt.wall, a.dmg); a.cd = a.atkCd || 1; } }   // walls take the hits (they do no damage back)
+      if (tgt && tgt.wall) { if (a.k !== 4 && !tgt.far && d - tgt.qr < (a.reach === undefined ? 28 : a.reach) + (a.rad || 12) && a.cd <= 0) { this.hitWall(tgt.wall, a.dmg); a.cd = a.atkCd || 1; } }   // walls take the hits (they do no damage back)
       else if (tgt && d < (a.reach === undefined ? 28 : a.reach) && a.cd <= 0 && (a.k >= 3 || !this.litAt(tgt.x, tgt.y))) {
         this.hurt(tgt, a.dmg); a.cd = a.atkCd || 1;
         if (a.k === 2) {   // the Charger sends you flying (about 10 steps) and then needs a moment before it can hit again
