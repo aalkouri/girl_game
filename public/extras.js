@@ -345,7 +345,9 @@ let trOpen = null;
   document.body.appendChild(d); d.querySelector('#trClose').onclick = () => closeTrader();
 })();
 function closeTrader() { trOpen = null; $('trader').style.display = 'none'; }
-function xOpenTrader(m) { setCraft(false); closeChest(); closePot(); trOpen = { id: m.id, ty: m.ty }; $('trader').style.display = 'flex'; $('trMsg').textContent = ''; buildTrader(); SFX.chest(); }
+function xOpenTrader(m) {
+  if (m.ty === 5) { const mp = S && S.p.find(p => p[0] === myId), me = ents2['p' + myId]; if (mp && mp[25] > 0) { if (me) floatText(me.x, me.y - 20, 'He has nothing more to offer you.', 0xd1b3ff); return; } }   // the ability unlocker sells one ability per game: once it is bought he offers nothing else
+  setCraft(false); closeChest(); closePot(); trOpen = { id: m.id, ty: m.ty }; $('trader').style.display = 'flex'; $('trMsg').textContent = ''; buildTrader(); SFX.chest(); }
 const costStr = (cost, mp) => Object.entries(cost).map(([k, n]) => '<span class="' + ((mp[COSTX[k]] || 0) >= n ? '' : 'no') + '">' + COSTI[k] + ' ' + (mp[COSTX[k]] || 0) + '/' + n + '</span>').join(' &nbsp; ');
 function buildTrader() {
   if (!trOpen) return; const T = RC.TRADERS[trOpen.ty], mp = S.p.find(p => p[0] === myId) || [], list = $('trList'); list.innerHTML = '';
@@ -414,7 +416,8 @@ function xMsg(m) {
   else if (m.t === 'traded') {
     GEAR = m.gear || GEAR; if (m.prof) PF.abil = m.prof.abil || PF.abil;
     const tm = $('trMsg'); if (tm) { tm.textContent = m.msg || ''; tm.style.color = m.ok ? '#7fe9a0' : '#ff8a80'; } if (m.ok) { SFX.cook(); const me2 = ents2['p' + myId]; if (me2) floatText(me2.x, me2.y - 20, m.msg, 0xffe082); }
-    buildTrader(); try { buildPicker(); } catch (e) { }
+    if (m.ok && trOpen && trOpen.ty === 5) closeTrader(); else buildTrader();   // buying the ability closes the unlocker's menu
+    try { buildPicker(); } catch (e) { }
   }
 }
 
