@@ -1,15 +1,20 @@
 # Deploying
 
-Pushing to `main` or a `claude/**` branch runs `.github/workflows/deploy.yml`, which
-deploys that exact commit to the EC2 game server (instance `i-00966cc1ee771d0cc`, us-west-1)
-through SSM. Auth is keyless GitHub OIDC; no secrets live in GitHub.
+Every push to `main` goes live automatically on **games-server** within about a minute.
 
-## One-time AWS setup (needs AWS access, do once)
-1. Create the OIDC provider `token.actions.githubusercontent.com` (audience `sts.amazonaws.com`) if the account has none.
-2. Create role `island-night-github-deploy`, trust policy limited to
-   `token.actions.githubusercontent.com:sub` StringLike
-   `repo:aalkouri@40836919/island_night@1457399958:ref:refs/heads/main` and `...:ref:refs/heads/claude/*` (this repo uses the ID-based subject format)
-   (and `aud` = `sts.amazonaws.com`).
-3. Permissions: `ssm:SendCommand` on the instance and on the `AWS-RunShellScript` document;
-   `ssm:GetCommandInvocation`, `ssm:ListCommandInvocations`.
-4. Put the AWS account ID in place of `ACCOUNT_ID_HERE` in the workflow.
+How it works (all on games-server, as the `deploy` user):
+- `~/island-night-cron.sh` runs every minute from the `deploy` user's crontab. It calls `~/island-night-pull.sh`.
+- `island-night-pull.sh` asks GitHub for the commit on `main`. If it hasn't been deployed yet, it:
+  1. downloads that exact commit and checks `server.js` and `auth.js` for syntax errors;
+  2. backs up player data (`/usr/local/bin/island-night-backup`) and the running copy;
+  3. installs it into `/opt/game` and restarts the `game` service;
+  4. waits up to 40 s for the game to answer on its port (3000, from the systemd drop-in). If it doesn't, it restores the previous version.
+- Real deploys and failures are logged to `~/island-night-deploy/deploy.log`. The last deployed commit is in `~/island-night-deploy/last-sha`.
+
+Deploy right now instead of waiting for the minute:
+
+    ssh games-server 'bash ~/island-night-pull.sh'
+
+Redeploy the same commit again: add `--force`.
+
+Note: a restart ends games in progress (game state lives in memory; saved games are kept).
