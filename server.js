@@ -1492,7 +1492,7 @@ class Room {
         p.sta = Math.max(0, p.sta - STA.drain * rn * dt); p.staCd = STA.delay; spd *= 1 + (STA.sprint - 1) * rn;
         if (p.sta <= 0) { p.tired = 1; p.staCd = STA.tiredDelay; }
       } else {
-        p.staCd -= dt; if (p.staCd <= 0) p.sta = Math.min(p.smax || STA.max, p.sta + STA.regen * dt);
+        p.staCd -= dt; if (p.staCd <= 0) { const SF = this.litAt(p.x, p.y); p.sta = Math.min(p.smax || STA.max, p.sta + STA.regen * (SF ? 1 + 0.05 * (SF.f.lvl - 1) : 1) * dt); }   // a lit fire speeds stamina refill: +5% per fire level above 1 (1.95x at level 20)
         if (p.tired && p.sta >= STA.resume * (p.smax || STA.max) / STA.max) p.tired = 0;
       }
       let flying = false;
@@ -1577,7 +1577,7 @@ class Room {
           if (best.hp <= 0 && p.prof) { p.prof.k++; dirty = true; if (p.prof.k % 10 === 0) award(p, 1, 'kills'); }
         }
       }
-      if (p.hp < p.mhp && this.litAt(p.x, p.y)) p.hp = Math.min(p.mhp, p.hp + 2 * dt);   // resting at a lit camp heals 2 HP/s (berries are for crafting only)
+      if (p.hp < p.mhp) { const HF = this.litAt(p.x, p.y); if (HF) p.hp = Math.min(p.mhp, p.hp + 2 * (1 + 0.1 * (HF.f.lvl - 1)) * dt); }   // resting at a lit camp heals 2 HP/s at fire level 1, +10% per level (5.8 HP/s at level 20)
       if (c.regen && p.hp < p.mhp) p.hp = Math.min(p.mhp, p.hp + c.regen * dt);
       if (c.heal) for (const q of P) if (!q.down && q.hp < q.mhp && dist(p, q) < 90) q.hp = Math.min(q.mhp, q.hp + c.heal * dt);
     }
