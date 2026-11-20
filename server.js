@@ -182,7 +182,7 @@ const SPEAR_REACH = 30;   // how much further than the normal swing the spear's 
 const GOLD_P = 0.01;   // chance a rock (new or regrowing) comes up as a gold ore vein
 const WOODY = k => k === 't' || k === 'c' || k === 'p', ROCKY = k => k === 'r' || k === 'g';
 const WOLF = { aHp: 100, aDmg: 16, aRun: 150, n: 10, outer: 14, alpha: 0.20, respawn: 40, reAggro: 3, pelt: 0.15, aPelt: 0.3, hp: 45, see: 300, give: 520, leash: 1100, run: 132, walk: 30, dmg: 9, reach: 30, cd: 1.0, fireGap: 140 };
-const BIG = { 1: { name: 'bear', hp: 1000, dmg: 35, run: 105, reach: 46, cd: 1.3, walk: 26, see: 330, meat: [3, 3], pelt: 0.7 }, 2: { name: 'mammoth', hp: 2000, dmg: 50, run: 80, reach: 64, cd: 2.0, walk: 20, see: 280, meat: [6, 4], pelt: 1 } };   // snow-island giants (player walks 150): a bear takes ~30 s to kill, a mammoth ~60 s
+const BIG = { 1: { name: 'bear', hp: 500, dmg: 35, run: 105, reach: 46, cd: 1.3, walk: 26, see: 330, meat: [3, 3], pelt: 0.7 }, 2: { name: 'mammoth', hp: 2000, dmg: 50, run: 80, reach: 64, cd: 2.0, walk: 20, see: 280, meat: [6, 4], pelt: 1 } };   // snow-island giants (player walks 150): a bear takes ~30 s to kill, a mammoth ~60 s
 // more hostile animals (they share the wolf code): forest boars on every island, golems and imps on lava islands. n = [on home, on each outer island that has the biome]
 const MOBS = {
   boar: { b: 'f', idx: 1, hp: 70, dmg: 12, run: 125, reach: 34, cd: 1.1, see: 340, walk: 28, meat: [2, 2], n: [8, 5] },
