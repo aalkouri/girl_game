@@ -42,21 +42,24 @@ module.exports = function makeAuth({ dir, config }) {
 
   // ---- email one-time codes ----
   const codes = new Map();
-  let ses = null;
+  // Sends via Resend's HTTPS API (no SDK). The key comes from the RESEND_API_KEY environment variable only, never from a file in the repo.
+  // With no key (or MAIL_MODE=log) the code is written to the server log instead, so sign-in still works for testing.
   async function sendMail(to, code) {
-    if ((config.mailMode || 'ses') === 'log') { console.log('[MAIL]', to, code); return; }
-    const { SESv2Client, SendEmailCommand } = require('@aws-sdk/client-sesv2');
-    ses = ses || new SESv2Client({ region: config.sesRegion || 'us-west-1' });
-    await ses.send(new SendEmailCommand({
-      FromEmailAddress: config.mailFrom, Destination: { ToAddresses: [to] },
-      Content: { Simple: {
-        Subject: { Data: 'Your Island Night code: ' + code },
-        Body: {
-          Text: { Data: 'Your Island Night sign-in code is ' + code + '\n\nIt expires in 10 minutes. If you did not ask for this, you can ignore this email.' },
-          Html: { Data: '<div style="font-family:sans-serif"><h2>🌙 Island Night</h2><p>Your sign-in code is</p><p style="font-size:32px;letter-spacing:6px;font-weight:bold">' + code + '</p><p>It expires in 10 minutes. If you did not ask for this, you can ignore this email.</p></div>' },
-        },
-      } },
-    }));
+    const key = process.env.RESEND_API_KEY;
+    if (config.mailMode === 'log' || !key) { console.log('[MAIL]', to, code); return; }
+    const r = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: config.mailFrom || 'Island Night <no-reply@alkouri.com>',
+        to: [to],
+        subject: 'Your Island Night code: ' + code,
+        text: 'Your Island Night sign-in code is ' + code + '\n\nIt expires in 10 minutes. If you did not ask for this, you can ignore this email.',
+        html: '<div style="font-family:sans-serif"><h2>🌙 Island Night</h2><p>Your sign-in code is</p><p style="font-size:32px;letter-spacing:6px;font-weight:bold">' + code + '</p><p>It expires in 10 minutes. If you did not ask for this, you can ignore this email.</p></div>',
+      }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!r.ok) throw new Error('Resend ' + r.status + ': ' + (await r.text()).slice(0, 200));
   }
   async function startEmail(email, ip) {
     const e = normEmail(email); if (!e) return { ok: false, err: 'Enter a valid email address.' };
@@ -65,8 +68,8 @@ module.exports = function makeAuth({ dir, config }) {
     const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0'), salt = crypto.randomBytes(8).toString('hex');
     codes.set(e, { h: sha(salt + code), salt, x: Date.now() + 10 * 60e3, tries: 0, t: Date.now() });
     try { await sendMail(e, code); } catch (err) {
-      codes.delete(e); console.error('mail failed:', err.name, err.message);
-      const blocked = err.name === 'MessageRejected' || /not verified|sandbox/i.test(err.message || '');
+      codes.delete(e); console.error('mail failed:', err.message);
+      const blocked = /^Resend (403|422)/.test(err.message || '');   // domain not verified / recipient refused
       return { ok: false, err: blocked ? 'Emailed codes are not available for this address yet. Please sign in with Google instead.' : 'Could not send the email right now. Please try again later.' };
     }
     return { ok: true };
